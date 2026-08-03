@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aaa9171db19dae444ac54978223a2df3, type: 3}
+  m_Name: Item_Accessory_Lv2
+  m_EditorClassIdentifier: 
+  id: amulet_agile
+  itemName: AccessoryLv2
+  icon: {fileID: 1248619470624631663, guid: f2c3060b2bafe0146877a72c930086e0, type: 3}
+  description: "\u5927\u5E45\u63D0\u5347\u654F\u6377"
+  category: 2
+  slotType: 3
+  rarity: 0
+  maxStack: 1
+  buyPrice: 180
+  sellPrice: 45
+  attackDamage: 0
+  critRate: 0
+  critDamage: 0
+  shotsPerClick: 0
+  attackInterval: 0
+  defense: 0
+  maxHealth: 0
+  moveSpeed: 5
+  dodgeRate: 15
+  maxMana: 0
+  manaRegen: 0
+  strength: 0
+  intelligence: 0
+  agility: 10

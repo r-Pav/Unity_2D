@@ -1,0 +1,80 @@
+# Unity 项目标准 .gitignore
+# 由 Hermes 生成 2026-08-03
+
+# ============ Unity 生成目录 ============
+# Library 是本地生成缓存,绝不入库(也是本次 GUID 问题的根源之一)
+/Library/
+/Temp/
+/Obj/
+/Build/
+/Builds/
+/Logs/
+/UserSettings/
+/MemoryCaptures/
+/Recordings/
+
+# ============ 崩溃/临时文件 ============
+SysDump/
+*.pid
+*.log
+*.tmp
+*.temp
+
+# ============ IDE ============
+.idea/
+.vs/
+.vscode/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.booproj
+*.pidb
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# ============ OS ============
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ============ 敏感/本地配置 ============
+# 本地密钥、令牌、个人配置
+*.key
+*.pem
+.env
+local_settings.json
+
+# ============ 导出/备份 ============
+*.tar.gz
+*.zip
+meta_backup*
+
+# ============ 项目根目录杂项(测试日志/临时文件) ============
+*.log
+*.txt
+*.xml
+*.sln
+*.csproj
+.panel-test-temp
+.panel_test_project_path
+.com-unity-codely.json
+.vsconfig
+FsM_Evaluation_Report.txt
+TEST_REPORT_RANGED.md
+create_passive_so.log
+build-final.log
+PanelManagerBugTests-*
+PanelManager-build.log
+PanelManagerTests*
+
+# ============ 超大资产(>100MB,超GitHub限制,不入库) ============
+# 129MB TMP字体图集,全项目零引用,源字体(.ttf/.otf)已入库可重新生成
+Assets/Graphics/Font/AlibabaPuHuiTi-3/AlibabaPuHuiTi-3-55-RegularL3/*SDF*.asset
+Assets/Graphics/Font/AlibabaPuHuiTi-3/AlibabaPuHuiTi-3-55-RegularL3/*SDF*.asset.meta
+

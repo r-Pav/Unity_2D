@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 58432dd9f20e9514fa512d9d9ff0a9e3, type: 3}
+  m_Name: Skill_Combo_LawDomain
+  m_EditorClassIdentifier: 
+  skillName: "\u6CD5\u5219\u9886\u57DF\xB7\u6781"
+  description: "\u9886\u57DF\u5C55\u5F00 + \u5F15\u7206 + \u7729\u6655 \u2014 \u8303\u56F4\u5185\u654C\u4EBA\u53D7\u56F0\u3001\u5F15\u7206\u5E76\u7729\u6655"
+  icon: {fileID: 0}
+  hotkey: 0
+  cooldown: 12
+  manaCost: 35
+  type: 0
+  category: 0
+  unlockLevel: 0
+  castTime: 0
+  skillLevel: 2
+  maxLevel: 2
+  vfxPrefab: {fileID: 0}
+  sfxClip: {fileID: 0}
+  combinationLevel: 2
+  effectType: "\u9886\u57DF\u5C55\u5F00"
+  destroyOnUse: 0

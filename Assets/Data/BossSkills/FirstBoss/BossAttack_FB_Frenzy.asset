@@ -1,0 +1,65 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 98021033c5587c44abbfd19ef937f857, type: 3}
+  m_Name: BossAttack_FB_Frenzy
+  m_EditorClassIdentifier: 
+  skillName: New Skill
+  skillType: 0
+  damage: 20
+  windupTime: 0.5
+  activeTime: 0.15
+  recoveryTime: 0.5
+  cooldown: 4
+  phaseUnlock: 0
+  phaseCooldownMultipliers:
+  - 1
+  - 0.8
+  - 0.6
+  canBeBlocked: 1
+  canBeParried: 1
+  parryWindowStart: -0.05
+  parryWindowEnd: 0.05
+  knockbackForce: 5
+  animTrigger: 
+  sfxKey: 
+  hitVFXPrefab: {fileID: 0}
+  icon: {fileID: 0}
+  chargeSpeedMultiplier: 3
+  chargeMaxDistance: 8
+  chargeHitboxWidth: 2
+  chargeHitboxHeight: 2
+  chargeStopOnWall: 1
+  slamRadius: 3
+  slamOffset: {x: 0, y: -1}
+  slamKnockbackOverride: 0
+  slamScreenShakeIntensity: 0
+  slamScreenShakeDuration: 0.15
+  slamGroundVFXPrefab: {fileID: 0}
+  wavePrefab: {fileID: 0}
+  waveSpeed: 4
+  waveMaxDistance: 10
+  waveHeight: 0.5
+  waveSpawnOffset: {x: 0, y: -0.5}
+  waveCount: 1
+  waveSpreadAngle: 0
+  wrappedAttack: {fileID: 0}
+  overrideHitboxSize: 0
+  overrideWidth: 1.5
+  overrideHeight: 1.5
+  wrappedRangedAttack: {fileID: 0}
+  overrideProjectileSpeed: 0
+  overrideSpeed: 6
+  comboAttacks: []
+  comboInterval: 0.25
+  finalHitUnblockable: 0
+  finalHitUnparriable: 0
+  finalHitExtraDamage: 0

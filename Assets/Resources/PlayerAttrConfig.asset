@@ -1,0 +1,49 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5cb4e3f253780fe4bb84f9a874fb02a1, type: 3}
+  m_Name: PlayerAttrConfig
+  m_EditorClassIdentifier: 
+  baseStr: 5
+  baseInt: 5
+  baseAgi: 5
+  str_hpPerPoint: 5
+  str_hpRegenPerP: 0.5
+  str_armorPer10: 1
+  int_mpPerPoint: 5
+  int_mpRegenPerP: 0.5
+  int_skillEnhPer10: 0.05
+  agi_atkSpdPerP: 2
+  agi_dodgePerP: 0.01
+  agi_cdReducePer10: 0.05
+  atkSpeedBase: 100
+  initialHealth: 50
+  initialMana: 10
+  attrPointsPerLv: 3
+  initialPoints: 5
+  strGrowthCurve:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  intGrowthCurve:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  agiGrowthCurve:
+    serializedVersion: 2
+    m_Curve: []
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
