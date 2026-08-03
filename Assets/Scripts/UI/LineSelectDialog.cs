@@ -3,7 +3,7 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>Routes the five passive-line options back to PassiveUI.
-/// 跟随触发按钮弹出（下拉式）：打开时定位到按钮下方。</summary>
+/// 跟随触发按钮弹出（下拉式）：打开时定位到按钮下方，点击对话框外区域自动关闭。</summary>
 public class LineSelectDialog : MonoBehaviour, IPanel
 {
     PanelType IPanel.PanelType => PanelType.Dialog;
@@ -12,7 +12,6 @@ public class LineSelectDialog : MonoBehaviour, IPanel
     bool IPanel.ShowCursor => false;
 
     [SerializeField] private Button[] optionButtons;
-    [SerializeField] private Button closeBtn;
     [SerializeField] private TMP_Text title;
     [SerializeField] private PanelManager panelManager;
 
@@ -24,6 +23,8 @@ public class LineSelectDialog : MonoBehaviour, IPanel
 
     private System.Action<int> onLineSelected;
     private RectTransform selfRect;
+    private RectTransform lastAnchorButton;
+    private GameObject blocker;
 
     private void Awake()
     {
@@ -38,7 +39,13 @@ public class LineSelectDialog : MonoBehaviour, IPanel
                 optionButtons[i].onClick.AddListener(() => Select(capturedLine));
             }
         }
-        closeBtn?.onClick.AddListener(Hide);
+    }
+
+    private void OnValidate()
+    {
+        // Inspector 调整 offsetBelow/fixedSize 时立即重新定位（Play 模式也实时生效）
+        if (lastAnchorButton != null && selfRect != null && gameObject.activeInHierarchy)
+            PositionBelow(lastAnchorButton);
     }
 
     /// <summary>在指定按钮下方弹出选择列表</summary>
@@ -50,6 +57,8 @@ public class LineSelectDialog : MonoBehaviour, IPanel
         if (panelManager == null) panelManager = PanelManager.Instance;
         onLineSelected = callback;
         if (title != null) title.text = $"选择 T{layer + 1} 要装备的线";
+        lastAnchorButton = anchorButton;
+        CreateBlocker();
         panelManager?.OpenPanel(gameObject);
         PositionBelow(anchorButton);
     }
@@ -79,9 +88,43 @@ public class LineSelectDialog : MonoBehaviour, IPanel
         }
     }
 
+    /// <summary>创建全屏透明遮挡层：点击对话框外区域关闭。插入到对话框之下，不影响对话框内按钮点击。</summary>
+    private void CreateBlocker()
+    {
+        if (blocker != null)
+        {
+            blocker.SetActive(true);
+            return;
+        }
+
+        Canvas canvas = GetComponentInParent<Canvas>();
+        if (canvas == null) return;
+
+        blocker = new GameObject("LineSelectBlocker");
+        blocker.transform.SetParent(canvas.transform, false);
+
+        RectTransform rt = blocker.AddComponent<RectTransform>();
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.sizeDelta = Vector2.zero;
+
+        Image img = blocker.AddComponent<Image>();
+        img.color = new Color(0f, 0f, 0f, 0f); // 全透明，仅拦截点击
+        img.raycastTarget = true;
+
+        Button btn = blocker.AddComponent<Button>();
+        btn.transition = Selectable.Transition.None;
+        btn.onClick.AddListener(Hide);
+
+        // 插到对话框之下：对话框先渲染，blocker 在下层只接未被对话框覆盖的点击
+        blocker.transform.SetSiblingIndex(transform.GetSiblingIndex());
+    }
+
     public void Hide()
     {
         onLineSelected = null;
+        if (blocker != null)
+            blocker.SetActive(false);
         panelManager?.ClosePanel(gameObject);
     }
 
