@@ -16,7 +16,7 @@ public class LineSelectDialog : MonoBehaviour, IPanel
     [SerializeField] private PanelManager panelManager;
 
     [Header("下拉定位")]
-    [Tooltip("对话框相对触发按钮的偏移（按钮下方，如 x=0 对齐按钮左侧, y=-8 紧贴下方）")]
+    [Tooltip("对话框相对 slot 左上角的偏移（默认 0=左上角对齐；y 负值=稍微下移留间隙）")]
     [SerializeField] private Vector2 offsetBelow = new Vector2(0f, -8f);
     [Tooltip("对话框固定尺寸（按钮下方展开的大小）")]
     [SerializeField] private Vector2 fixedSize = new Vector2(300f, 400f);
@@ -35,7 +35,9 @@ public class LineSelectDialog : MonoBehaviour, IPanel
             for (int i = 0; i < optionButtons.Length; i++)
             {
                 if (optionButtons[i] == null) continue;
-                int capturedLine = i;
+                // 最后一个按钮是"空"选项 → 传 EmptyChoice(-2)
+                bool isLast = (i == optionButtons.Length - 1);
+                int capturedLine = isLast ? PassiveEquipManager.EmptyChoice : i;
                 optionButtons[i].onClick.AddListener(() => Select(capturedLine));
             }
         }
@@ -63,29 +65,68 @@ public class LineSelectDialog : MonoBehaviour, IPanel
         PositionBelow(anchorButton);
     }
 
-    /// <summary>把对话框定位到按钮下方（世界坐标换算，兼容 Overlay/World 相机 Canvas）</summary>
+    /// <summary>把对话框定位到 slot 附近：以 slot 左上角为锚点，宽度=slot 宽，高度用 fixedSize.y。
+    /// 越界自动翻转：超底往上、超右往左。</summary>
     private void PositionBelow(RectTransform anchorButton)
     {
         if (anchorButton == null || selfRect == null) return;
 
-        // 锚点/枢轴对齐 0,0（左下），尺寸固定，由代码控制布局
+        // 锚点对齐 0,0，由代码控制位置；尺寸：宽=slot宽，高=手动
         selfRect.anchorMin = Vector2.zero;
         selfRect.anchorMax = Vector2.zero;
-        selfRect.pivot = new Vector2(0f, 1f); // 左下角为锚，向下展开
-        selfRect.sizeDelta = fixedSize;
 
         Canvas canvas = GetComponentInParent<Canvas>();
         if (canvas == null) return;
 
-        // 按钮世界坐标 → 对话框父级本地坐标
-        Vector2 buttonWorld = anchorButton.position;
-        Vector2 localPos;
-        if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                (RectTransform)selfRect.parent, buttonWorld, canvas.worldCamera, out localPos))
+        RectTransform parentRect = (RectTransform)selfRect.parent;
+        float slotW = anchorButton.rect.width * anchorButton.lossyScale.x;
+        float slotH = anchorButton.rect.height * anchorButton.lossyScale.y;
+        float w = slotW;                 // 宽度跟随 slot
+        float h = fixedSize.y;           // 高度手动
+        selfRect.sizeDelta = new Vector2(w, h);
+
+        // 取 slot 四角世界坐标: [0]=左下 [1]=左上 [2]=右上 [3]=右下
+        Vector3[] corners = new Vector3[4];
+        anchorButton.GetWorldCorners(corners);
+        Vector2 topLeft;
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                parentRect,
+                RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, corners[1]),
+                canvas.worldCamera, out topLeft))
+            return;
+
+        // ScreenPointToLocalPointInRectangle 返回相对父级 pivot(中心)的坐标，
+        // 而 anchoredPosition(anchor=0,0) 需要相对父级左下角的坐标 → 补 pivot 偏移
+        Vector2 pivotOffset = new Vector2(
+            parentRect.pivot.x * parentRect.rect.width,
+            parentRect.pivot.y * parentRect.rect.height);
+        topLeft += pivotOffset;
+
+        // 父级（Canvas）可视区域尺寸
+        Vector2 viewSize = parentRect.rect.size;
+
+        // 默认：左上角对齐 slot 左上角，向下展开
+        selfRect.pivot = new Vector2(0f, 1f); // 左上角为锚，向下展开
+        float x = topLeft.x + offsetBelow.x;
+        float y = topLeft.y + offsetBelow.y;
+
+        // 水平越界：超出右侧 → 右边缘对齐 slot 右边缘往左展开；再超左则钳制
+        if (x + w > viewSize.x)
         {
-            // localPos 是按钮左下角在对话框父级中的位置
-            selfRect.anchoredPosition = localPos + offsetBelow;
+            x = topLeft.x + slotW - w - offsetBelow.x;
+            if (x < 0f) x = 0f;
         }
+
+        // 垂直越界：超出底部 → 翻到 slot 上方（pivot 改左下，向上展开）
+        if (y - h < 0f)
+        {
+            selfRect.pivot = new Vector2(selfRect.pivot.x, 0f); // 左下角为锚，向上展开
+            y = topLeft.y - slotH - offsetBelow.y;              // 底部贴 slot 顶部之上
+            if (y + h > viewSize.y)
+                y = viewSize.y - h; // 仍超顶则钳制
+        }
+
+        selfRect.anchoredPosition = new Vector2(x, y);
     }
 
     /// <summary>创建全屏透明遮挡层：点击对话框外区域关闭。插入到对话框之下，不影响对话框内按钮点击。</summary>

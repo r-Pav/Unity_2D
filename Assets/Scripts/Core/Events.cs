@@ -199,16 +199,16 @@ public readonly struct PlayerSkillPointsChangedEvent
 // P2 被动系统事件
 // ============================================================
 
-/// <summary>[P2] 被动槽位变化事件 — 装备/卸下被动时触发，UI 被动面板订阅刷新</summary>
+/// <summary>[P2] 被动槽位变化事件 — 装备/卸下/空选被动时触发，UI 被动面板订阅刷新</summary>
 public readonly struct PassiveSlotsChangedEvent
 {
     /// <summary>层级 0~4（对应 TI~TV）</summary>
     public readonly int layer;
-    /// <summary>线 ID 0~4</summary>
+    /// <summary>线 ID 0~4，或 -2(空)</summary>
     public readonly int lineId;
     /// <summary>该层内槽位索引 0~2</summary>
     public readonly int slotIndex;
-    /// <summary>操作类型："equip" / "unequip"</summary>
+    /// <summary>操作类型："equip" / "unequip" / "empty"</summary>
     public readonly string action;
 
     public PassiveSlotsChangedEvent(int layer, int lineId, int slotIndex, string action)

@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   skillName: "TII \u51CF\u4F24+\u63A7\u5236"
   description: "\u51CF\u4F24+10%"
-  icon: {fileID: 0}
+  icon: {fileID: 196159178, guid: 7ae0115109b4a6f42a4f7ad59397d09b, type: 3}
   hotkey: 0
   cooldown: 0
   manaCost: 0

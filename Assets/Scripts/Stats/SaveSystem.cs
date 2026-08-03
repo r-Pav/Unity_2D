@@ -593,7 +593,7 @@ public class SaveSystem : MonoBehaviour
     [System.Serializable]
     private class PassiveLayerSave
     {
-        public int[] lineIds; // 3 个槽位，-1=空
+        public int[] lineIds; // 3 个槽位，-2=显式空，-1=未选，0~4=技能线
     }
 
     [System.Serializable]

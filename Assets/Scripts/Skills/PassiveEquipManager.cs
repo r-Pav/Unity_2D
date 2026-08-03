@@ -33,6 +33,9 @@ public class PassiveEquipManager : MonoBehaviour
     public const int SlotPerLayer = 3;
     public const int LineCount = 5;
 
+    /// <summary>显式选择"空"选项的哨兵值（-1=未选，-2=空，0~4=技能线）</summary>
+    public const int EmptyChoice = -2;
+
     /// <summary>低血阈值（"低血加防"触发条件：HP/MaxHP ≤ 此值）</summary>
     private const float LowHpThreshold = 0.3f;
     /// <summary>"低血加防"额外减伤值</summary>
@@ -144,7 +147,7 @@ public class PassiveEquipManager : MonoBehaviour
 
     /// <summary>装备被动技能到指定层指定槽位。如槽位已有旧装备自动先卸下</summary>
     /// <param name="layer">层级 0~4（对应 TI~TV）</param>
-    /// <param name="lineId">线 ID 0~4</param>
+    /// <param name="lineId">线 ID 0~4，或 EmptyChoice(-2) 表示显式空</param>
     /// <param name="slotIndex">该层内槽位 0~2</param>
     /// <returns>装备是否成功</returns>
     public bool EquipPassive(int layer, int lineId, int slotIndex)
@@ -154,29 +157,36 @@ public class PassiveEquipManager : MonoBehaviour
             Debug.LogWarning($"[PassiveEquip] 战斗中不可装备被动");
             return false;
         }
-        if (!IsLayerValid(layer) || !IsLineValid(lineId) || !IsSlotValid(slotIndex))
+        if (!IsLayerValid(layer) || !IsSlotValid(slotIndex))
+            return false;
+        // 空选项(-2)允许通过，仅 >=0 的线ID走范围校验
+        if (lineId >= 0 && !IsLineValid(lineId))
             return false;
         if (!IsLayerUnlocked(layer))
         {
             Debug.LogWarning($"[PassiveEquip] 层级 {LayerLabel(layer)} 未解锁（需到达第{UnlockChapterOf(layer)}章，当前第{currentChapter}章）");
             return false;
         }
-        if (IsLineEquippedInLayer(layer, lineId))
+        // 空选项(-2)不受同层不重复限制
+        if (lineId >= 0 && IsLineEquippedInLayer(layer, lineId))
         {
             Debug.LogWarning($"[PassiveEquip] 线 {LineName(lineId)} 已在层 {LayerLabel(layer)} 装备，不可重复");
             return false;
         }
 
-        // 目标槽位已有旧装备 → 先卸下
+        // 覆盖旧槽位：先移除旧修饰器再写入（RecalculateColumn 只能扫描当前数组，旧 lineId 已丢失）
         int oldLineId = Slots[SlotIndex(layer, slotIndex)];
         if (oldLineId >= 0)
             RemoveModifiersForNode(layer, oldLineId);
 
-        // 装备新被动
+        // 写入槽位
         Slots[SlotIndex(layer, slotIndex)] = lineId;
-        AddModifiersForNode(layer, lineId);
 
-        EventBus.Trigger(new PassiveSlotsChangedEvent(layer, lineId, slotIndex, "equip"));
+        // 列重算：仅该列最高非空层生效，低层被压制
+        RecalculateColumn(slotIndex);
+
+        string action = lineId == EmptyChoice ? "empty" : "equip";
+        EventBus.Trigger(new PassiveSlotsChangedEvent(layer, lineId, slotIndex, action));
         return true;
     }
 
@@ -197,8 +207,14 @@ public class PassiveEquipManager : MonoBehaviour
         int slotIndex = GetSlotIndexForLine(layer, lineId);
         if (slotIndex < 0) return false;
 
+        // 先移除旧修饰器（清空槽位后 RecalculateColumn 无法追溯到旧 lineId）
         RemoveModifiersForNode(layer, lineId);
+
+        // 清空槽位
         Slots[SlotIndex(layer, slotIndex)] = -1;
+
+        // 列重算：该列低层技能可能重新生效
+        RecalculateColumn(slotIndex);
 
         EventBus.Trigger(new PassiveSlotsChangedEvent(layer, lineId, slotIndex, "unequip"));
         return true;
@@ -377,7 +393,7 @@ public class PassiveEquipManager : MonoBehaviour
         return list.ToArray();
     }
 
-    /// <summary>查询指定线的累计效果汇总（含多层同线叠加，用于 UI 悬停提示）</summary>
+    /// <summary>查询指定线的累计效果汇总（仅统计生效层，跳过被压制层）</summary>
     public List<Modifier> GetCumulativeModifiers(int lineId)
     {
         var result = new List<Modifier>();
@@ -387,6 +403,9 @@ public class PassiveEquipManager : MonoBehaviour
         {
             int slotIdx = GetSlotIndexForLine(l, lineId);
             if (slotIdx < 0) continue;
+
+            // 仅生效层加入累加（跳过被压制的层）
+            if (IsSlotSuppressed(l, slotIdx)) continue;
 
             var data = GetPassiveData(l, lineId);
             if (data?.effects == null) continue;
@@ -407,6 +426,37 @@ public class PassiveEquipManager : MonoBehaviour
 
     /// <summary>[P6] 所有被动数据资产引用（供 UI 被动网格消费，如技能图标/名称/描述）</summary>
     public PassiveSkillData[] AllPassiveData => allPassiveData;
+
+    // ============================================================
+    // 公共接口 — 跨层互斥查询
+    // ============================================================
+
+    /// <summary>指定层指定槽位的技能是否被更高层压制（不生效，不加修饰器）。仅对 >=0 的技能有意义。</summary>
+    public bool IsSlotSuppressed(int layer, int slotIndex)
+    {
+        int lineId = GetEquippedLineId(layer, slotIndex);
+        if (lineId < 0) return false;  // 空槽不存在压制概念
+
+        // 扫描更高层：是否有非空选项占了这个槽位列
+        for (int higherLayer = layer + 1; higherLayer < LayerCount; higherLayer++)
+        {
+            int higherLineId = Slots[SlotIndex(higherLayer, slotIndex)];
+            if (higherLineId >= 0) return true;
+        }
+        return false;
+    }
+
+    /// <summary>获取指定槽位列的真正生效技能信息。从高到低扫描，返回第一个 >=0 的层。
+    /// 返回 (effectiveLayer, effectiveLineId)，整列为空则 (-1, -1)。</summary>
+    public (int layer, int lineId) GetEffectiveInColumn(int slotIndex)
+    {
+        for (int l = LayerCount - 1; l >= 0; l--)
+        {
+            int lineId = Slots[SlotIndex(l, slotIndex)];
+            if (lineId >= 0) return (l, lineId);
+        }
+        return (-1, -1);
+    }
 
     // ============================================================
     // 内部方法 — 修饰器同步
@@ -458,6 +508,40 @@ public class PassiveEquipManager : MonoBehaviour
 
         // 触发式 debug
         // Debug.Log($"[PassiveEquip] 卸下: {LayerLabel(layer)} {LineName(lineId)}");
+    }
+
+    /// <summary>重算指定槽位列的修饰器：移除该列所有层的修饰器，仅给最高非空层加回去。
+    /// 保留 TV线3 低血加防特殊处理。</summary>
+    private void RecalculateColumn(int slotIndex)
+    {
+        if (statModManager == null) return;
+
+        // 1. 找出该列生效层
+        var (effectiveLayer, effectiveLineId) = GetEffectiveInColumn(slotIndex);
+
+        // 2. 遍历所有层，移除该列所有层的该槽位修饰器
+        for (int l = 0; l < LayerCount; l++)
+        {
+            int lineId = Slots[SlotIndex(l, slotIndex)];
+            if (lineId >= 0)  // 只处理装备了技能的行（不含 -1/-2）
+            {
+                string source = BuildSource(l, lineId);
+                statModManager.RemoveModifier(source);
+
+                // TV线3特殊低血加防
+                if (l == 4 && lineId == 3)
+                {
+                    statModManager.RemoveModifier(LowHpSource);
+                    lowHpModifier = null;
+                }
+            }
+        }
+
+        // 3. 仅给生效层加修饰器
+        if (effectiveLayer >= 0 && effectiveLineId >= 0)
+        {
+            AddModifiersForNode(effectiveLayer, effectiveLineId);
+        }
     }
 
     /// <summary>刷新低血加防修饰器的条件绑定（血量变化后调用）</summary>
@@ -549,28 +633,30 @@ public class PassiveEquipManager : MonoBehaviour
     private bool EquipPassiveInternal(int layer, int lineId, int slotIndex)
     {
         if (inCombat) return false;
-        if (!IsLayerValid(layer) || !IsLineValid(lineId) || !IsSlotValid(slotIndex))
+        if (!IsLayerValid(layer) || !IsSlotValid(slotIndex))
             return false;
-        if (IsLineEquippedInLayer(layer, lineId))
+        // 空选项(-2)允许通过，仅 >=0 的线ID走范围校验
+        if (lineId >= 0 && !IsLineValid(lineId))
+            return false;
+        // 空选项(-2)不受同层不重复限制
+        if (lineId >= 0 && IsLineEquippedInLayer(layer, lineId))
         {
             Debug.LogWarning($"[PassiveEquip] 线 {LineName(lineId)} 已在层 {LayerLabel(layer)} 装备");
             return false;
         }
 
-        int oldLineId = Slots[SlotIndex(layer, slotIndex)];
-        if (oldLineId >= 0)
-            RemoveModifiersForNode(layer, oldLineId);
-
         Slots[SlotIndex(layer, slotIndex)] = lineId;
-        AddModifiersForNode(layer, lineId);
-        EventBus.Trigger(new PassiveSlotsChangedEvent(layer, lineId, slotIndex, "equip"));
+        string action = lineId == EmptyChoice ? "empty" : "equip";
+        EventBus.Trigger(new PassiveSlotsChangedEvent(layer, lineId, slotIndex, action));
         return true;
     }
 
-    /// <summary>读档恢复被动槽位（跳过解锁检查，供 SaveSystem 调用）</summary>
+    /// <summary>读档恢复被动槽位（跳过解锁检查，两遍式：先填数据再列重算）</summary>
     public void RestorePassiveSlots(int[][] layerLineIds)
     {
         int layerCount = Mathf.Min(layerLineIds.Length, LayerCount);
+
+        // 第一遍：纯数据写入 slots，不触发修饰器
         for (int l = 0; l < layerCount; l++)
         {
             if (layerLineIds[l] == null) continue;
@@ -578,10 +664,15 @@ public class PassiveEquipManager : MonoBehaviour
             for (int s = 0; s < slotCount; s++)
             {
                 int lineId = layerLineIds[l][s];
-                if (lineId >= 0)
-                    EquipPassiveInternal(l, lineId, s);
+                // 允许 -2(空) 和 >=0(技能), -1(未选)保持默认
+                if (lineId >= EmptyChoice && lineId < LineCount)
+                    Slots[SlotIndex(l, s)] = lineId;
             }
         }
+
+        // 第二遍：每个槽位列统一重算修饰器（仅最高非空层生效）
+        for (int s = 0; s < SlotPerLayer; s++)
+            RecalculateColumn(s);
     }
 
     // ============================================================

@@ -113,10 +113,18 @@ public class PassiveUI : MonoBehaviour, IPanel
     private void UpdateDialogOptions(int layer)
     {
         if (lineDialogOptions == null) return;
-        for (int line = 0; line < lineDialogOptions.Length; line++)
+        int optionCount = lineDialogOptions.Length;
+        for (int i = 0; i < optionCount; i++)
         {
-            if (lineDialogOptions[line] != null)
-                lineDialogOptions[line].interactable = !passiveEquipManager.IsLineEquippedInLayer(layer, line);
+            if (lineDialogOptions[i] == null) continue;
+
+            // 最后一个按钮是"空"选项 — 始终可选，不受同层重复限制
+            bool isEmptyOption = (i == optionCount - 1);
+
+            if (isEmptyOption)
+                lineDialogOptions[i].interactable = true;
+            else
+                lineDialogOptions[i].interactable = !passiveEquipManager.IsLineEquippedInLayer(layer, i);
         }
     }
 
@@ -171,6 +179,7 @@ public class PassiveUI : MonoBehaviour, IPanel
     {
         int lineId = passiveEquipManager.GetEquippedLineId(layer, slot);
         PassiveSkillData data = FindPassiveData(layer, lineId);
+        bool suppressed = passiveEquipManager.IsSlotSuppressed(layer, slot);
         bool interactable = unlocked && !passiveEquipManager.InCombat;
 
         Button button = slotButtons[layer * 3 + slot];
@@ -196,12 +205,29 @@ public class PassiveUI : MonoBehaviour, IPanel
                 icon.sprite = null;
                 icon.enabled = false;
             }
-            icon.color = interactable ? Color.white : UIConstants.LockedGray;
+            // 压制态: 灰色半透明；正常态: 白/锁灰
+            if (suppressed)
+                icon.color = new Color(0.5f, 0.5f, 0.5f, 0.35f);
+            else
+                icon.color = interactable ? Color.white : UIConstants.LockedGray;
         }
 
         TMP_Text lineName = slotLineNames[layer * 3 + slot];
         if (lineName != null)
-            lineName.text = lineId >= 0 && lineId < LineNames.Length ? LineNames[lineId] : string.Empty;
+        {
+            if (lineId == PassiveEquipManager.EmptyChoice)
+                lineName.text = "空";
+            else if (lineId >= 0 && lineId < LineNames.Length)
+                lineName.text = LineNames[lineId];
+            else
+                lineName.text = string.Empty;
+
+            // 压制态文字半透明；解除压制后恢复不透明
+            if (suppressed)
+                lineName.color = new Color(1f, 1f, 1f, 0.35f);
+            else
+                lineName.color = Color.white;
+        }
 
         TMP_Text effect = slotEffects[layer * 3 + slot];
         if (effect != null)

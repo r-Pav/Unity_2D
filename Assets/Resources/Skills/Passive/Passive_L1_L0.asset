@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   skillName: "TI HP\u6062\u590D"
   description: "\u751F\u547D\u4E0A\u9650+1%"
-  icon: {fileID: 0}
+  icon: {fileID: 1893721086, guid: 7ae0115109b4a6f42a4f7ad59397d09b, type: 3}
   hotkey: 0
   cooldown: 0
   manaCost: 0
