@@ -105,7 +105,9 @@ public class PassiveUI : MonoBehaviour, IPanel
         selectedLayer = layer;
         selectedSlot = slot;
         UpdateDialogOptions(layer);
-        lineSelectDialog?.Show(layer, OnLineSelected);
+        Button button = Get(slotButtons, layer * PassiveEquipManager.SlotPerLayer + slot);
+        RectTransform anchor = button != null ? (RectTransform)button.transform : null;
+        lineSelectDialog?.Show(anchor, layer, OnLineSelected);
     }
 
     private void UpdateDialogOptions(int layer)
