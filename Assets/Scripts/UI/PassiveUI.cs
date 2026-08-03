@@ -44,12 +44,14 @@ public class PassiveUI : MonoBehaviour, IPanel
     private void OnEnable()
     {
         EventBus.Subscribe<PassiveSlotsChangedEvent>(OnPassiveSlotsChanged);
+        EventBus.Subscribe<ChapterChangedEvent>(OnChapterChanged);
         Refresh();
     }
 
     private void OnDisable()
     {
         EventBus.Unsubscribe<PassiveSlotsChangedEvent>(OnPassiveSlotsChanged);
+        EventBus.Unsubscribe<ChapterChangedEvent>(OnChapterChanged);
     }
 
     private void BindSlotButtons()
@@ -116,6 +118,11 @@ public class PassiveUI : MonoBehaviour, IPanel
     }
 
     private void OnPassiveSlotsChanged(PassiveSlotsChangedEvent eventData)
+    {
+        Refresh();
+    }
+
+    private void OnChapterChanged(ChapterChangedEvent eventData)
     {
         Refresh();
     }

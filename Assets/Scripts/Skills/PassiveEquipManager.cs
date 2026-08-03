@@ -516,8 +516,12 @@ public class PassiveEquipManager : MonoBehaviour
     private static string BuildSource(int layer, int lineId) =>
         $"{SourcePrefix}_L{layer + 1}_L{lineId}";
 
-    /// <summary>层级显示标签</summary>
-    private static string LayerLabel(int layer) => $"T{(char)('I' + layer)}";
+    /// <summary>层级显示标签（T1~T5 用罗马数字，避免 char 运算溢出为 TJ/TK）</summary>
+    private static string LayerLabel(int layer)
+    {
+        string[] labels = { "I", "II", "III", "IV", "V" };
+        return layer >= 0 && layer < labels.Length ? $"T{labels[layer]}" : $"T{layer + 1}";
+    }
 
     /// <summary>线显示名称（字典查找）</summary>
     private static string LineName(int lineId) =>
