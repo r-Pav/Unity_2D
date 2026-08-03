@@ -69,6 +69,8 @@ public sealed class PanelManager : MonoBehaviour
     private readonly List<RegisteredPanel> _registry = new List<RegisteredPanel>();
     private readonly Stack<GameObject> _panelStack = new Stack<GameObject>();
     private readonly Stack<GameObject> _fullScreenHistory = new Stack<GameObject>();
+    private readonly HashSet<GameObject> _closingPanels = new HashSet<GameObject>();
+    private UIFadeManager _fadeManager;
     private PlayerController _player;
 
     public bool IsAnyPanelOpen => _panelStack.Count > 0;
@@ -89,6 +91,7 @@ public sealed class PanelManager : MonoBehaviour
 
     private void Start()
     {
+        _fadeManager = GetComponent<UIFadeManager>();
         _player = PlayerController.Instance;
         AutoRegisterPanels();
         PushActivePanelsToStack();
@@ -101,7 +104,10 @@ public sealed class PanelManager : MonoBehaviour
         foreach (RegisteredPanel entry in _registry)
         {
             if (entry.panel != null && entry.panel.activeInHierarchy)
+            {
+                _fadeManager?.ResetAlpha(entry.panel); // 防止上次淡出残留 alpha=0 导致面板不可见
                 _panelStack.Push(entry.panel);
+            }
         }
         _ApplyInteractionState();
     }
@@ -176,12 +182,16 @@ public sealed class PanelManager : MonoBehaviour
             return;
         }
 
+        // 用户主动重新打开的面板，其旧的 FullScreen history 记录作废，避免 ESC 恢复时重复累积
+        _RemoveFromFullScreenHistory(panel);
+
         _RemoveFromStack(panel, false);
         if (entry.type == PanelType.FullScreen)
             _ReplaceVisibleFullScreen(panel);
 
         _panelStack.Push(panel);
         panel.SetActive(true);
+        _fadeManager?.FadeIn(panel);
         _ApplyInteractionState();
     }
 
@@ -191,8 +201,25 @@ public sealed class PanelManager : MonoBehaviour
         if (panel == null) return;
 
         RegisteredPanel closedEntry = _FindRegistered(panel);
+        bool isFullScreen = closedEntry != null && closedEntry.type == PanelType.FullScreen;
+
+        // 若面板已注册淡出动画 → 播完再隐藏；否则立即隐藏
+        if (_fadeManager != null && _fadeManager.IsManaged(panel) && !_closingPanels.Contains(panel))
+        {
+            _closingPanels.Add(panel);
+            _fadeManager.FadeOut(panel, () =>
+            {
+                _closingPanels.Remove(panel);
+                if (panel != null) panel.SetActive(false);
+                if (isFullScreen) _RestorePreviousFullScreenPanel();
+                _ApplyInteractionState();
+            });
+            // 动画期间锁输入/暂停态仍生效，防止连点 ESC
+            return;
+        }
+
         panel.SetActive(false);
-        if (closedEntry != null && closedEntry.type == PanelType.FullScreen)
+        if (isFullScreen)
             _RestorePreviousFullScreenPanel();
 
         _ApplyInteractionState();
@@ -206,7 +233,21 @@ public sealed class PanelManager : MonoBehaviour
             return;
         }
 
-        _RemoveFromStack(panel, true);
+        _RemoveFromStack(panel, false);
+
+        // 若面板已注册淡出动画 → 播完再隐藏；否则立即隐藏
+        if (_fadeManager != null && _fadeManager.IsManaged(panel) && !_closingPanels.Contains(panel))
+        {
+            _closingPanels.Add(panel);
+            _fadeManager.FadeOut(panel, () =>
+            {
+                _closingPanels.Remove(panel);
+                if (panel != null && panel.activeSelf) panel.SetActive(false);
+                _ApplyInteractionState();
+            });
+            return;
+        }
+
         if (panel != null && panel.activeSelf)
             panel.SetActive(false);
         _ApplyInteractionState();
@@ -226,6 +267,7 @@ public sealed class PanelManager : MonoBehaviour
             if (panel != null) panel.SetActive(false);
         }
 
+        _closingPanels.Clear();
         _ApplyInteractionState();
     }
 
@@ -322,6 +364,22 @@ public sealed class PanelManager : MonoBehaviour
             _panelStack.Push(temp.Pop());
     }
 
+    /// <summary>把面板从 FullScreen history 中移除（用户主动重新打开时调用，作废旧记录）</summary>
+    private void _RemoveFromFullScreenHistory(GameObject panel)
+    {
+        if (panel == null || !_fullScreenHistory.Contains(panel)) return;
+
+        Stack<GameObject> temp = new Stack<GameObject>();
+        while (_fullScreenHistory.Count > 0)
+        {
+            GameObject current = _fullScreenHistory.Pop();
+            if (current != panel)
+                temp.Push(current);
+        }
+        while (temp.Count > 0)
+            _fullScreenHistory.Push(temp.Pop());
+    }
+
     private void _ReplaceVisibleFullScreen(GameObject panelToOpen)
     {
         GameObject[] stacked = _panelStack.ToArray();
@@ -347,6 +405,7 @@ public sealed class PanelManager : MonoBehaviour
                 continue;
 
             panel.SetActive(true);
+            _fadeManager?.FadeIn(panel); // 恢复也统一淡入，避免 alpha 残留 0 导致面板不可见
             _panelStack.Push(panel);
             return;
         }
