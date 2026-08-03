@@ -31,6 +31,10 @@ public class PassiveUI : MonoBehaviour, IPanel
     [SerializeField] private LineSelectDialog lineSelectDialog;
     [SerializeField] private Button[] lineDialogOptions;
 
+    [Header("未装备占位图")]
+    [Tooltip("槽位未装备被动时显示的占位图（Inspector 拖入），空则不显示")]
+    [SerializeField] private Sprite emptySlotSprite;
+
     private int selectedLayer = -1;
     private int selectedSlot = -1;
 
@@ -43,6 +47,9 @@ public class PassiveUI : MonoBehaviour, IPanel
 
     private void OnEnable()
     {
+        // 面板打开=游戏已暂停(timeScale=0)，豁免战斗锁定，否则敌人冻结在Chase永远锁死面板
+        if (passiveEquipManager != null)
+            passiveEquipManager.SetUIPauseOverride(true);
         EventBus.Subscribe<PassiveSlotsChangedEvent>(OnPassiveSlotsChanged);
         EventBus.Subscribe<ChapterChangedEvent>(OnChapterChanged);
         Refresh();
@@ -50,6 +57,8 @@ public class PassiveUI : MonoBehaviour, IPanel
 
     private void OnDisable()
     {
+        if (passiveEquipManager != null)
+            passiveEquipManager.SetUIPauseOverride(false);
         EventBus.Unsubscribe<PassiveSlotsChangedEvent>(OnPassiveSlotsChanged);
         EventBus.Unsubscribe<ChapterChangedEvent>(OnChapterChanged);
     }
@@ -168,8 +177,23 @@ public class PassiveUI : MonoBehaviour, IPanel
         Image icon = slotIcons[layer * 3 + slot];
         if (icon != null)
         {
-            icon.sprite = data != null ? data.icon : null;
-            icon.enabled = data != null;
+            if (data != null)
+            {
+                // 已装备: 显示被动图标
+                icon.sprite = data.icon;
+                icon.enabled = true;
+            }
+            else if (emptySlotSprite != null)
+            {
+                // 未装备: 显示占位图（若已配置）
+                icon.sprite = emptySlotSprite;
+                icon.enabled = true;
+            }
+            else
+            {
+                icon.sprite = null;
+                icon.enabled = false;
+            }
             icon.color = interactable ? Color.white : UIConstants.LockedGray;
         }
 

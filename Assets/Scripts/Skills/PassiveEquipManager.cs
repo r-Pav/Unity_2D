@@ -149,7 +149,7 @@ public class PassiveEquipManager : MonoBehaviour
     /// <returns>装备是否成功</returns>
     public bool EquipPassive(int layer, int lineId, int slotIndex)
     {
-        if (inCombat)
+        if (InCombat)
         {
             Debug.LogWarning($"[PassiveEquip] 战斗中不可装备被动");
             return false;
@@ -186,7 +186,7 @@ public class PassiveEquipManager : MonoBehaviour
     /// <returns>卸下是否成功</returns>
     public bool UnequipPassive(int layer, int lineId)
     {
-        if (inCombat)
+        if (InCombat)
         {
             Debug.LogWarning($"[PassiveEquip] 战斗中不可卸下被动");
             return false;
@@ -269,8 +269,8 @@ public class PassiveEquipManager : MonoBehaviour
         return -1;
     }
 
-    /// <summary>当前是否处于战斗中</summary>
-    public bool InCombat => inCombat;
+    /// <summary>当前是否处于战斗中（面板打开豁免后，见下方 InCombat 属性）</summary>
+    // 注: InCombat 属性定义在 SetUIPauseOverride 附近，统一带 uiPauseOverride 豁免
 
     /// <summary>获取/设置当前章节</summary>
     public int CurrentChapter
@@ -328,6 +328,20 @@ public class PassiveEquipManager : MonoBehaviour
         }
     }
 
+    /// <summary>暂停期间（被动面板打开时）强制视为非战斗。
+    /// 面板是 FullScreen+PauseGame，打开时 timeScale=0 游戏已暂停，
+    /// 此时敌人 AI 冻结在 Chase 无法退出战斗，若不豁免则面板永远锁死。</summary>
+    private bool uiPauseOverride;
+
+    /// <summary>当前是否处于战斗中（面板打开豁免后，仅真实运行中的战斗算战斗）</summary>
+    public bool InCombat => inCombat && !uiPauseOverride;
+
+    /// <summary>由 PassiveUI 在 OnEnable/OnDisable 调用：面板打开时豁免战斗锁定</summary>
+    public void SetUIPauseOverride(bool active)
+    {
+        uiPauseOverride = active;
+    }
+
     // ============================================================
     // 公共接口 — UI 数据
     // ============================================================
@@ -350,7 +364,7 @@ public class PassiveEquipManager : MonoBehaviour
                 equippedLineIds = slotLines,
             };
         }
-        return new PassiveLayoutData { layers = layerData, inCombat = inCombat };
+        return new PassiveLayoutData { layers = layerData, inCombat = InCombat };
     }
 
     /// <summary>获取指定层已装备的线 ID 列表（忽略顺序，跳过空槽）</summary>
