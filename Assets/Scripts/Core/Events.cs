@@ -296,21 +296,6 @@ public readonly struct CombinationCraftedEvent
 }
 
 // ============================================================
-// 近战攻击模式切换事件
-// ============================================================
-
-/// <summary>攻击模式切换事件 — HUD 模式图标订阅此事件更新显示</summary>
-public readonly struct AttackModeSwitchedEvent
-{
-    public readonly PlayerCombat.AttackMode newMode;
-
-    public AttackModeSwitchedEvent(PlayerCombat.AttackMode newMode)
-    {
-        this.newMode = newMode;
-    }
-}
-
-// ============================================================
 // Phase2 属性系统事件
 // ============================================================
 

@@ -109,16 +109,9 @@ public class PlayerStatPanel : MonoBehaviour, IPanel
             valueCritDmg.text = $"暴击伤害 +{critDmg:F0}%";
         }
 
-        if (valueShots != null)
-        {
-            int baseShots = combat != null ? combat.BaseShotsPerClick : 1;
-            int extraShots = Mathf.RoundToInt(statMod.GetFinalValue(0f, StatId.ShotsPerClick));
-            valueShots.text = $"发射数 {baseShots + extraShots}";
-        }
-
         if (valueInterval != null)
         {
-            float baseCD = combat != null ? combat.BaseAttackCooldown : 0.3f;
+            float baseCD = combat != null ? combat.BaseMeleeAttackCooldown : 0.15f;
             float intervalMult = statMod.GetFinalValue(1f, StatId.AttackInterval);
             float interval = baseCD / Mathf.Max(0.1f, intervalMult);
             valueInterval.text = $"攻击间隔 {interval:F2}s";

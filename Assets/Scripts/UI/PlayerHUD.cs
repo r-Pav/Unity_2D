@@ -3,8 +3,8 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// 玩家 HUD — 血条、蓝条、攻击模式图标显示
-/// 订阅 PlayerHealthChangedEvent / PlayerManaChangedEvent / AttackModeSwitchedEvent 事件驱动更新
+/// 玩家 HUD — 血条、蓝条显示
+/// 订阅 PlayerHealthChangedEvent / PlayerManaChangedEvent 事件驱动更新
 /// 挂到 Canvas 下的 HUD GameObject 上，Slider + TMP_Text + Image 通过 Inspector 绑定
 /// HP 槽宽度: min 200px → max 400px（maxHealth ≥ 400 时达上限）
 /// MP 槽宽度: min 150px → max 400px（maxMana ≥ 400 时达上限）
@@ -36,11 +36,6 @@ public class PlayerHUD : MonoBehaviour
     [Tooltip("两条槽的最大宽度 (px)")]
     [SerializeField] private float barMaxWidth = 400f;
 
-    [Header("攻击模式")]
-    [SerializeField] private Image attackModeIcon;
-    [SerializeField] private Sprite rangedModeSprite;  // 远程图标
-    [SerializeField] private Sprite meleeModeSprite;   // 近战图标
-
     // 缓存的基准值（无装备时的最大 HP/MP）
     private float _baseMaxHp;
     private float _baseMaxMp;
@@ -62,14 +57,12 @@ public class PlayerHUD : MonoBehaviour
     {
         EventBus.Subscribe<PlayerHealthChangedEvent>(OnHPChanged);
         EventBus.Subscribe<PlayerManaChangedEvent>(OnMPChanged);
-        EventBus.Subscribe<AttackModeSwitchedEvent>(OnAttackModeSwitched);
     }
 
     void OnDisable()
     {
         EventBus.Unsubscribe<PlayerHealthChangedEvent>(OnHPChanged);
         EventBus.Unsubscribe<PlayerManaChangedEvent>(OnMPChanged);
-        EventBus.Unsubscribe<AttackModeSwitchedEvent>(OnAttackModeSwitched);
     }
 
     /// <summary>从 PlayerHealth / SkillManager 获取无装备时的基准值</summary>
@@ -148,13 +141,5 @@ public class PlayerHUD : MonoBehaviour
         Vector2 pos = barRect.anchoredPosition;
         pos.x += delta * barRect.pivot.x;
         barRect.anchoredPosition = pos;
-    }
-
-    void OnAttackModeSwitched(AttackModeSwitchedEvent e)
-    {
-        if (attackModeIcon == null) return;
-        attackModeIcon.sprite = e.newMode == PlayerCombat.AttackMode.Melee
-            ? meleeModeSprite
-            : rangedModeSprite;
     }
 }

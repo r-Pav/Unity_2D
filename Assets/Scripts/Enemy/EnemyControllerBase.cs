@@ -81,7 +81,7 @@ public abstract class EnemyControllerBase : CharacterBase
     protected float currentHealth;
     protected bool isDead;
 
-    /// <summary>公开死亡状态（供 PlayerStomp 等外部组件读取）</summary>
+    /// <summary>公开死亡状态（供外部组件读取）</summary>
     public bool IsDead => isDead;
 
     /// <summary>当前血量（供 HealthBar 等读取）</summary>
@@ -381,7 +381,7 @@ public abstract class EnemyControllerBase : CharacterBase
     /// <summary>注入 EnemyStunState 实例（由子类在 Start() 中调用）</summary>
     public void SetStunState(EnemyStunState s) => stunState = s;
 
-    /// <summary>进入踩头硬直状态（由 PlayerStomp 调用）</summary>
+    /// <summary>进入硬直状态（由 PlayerCombat 弹反重击 / 外部调用）</summary>
     public void EnterStunState()
     {
         if (stunCooldownTimer > 0f || isDead) return;

@@ -6,99 +6,26 @@ using System.Collections;
 /// 挂到 Player 对象上即可激活攻击功能，不挂则无
 /// 遵循组件模式：主组件控制流程，子组件实现具体功能
 /// P1 改造：引用 StatModifierManager，伤害倍率加成，公开闪避/减伤判定方法
-/// 近战改造：引入 IAttackExecutor 接口，滚轮/Tab 切换近战/远程模式
 /// 近战三连击：武器挥砍动画 + 中间帧 OverlapBox 判定 + 连击窗口链式输入
 /// </summary>
 public class PlayerCombat : MonoBehaviour
 {
     // ============================================================
-    // 攻击模式
+    // 配置参数 —— 伤害 & 层级
     // ============================================================
 
-    /// <summary>攻击模式枚举 — Events.cs 中的 AttackModeSwitchedEvent 依赖此定义</summary>
-    public enum AttackMode { Ranged, Melee }
-
-    // ============================================================
-    // 攻击执行器接口（内部 — 装备系统可提取到独立文件）
-    // ============================================================
-
-    /// <summary>
-    /// 攻击执行器接口 — 当前在 PlayerCombat 内部定义，
-    /// 后续装备系统可提取到独立文件并外部注入。
-    /// </summary>
-    internal interface IAttackExecutor
-    {
-        void Execute(PlayerCombat combat, PlayerController owner);
-    }
-
-    /// <summary>远程攻击执行器 — 封装现有 BurstFire 逻辑</summary>
-    private class RangedAttackExecutor : IAttackExecutor
-    {
-        public void Execute(PlayerCombat combat, PlayerController owner)
-        {
-            owner.StartCoroutine(combat.BurstFire());
-        }
-    }
-
-    /// <summary>近战攻击执行器 — 封装三连击逻辑</summary>
-    private class MeleeAttackExecutor : IAttackExecutor
-    {
-        public void Execute(PlayerCombat combat, PlayerController owner)
-        {
-            combat.ExecuteMeleeAttack();
-        }
-    }
-
-    // ============================================================
-    // 配置参数 —— 远程
-    // ============================================================
-
-    [Header("远程")]
+    [Header("伤害")]
     [Tooltip("每次攻击基础伤害（实际伤害 = 基础值 × 伤害倍率）")]
     [SerializeField] private float attackDamage = 1f;
 
-    [Tooltip("攻击间隔（秒）— 两次单击之间的冷却")]
-    [SerializeField] private float attackCooldown = 0.3f;
-
-    [Tooltip("每次单击发射子弹数")]
-    [SerializeField] private int shotsPerClick = 1;
-
-    [Tooltip("连发间隔（秒）— 同一次单击内每颗子弹的间隔")]
-    [SerializeField] private float burstInterval = 0.05f;
-
-    [Tooltip("子弹散射角度（度）— 0 = 直线")]
-    [SerializeField] private float bulletSpreadAngle = 5f;
-
-    [Tooltip("子弹飞行速度（单位/秒）")]
-    [SerializeField] private float bulletSpeed = 10f;
-
-    [Tooltip("子弹颜色")]
-    [SerializeField] private Color bulletColor = Color.cyan;
-
-    [Tooltip("子弹球体半径")]
-    [SerializeField] private float bulletRadius = 0.15f;
-
-    [Header("远程 VFX")]
-    [Tooltip("枪口闪光特效 Prefab — 在 BurstFire 发射子弹前生成")]
-    [SerializeField] private GameObject muzzleFlashVFXPrefab;
-
-    [Tooltip("远程攻击类型标签 — 传给 Enemy TakeDamage 用于匹配 VFX 变体")]
-    [SerializeField] private string rangedAttackType = "Bullet";
-
     [Tooltip("敌人的 Layer")]
     [SerializeField] private LayerMask enemyLayer = ~0;
-
-    [Tooltip("子弹不能穿过的墙 Layer")]
-    [SerializeField] private LayerMask wallLayer = 0;
 
     // ============================================================
     // 配置参数 —— 近战
     // ============================================================
 
     [Header("近战")]
-    [Tooltip("备用切换键（None = 不用）")]
-    [SerializeField] private KeyCode meleeAltSwitchKey = KeyCode.Tab;
-
     [Tooltip("近战攻击类型标签 — 传给 Enemy TakeDamage 用于匹配 VFX 变体")]
     [SerializeField] private string meleeAttackType = "Sword";
 
@@ -115,9 +42,21 @@ public class PlayerCombat : MonoBehaviour
     [Tooltip("近战挥砍命中特效 Prefab — 在 OverlapBox 检测到敌人时生成")]
     [SerializeField] private GameObject slashVFXPrefab;
 
-    [Header("攻击模式")]
-    [Tooltip("初始攻击模式")]
-    [SerializeField] private AttackMode startMode = AttackMode.Ranged;
+    [Header("近战")]
+    [Tooltip("近战伤害")]
+    [SerializeField] private float meleeDamage = 1f;
+
+    [Tooltip("近战攻击冷却（秒）— 需短于 Attack1 动画时长，保证连击排队窗口存在")]
+    [SerializeField] private float meleeAttackCooldown = 0.15f;
+
+    [Tooltip("近战击退力度（直接施加到敌人 Rigidbody2D）")]
+    [SerializeField] private float meleeKnockbackForce = 4f;
+
+    [Tooltip("近战击退上挑力度（Y 轴最小值，保证敌人浮空）")]
+    [SerializeField] private float meleeKnockbackUpForce = 0.3f;
+
+    [Tooltip("近战命中卡肉时长（秒）")]
+    [SerializeField] private float meleeHitStopDuration = 0.08f;
 
     [Header("格挡/弹反")]
     [Tooltip("弹反判定最大时长(秒) — 短按松手 ≤ 此值判定为弹反")]
@@ -144,36 +83,19 @@ public class PlayerCombat : MonoBehaviour
     [SerializeField] private string blockEndAnimTrigger = "";
 
     // ============================================================
-    // 配置参数 —— 近战
-    // ============================================================
-
-    [Header("近战")]
-    [Tooltip("近战伤害")]
-    [SerializeField] private float meleeDamage = 1f;
-
-    [Tooltip("近战攻击冷却（秒）— 需短于 Attack1 动画时长，保证连击排队窗口存在")]
-    [SerializeField] private float meleeAttackCooldown = 0.15f;
-
-    [Tooltip("近战击退力度（直接施加到敌人 Rigidbody2D）")]
-    [SerializeField] private float meleeKnockbackForce = 4f;
-
-    [Tooltip("近战击退上挑力度（Y 轴最小值，保证敌人浮空）")]
-    [SerializeField] private float meleeKnockbackUpForce = 0.3f;
-
-    [Tooltip("近战命中卡肉时长（秒）")]
-    [SerializeField] private float meleeHitStopDuration = 0.08f;
-
-    // ============================================================
     // 运行时状态
     // ============================================================
 
     private float attackCooldownTimer;
-    private bool isBursting;
     private PlayerController _owner;
-    private PlayerAimLine aimLine;
     private StatModifierManager statModManager;
     private PassiveEquipManager passiveEquipManager;
     private CharacterBase _charBase;
+    private WeaponThrow _weaponThrow;   // 武器投掷(挂在 Player 子物体武器上)
+
+    // 空中攻击状态
+    private float _airAttackOriginalGravity = 1f;   // 空中攻击前的重力(结束时恢复)
+    private bool _airAttackGravityRestored = true;  // 重力是否已恢复(防重复恢复)
 
     // 延迟初始化：CharacterBase 的 Awake 可能未跑完，在访问时懒加载
     private Animator Anim => _charBase != null ? _charBase.Animator : null;
@@ -195,21 +117,11 @@ public class PlayerCombat : MonoBehaviour
     /// <summary>攻击时触发（供 PlayerController 订阅，用于战斗态锁定）</summary>
     public System.Action OnAttack;
 
-    // ── 近战模式 ──
-    private IAttackExecutor _currentExecutor;
-    private readonly RangedAttackExecutor _rangedExec = new RangedAttackExecutor();
-    private readonly MeleeAttackExecutor _meleeExec = new MeleeAttackExecutor();
-
-    /// <summary>当前攻击模式（公开属性，供 HUD 读取）</summary>
-    public AttackMode CurrentMode { get; private set; }
-
-    /// <summary>基础发射数（只读，供 UI 面板读取）</summary>
-    public int BaseShotsPerClick => shotsPerClick;
-
-    /// <summary>基础攻击冷却（只读，供 UI 面板读取）</summary>
-    public float BaseAttackCooldown => attackCooldown;
+    /// <summary>公开近战基础冷却（供 PlayerStatPanel 读取）</summary>
+    public float BaseMeleeAttackCooldown => meleeAttackCooldown;
 
     public bool IsAttacking => _inAttackAnim;
+    public bool IsAirAttacking { get; private set; }  // 空中攻击状态(PlayerAnimation 聚合用)
     public bool IsInputLocked { get; private set; }
 
     // ── 格挡/弹反 ──
@@ -236,22 +148,18 @@ public class PlayerCombat : MonoBehaviour
 
     private void Awake()
     {
-        aimLine = GetComponent<PlayerAimLine>();
         statModManager = GetComponent<StatModifierManager>();
         passiveEquipManager = GetComponent<PassiveEquipManager>();
         _charBase = GetComponent<CharacterBase>();
+        // 武器投掷(挂在 Player 子物体武器上),攻击结束事件顺带触发其重生判定
+        _weaponThrow = GetComponentInChildren<WeaponThrow>();
 
         if (playerRenderer != null)
             _playerOriginalColor = playerRenderer.color;
 
-        // 初始化攻击执行器
-        CurrentMode = startMode;
-        _currentExecutor = CurrentMode == AttackMode.Melee
-            ? (IAttackExecutor)_meleeExec : _rangedExec;
-
-        // 初始状态：远程默认隐藏范围指示器
+        // 近战范围指示器始终激活
         if (rangeIndicator != null)
-            rangeIndicator.gameObject.SetActive(CurrentMode == AttackMode.Melee);
+            rangeIndicator.gameObject.SetActive(true);
     }
 
     private void OnEnable()
@@ -275,7 +183,6 @@ public class PlayerCombat : MonoBehaviour
     {
         _owner = owner;
         TickTimers();
-        CheckModeSwitch(owner);
         HandleBlockParryInput(owner);
         TryAttack(owner);
     }
@@ -305,122 +212,6 @@ public class PlayerCombat : MonoBehaviour
     }
 
     // ============================================================
-    // 模式切换
-    // ============================================================
-
-    /// <summary>
-    /// 检测滚轮 / Tab 键切换攻击模式
-    /// 战斗中可切换、Dash 中可切换、不重置 CD
-    /// </summary>
-    private void CheckModeSwitch(PlayerController owner)
-    {
-        // UI 面板打开时阻止切换（如果实现了 ScrollBlocked）
-        if (owner != null && owner.ScrollBlocked) return;
-
-        // 滚轮主切换：上滚 → 近战，下滚 → 远程
-        float scroll = Input.mouseScrollDelta.y;
-        if (Mathf.Abs(scroll) > 0.01f)
-        {
-            CurrentMode = scroll > 0 ? AttackMode.Melee : AttackMode.Ranged;
-            _currentExecutor = CurrentMode == AttackMode.Melee
-                ? (IAttackExecutor)_meleeExec : _rangedExec;
-            OnModeSwitched();
-            return;
-        }
-
-        // Tab 备用切换
-        if (meleeAltSwitchKey != KeyCode.None
-            && Input.GetKeyDown(meleeAltSwitchKey))
-        {
-            CurrentMode = CurrentMode == AttackMode.Melee
-                ? AttackMode.Ranged : AttackMode.Melee;
-            _currentExecutor = CurrentMode == AttackMode.Melee
-                ? (IAttackExecutor)_meleeExec : _rangedExec;
-            OnModeSwitched();
-        }
-    }
-
-    /// <summary>模式切换后触发事件，通知 HUD 更新图标</summary>
-    private void OnModeSwitched()
-    {
-        // 近战隐藏瞄准线，远程恢复
-        if (aimLine != null)
-        {
-            if (CurrentMode == AttackMode.Melee)
-                aimLine.Hide();
-            else
-            {
-                aimLine.enabled = true;
-                aimLine.GetComponent<LineRenderer>().positionCount = 2;
-            }
-        }
-        // 近战范围指示器：近战显示，远程隐藏
-        if (rangeIndicator != null)
-            rangeIndicator.gameObject.SetActive(CurrentMode == AttackMode.Melee);
-
-        // 切换离开近战模式
-        if (CurrentMode != AttackMode.Melee)
-
-        EventBus.Trigger(new AttackModeSwitchedEvent(CurrentMode));
-    }
-
-    /// <summary>
-    /// [预留] 装备系统入口 — 外部注入自定义攻击执行器。
-    /// 调用后内部 exec 不再自动切换，由装备系统控制。
-    /// </summary>
-    internal void SetAttackExecutor(IAttackExecutor executor)
-    {
-        _currentExecutor = executor;
-    }
-
-    // ============================================================
-    // 远程攻击
-    // ============================================================
-
-    private IEnumerator BurstFire()
-    {
-        isBursting = true;
-        OnAttack?.Invoke();
-        TriggerAttack();
-
-        Vector2 gunMuzzlePos = (Vector2)transform.position + Vector2.right * AttackDir * 0.5f;
-        VFXSpawner.SpawnOnPlayer(muzzleFlashVFXPrefab, gunMuzzlePos);
-
-        Vector2 aimDir = aimLine != null ? aimLine.AimDirection : Vector2.right * AttackDir;
-
-        int totalShots = GetEffectiveShotsPerClick();
-        for (int i = 0; i < totalShots; i++)
-        {
-            // 方向散射：以 aimDir 为中心旋转 ±angle/2
-            float angleOffset = (i - (totalShots - 1) * 0.5f) * bulletSpreadAngle;
-            Vector2 dir = Quaternion.Euler(0f, 0f, -angleOffset) * aimDir;
-
-            Vector3 spawnPos = transform.position
-                             + Vector3.up * 0.3f
-                             + (Vector3)dir * 0.5f;
-            float finalDamage = GetEffectiveDamage();
-            PlayerProjectile.Spawn(
-                position: (Vector2)spawnPos,
-                direction: (Vector2)dir,
-                damage: finalDamage,
-                speed: bulletSpeed,
-                hitLayers: enemyLayer,
-                wallLayers: wallLayer,
-                radius: bulletRadius,
-                color: bulletColor,
-                parent: null,
-                sourceLayer: 1 << gameObject.layer,
-                attackType: rangedAttackType
-            );
-
-            if (i < totalShots - 1)
-                yield return new WaitForSeconds(burstInterval);
-        }
-
-        isBursting = false;
-    }
-
-    // ============================================================
     // 近战攻击 — 三连击系统
     // ============================================================
 
@@ -436,7 +227,7 @@ public class PlayerCombat : MonoBehaviour
     /// <summary>Attack.anim 首帧触发</summary>
     public void OnAttackAnimationStart()
     {
-        _inAttackAnim = true;  // 远程/近战统一：攻击动画播放期间 IsAttacking 为 true
+        _inAttackAnim = true;  // 攻击动画播放期间 IsAttacking 为 true
         IsInputLocked = true;
         EnterAttack();
     }
@@ -449,6 +240,9 @@ public class PlayerCombat : MonoBehaviour
         _inAttackAnim = false;
         // IsAttacking=false 触发攻击子机 Exit（控制器条件），退回父层 Locomotion
         Anim?.SetBool(AnimParams.IsAttacking, false);
+
+        // 武器投掷重生判定:攻击结束,respawnDelay 秒内无新攻击则剑归位
+        _weaponThrow?.OnAttackEnd();
     }
 
     /// <summary>攻击键按下时调用</summary>
@@ -461,14 +255,6 @@ public class PlayerCombat : MonoBehaviour
             comboIndex = 1;
         if (comboIndex > comboLimit)
             comboIndex = 1;
-
-        if (CurrentMode == AttackMode.Ranged)
-        {
-            Anim.SetBool(AnimParams.IsAttacking, true);
-            Anim.SetInteger(AnimParams.AttackIndex, comboIndex);
-            Anim.SetTrigger(AnimParams.Attack);
-            return;
-        }
 
         if (_inAttackAnim)
         {
@@ -517,17 +303,122 @@ public class PlayerCombat : MonoBehaviour
         if (!Input.GetMouseButtonDown(0)) return;
         if (attackCooldownTimer > 0f) return;
         if (owner.IsDashing()) return;
-        if (isBursting) return;
 
-        attackCooldownTimer = GetEffectiveAttackCooldown(
-            CurrentMode == AttackMode.Melee ? meleeAttackCooldown : attackCooldown);
+        attackCooldownTimer = GetEffectiveAttackCooldown(meleeAttackCooldown);
         if (!playerCombatFlag)
         {
             passiveEquipManager?.SetCombatState(true);
             playerCombatFlag = true;
         }
         combatTimeoutTimer = CombatTimeoutDuration;
-        _currentExecutor.Execute(this, owner);
+
+        // 空中攻击分支:空中按攻击键 → AirAttack 动画 + 滞空,不走地面连击
+        if (!owner.IsGrounded())
+        {
+            ExecuteAirAttack(owner);
+            return;
+        }
+
+        ExecuteMeleeAttack();
+    }
+
+    // ============================================================
+    // 空中攻击
+    // ============================================================
+
+    /// <summary>Debug:空中攻击期间每帧输出 Animator 状态(排查卡第一帧)</summary>
+    private float _airDebugTimer;
+
+    private void Update()
+    {
+        // 空中攻击期间每帧跟踪动画状态,10 帧后自动停
+        if (IsAirAttacking && Anim != null)
+        {
+            var st = Anim.GetCurrentAnimatorStateInfo(0);
+            var clipInfo = Anim.GetCurrentAnimatorClipInfo(0);
+            string clipName = clipInfo.Length > 0 ? clipInfo[0].clip.name : "NO_CLIP";
+            float clipLen = clipInfo.Length > 0 ? clipInfo[0].clip.length : -1f;
+            Debug.Log($"[AirDebug] frame={Time.frameCount} state={st.shortNameHash} clip={clipName} " +
+                      $"clipLen={clipLen:F3} stateTime={st.normalizedTime:F3} " +
+                      $"animSpeed={Anim.speed} timeScale={Time.timeScale} " +
+                      $"animEnabled={Anim.enabled} updateMode={Anim.updateMode}");
+
+            if (++_airDebugTimer > 10f) _airDebugTimer = 0f;  // 每 10 帧停一下防刷屏
+        }
+    }
+
+    /// <summary>空中攻击:触发 AirAttack 动画 + 滞空(水平速度减半 + 垂直速度归零 + 重力减小)</summary>
+    private void ExecuteAirAttack(PlayerController owner)
+    {
+        _inAttackAnim = true;
+        IsAirAttacking = true;
+        IsInputLocked = true;
+        Anim?.SetBool(AnimParams.IsAirAttacking, true);
+
+        // Debug:确认 Animator 实际状态与参数
+        if (Anim != null)
+        {
+            var st = Anim.GetCurrentAnimatorStateInfo(0);
+            string clipName = Anim.GetCurrentAnimatorClipInfo(0).Length > 0
+                ? Anim.GetCurrentAnimatorClipInfo(0)[0].clip.name
+                : "NO_CLIP";
+            Debug.Log($"[Combat] ExecuteAirAttack: anim={(Anim != null)} " +
+                      $"currentState={clipName} " +
+                      $"nameHash={st.shortNameHash} time={st.normalizedTime:F3} speed={Anim.speed}");
+        }
+        else
+        {
+            Debug.Log("[Combat] ExecuteAirAttack: Anim == null!!");
+        }
+
+        if (_owner != null)
+            _owner.UpdateFacing(AttackDir);
+
+        // 滞空:水平速度减半 + 垂直速度归零 + 重力减小
+        Rigidbody2D rb = owner.GetRigidbody();
+        if (rb != null)
+        {
+            rb.velocity = new Vector2(rb.velocity.x * 0.5f, 0f);
+            _airAttackOriginalGravity = rb.gravityScale;
+            rb.gravityScale = Mathf.Max(0.3f, _airAttackOriginalGravity * 0.3f);
+            _airAttackGravityRestored = false;
+        }
+
+        OnAttack?.Invoke();
+    }
+
+    /// <summary>空中攻击命中帧(动画事件):伤害判定 + 触发武器投掷</summary>
+    public void OnAirAttackHitFrame()
+    {
+        // 伤害判定:复用近战命中检测
+        OnMeleeHitFrame();
+
+        // 触发空中武器投掷(如果挂了 WeaponThrow)
+        _weaponThrow?.OnAirAttackStart();
+    }
+
+    /// <summary>空中攻击结束(动画事件):恢复重力,退出 AirAttack 状态,触发武器重生判定</summary>
+    public void OnAirAttackEnd()
+    {
+        Debug.Log("[Combat] OnAirAttackEnd 收到");
+        IsInputLocked = false;
+        _inAttackAnim = false;
+        IsAirAttacking = false;
+        Anim?.SetBool(AnimParams.IsAirAttacking, false);
+
+        // 武器投掷重生判定:空中攻击结束,respawnDelay 秒内无新攻击则剑归位
+        _weaponThrow?.OnAttackEnd();
+
+        // 恢复重力
+        if (_owner != null)
+        {
+            Rigidbody2D rb = _owner.GetRigidbody();
+            if (rb != null && _airAttackGravityRestored == false)
+            {
+                rb.gravityScale = _airAttackOriginalGravity;
+                _airAttackGravityRestored = true;
+            }
+        }
     }
 
     private int AttackDir
@@ -659,14 +550,6 @@ public class PlayerCombat : MonoBehaviour
         if (statModManager == null) return baseCD;
         float mult = statModManager.GetFinalValue(1f, StatId.AttackInterval);
         return baseCD / Mathf.Max(0.1f, mult);
-    }
-
-    /// <summary>受 ShotsPerClick 修饰后的单次发射子弹数</summary>
-    private int GetEffectiveShotsPerClick()
-    {
-        if (statModManager == null) return shotsPerClick;
-        int extra = Mathf.RoundToInt(statModManager.GetFinalValue(0f, StatId.ShotsPerClick));
-        return Mathf.Max(1, shotsPerClick + extra);
     }
 
     /// <summary>暴击判定：受 CritRate/CritDamage 修饰</summary>

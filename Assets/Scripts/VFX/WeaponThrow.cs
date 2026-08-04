@@ -1,40 +1,83 @@
+using System.Collections;
 using UnityEngine;
 
 /// <summary>
-/// 武器投掷:按 T 触发 → 沿路径点飞行(由快变慢)→ Dissolve 溶解消失。
-/// 路径点 = 相对武器当前位置的偏移,Inspector 里拖数组,Scene 视图 Gizmos 可视化连线。
+/// 单次攻击的完整配置(三连击各自一份,完全独立):
+/// 路径 / 旋转 / 缩放 / 飞行时间 / 溶解时间
 /// </summary>
-public class WeaponThrow : MonoBehaviour
+[System.Serializable]
+public class WeaponAttackConfig
 {
-    [Header("路径(相对武器当前位置的偏移,Scene 里选中可拖)")]
-    [SerializeField] private Vector3[] pathPoints =
+    [Tooltip("路径(相对武器当前位置的偏移,Scene 里选中可拖)")]
+    public Vector3[] pathPoints =
     {
         new Vector3(1.5f, 0f, 0f),
         new Vector3(4f, 0.5f, 0f),
     };
 
-    [Header("飞行")]
-    [Tooltip("全程耗时(秒),速度会由快变慢")]
-    [SerializeField] private float travelDuration = 1f;
+    [Tooltip("飞行固定旋转角度(度)。朝右时 -90 = 水平朝右,0 = 竖直;朝左自动镜像")]
+    public float rotationZ = -90f;
 
-    [Tooltip("转到路径方向的耗时(秒),保留'先横出去'的观感")]
-    [SerializeField] private float rotateDuration = 0.15f;
+    [Tooltip("出现时的放大倍数,1 = 原大小")]
+    public float scaleMultiplier = 1f;
 
-    [Header("溶解")]
-    [Tooltip("溶解消失耗时(秒)")]
-    [SerializeField] private float dissolveDuration = 1.2f;
+    [Tooltip("沿路径飞行全程耗时(秒),速度由快变慢")]
+    public float travelDuration = 1f;
+
+    [Tooltip("缓出强度:越大前段甩得越快(2=平方,3=立方,4=四次方)")]
+    public float easeOutPower = 2f;
+
+    [Tooltip("飞行结束后溶解消失时长(秒)")]
+    public float dissolveInDuration = 1.2f;
+}
+
+/// <summary>
+/// 武器投掷框架(本体 = 呼吸位置的那把剑,只做开关控制):
+/// 由攻击动画事件驱动:OnAttackStart1/2/3(三条轨迹) 触发投掷,OnAttackEnd() 触发重生判定。
+/// 每次触发 → ① 隐藏本体 ② 呼吸位置生成溶解残影(原位消散)
+///       ③ 克隆 weaponTemplate 在曲线第一点出现 ④ clone 沿路径飞行(由快变慢)+ 溶解消失
+///       ⑤ 攻击 end 后,若 respawnDelay 秒内没有新的攻击 start,剑重新出现
+/// 视觉设置(拖尾/材质/子物体)在 weaponTemplate 上配置,clone 直接继承。
+/// </summary>
+public class WeaponThrow : MonoBehaviour
+{
+    [Header("投掷模板")]
+    [Tooltip("投掷 clone 的模板。拖尾等视觉设置直接在这个物体上配,投掷时克隆它。留空 = 用自身")]
+    [SerializeField] private GameObject weaponTemplate;
+
+    [Header("三连击配置(每击独立,各自的时间/路径/姿态)")]
+    [SerializeField] private WeaponAttackConfig attack1 = new WeaponAttackConfig();
+    [SerializeField] private WeaponAttackConfig attack2 = new WeaponAttackConfig();
+    [SerializeField] private WeaponAttackConfig attack3 = new WeaponAttackConfig();
+
+    [Tooltip("空中攻击轨迹(独立于三连击,空中攻击动画事件调用)")]
+    [SerializeField] private WeaponAttackConfig airAttack = new WeaponAttackConfig();
+
+    [Header("重生")]
+    [Tooltip("攻击 end 后,若此秒数内没有新的攻击 start,剑才重新出现(连击中断判定)")]
+    [SerializeField] private float respawnDelay = 1f;
+
+    [Tooltip("剑重生时的出现时长(秒):从下往上显现。0 = 直接出现")]
+    [SerializeField] private float respawnAppearDuration = 0.3f;
+
+    [Header("溶解(三击共用)")]
+    [Tooltip("呼吸位置残影溶解消散时长(秒)")]
+    [SerializeField] private float dissolveOutDuration = 0.4f;
 
     [Tooltip("溶解材质(留空自动用 Custom/SpriteDissolve 生成)")]
     [SerializeField] private Material dissolveMaterial;
 
-    private SpriteRenderer _sr;
-    private Material _runtimeMat;
-    private WeaponBreath _breath;
+    // ============================================================
+    // 运行时状态
+    // ============================================================
 
-    private bool _throwing;
-    private float _elapsed;
-    private float _startRotationZ;
-    private Vector3 _throwOrigin;
+    private SpriteRenderer _sr;
+    private WeaponBreath _breath;
+    private Vector3 _breathOrigin;   // 呼吸位置(背后剑的原位,投掷瞬间的世界坐标)
+
+    private int _activeClones;       // 当前在飞的 clone 数量
+    private bool _breathHidden;      // 本体是否已隐藏(控制残影只在真正隐藏时生成一次)
+    private Coroutine _respawnRoutine;  // 重生等待协程(可被新攻击打断)
 
     private void Awake()
     {
@@ -44,129 +87,309 @@ public class WeaponThrow : MonoBehaviour
 
     private void Update()
     {
-        if (!_throwing && Input.GetKeyDown(KeyCode.T))
+        // 调试用键盘触发(正式版由攻击动画事件调用 OnAttackStart1/2/3)
+        if (Input.GetKeyDown(KeyCode.T)) OnAttackStart1();
+        else if (Input.GetKeyDown(KeyCode.Y)) OnAttackStart2();
+        else if (Input.GetKeyDown(KeyCode.U)) OnAttackStart3();
+        else if (Input.GetKeyDown(KeyCode.K)) OnAttackEnd();
+    }
+
+    // ============================================================
+    // 事件接口(供攻击动画事件调用,三个方法对应三条轨迹)
+    // ============================================================
+
+    /// <summary>第一击:用第一条轨迹生成 clone(动画事件选这个方法)</summary>
+    public void OnAttackStart1()
+    {
+        StartAttack(attack1);
+    }
+
+    /// <summary>第二击:用第二条轨迹生成 clone(动画事件选这个方法)</summary>
+    public void OnAttackStart2()
+    {
+        StartAttack(attack2);
+    }
+
+    /// <summary>第三击:用第三条轨迹生成 clone(动画事件选这个方法)</summary>
+    public void OnAttackStart3()
+    {
+        StartAttack(attack3);
+    }
+
+    /// <summary>空中攻击:用空中轨迹生成 clone(空中攻击动画命中帧调用)</summary>
+    public void OnAirAttackStart()
+    {
+        StartAttack(airAttack);
+    }
+
+    /// <summary>攻击结束:启动重生判定,respawnDelay 秒内没有新的攻击 start 则剑重新出现</summary>
+    public void OnAttackEnd()
+    {
+        // 无条件启动重生计时(不依赖 clone 计数):
+        // 若 clone 已飞完计数归零但动画 end 才到,直接 return 会导致剑永远不回来
+        if (_respawnRoutine == null)
         {
-            StartThrow();
-        }
-
-        if (!_throwing) return;
-
-        _elapsed += Time.deltaTime;
-
-        // 路径进度:平方缓出 → 由快变慢
-        float raw = Mathf.Clamp01(_elapsed / travelDuration);
-        float t = 1f - (1f - raw) * (1f - raw);
-
-        // 沿路径取位置和切线
-        Vector3 pos = GetPathPosition(t, out Vector3 tangent);
-        transform.position = _throwOrigin + pos;
-
-        // 平滑转到路径方向,保留"先横出去"的观感
-        float targetZ = Mathf.Atan2(tangent.y, tangent.x) * Mathf.Rad2Deg;
-        float rotProgress = Mathf.Clamp01(_elapsed / rotateDuration);
-        transform.rotation = Quaternion.Euler(0f, 0f, Mathf.LerpAngle(_startRotationZ, targetZ, rotProgress));
-
-        // 溶解消失,进度按时间
-        float dissolve = Mathf.Clamp01(_elapsed / dissolveDuration);
-        _runtimeMat.SetFloat("_DissolveAmount", dissolve);
-
-        // 走完路径或完全溶解 → 销毁
-        if (raw >= 1f || dissolve >= 1f)
-        {
-            Destroy(gameObject);
+            _respawnRoutine = StartCoroutine(RespawnAfterDelay());
         }
     }
 
-    // Catmull-Rom 样条插值:曲线平滑穿过每个锚点,同时算出切线方向
-    private Vector3 GetPathPosition(float t, out Vector3 tangent)
+    // ============================================================
+    // 总调度:各阶段独立方法,后续单独调整
+    // ============================================================
+
+    private void StartAttack(WeaponAttackConfig config)
     {
-        int n = pathPoints.Length;
-        if (n == 0)
+        // 新攻击打断待定的重生
+        CancelRespawn();
+
+        _breathOrigin = transform.position;
+
+        // 只有本体还没隐藏时才隐藏+残影(用状态标志,不用 clone 计数):
+        // 连发时上一发 clone 飞完计数归零,若用 _activeClones==0 判断会导致残影重复生成 → 背后闪一下
+        if (!_breathHidden)
         {
-            tangent = Vector3.right;
-            return Vector3.zero;
+            HideBreathWeapon();
+            StartCoroutine(SpawnDissolveEchoAtBreath());
+            _breathHidden = true;
         }
-        if (n == 1)
+        _activeClones++;
+
+        StartCoroutine(ThrowSequence(config));
+    }
+
+    private IEnumerator ThrowSequence(WeaponAttackConfig config)
+    {
+        // 阶段 2:创建 clone 在曲线第一点,独立飞行+溶解
+        GameObject projectile = SpawnProjectileAtPathStart(config);
+
+        // 阶段 3:等待 clone 走完全程(飞行+溶解+自毁)
+        while (projectile != null)
         {
-            tangent = Vector3.right;
-            return pathPoints[0];
+            yield return null;
         }
+
+        // 这发结束,计数减一
+        _activeClones--;
+    }
+
+    // ============================================================
+    // 阶段方法(可单独调整)
+    // ============================================================
+
+    /// <summary>隐藏本体(关闭):背后的剑消失,拖尾也停(防编辑器访问已停用的 TrailRenderer)</summary>
+    private void HideBreathWeapon()
+    {
+        if (_sr != null) _sr.enabled = false;
+        if (_breath != null) _breath.enabled = false;
+        var trail = GetComponentInChildren<TrailRenderer>();
+        if (trail != null) trail.enabled = false;
+    }
+
+    /// <summary>重新显示本体(打开):剑回到呼吸位置,拖尾恢复</summary>
+    private void ShowBreathWeapon()
+    {
+        if (_sr != null) _sr.enabled = true;
+        if (_breath != null) _breath.enabled = true;
+        var trail = GetComponentInChildren<TrailRenderer>();
+        if (trail != null) trail.enabled = true;
+    }
+
+    /// <summary>取消待定的重生等待(新攻击开始或已重生时调用)</summary>
+    private void CancelRespawn()
+    {
+        if (_respawnRoutine != null)
+        {
+            StopCoroutine(_respawnRoutine);
+            _respawnRoutine = null;
+        }
+    }
+
+    /// <summary>重生等待:攻击 end 后间隔 respawnDelay,期间无新攻击则剑从下往上显现回呼吸位置</summary>
+    private IEnumerator RespawnAfterDelay()
+    {
+        yield return new WaitForSeconds(respawnDelay);
+
+        _respawnRoutine = null;
+        _activeClones = 0;
+        _breathHidden = false;   // 重生后允许下次攻击重新走"隐藏+残影"
+
+        // 本体出现:从下往上显现(溶解量 1 → 0,方向固定上→下,视觉为从下往上长出来)
+        if (_sr != null && respawnAppearDuration > 0f)
+        {
+            // 保存原材质,换溶解材质播出现动画,播完恢复
+            Material originalMat = _sr.material;
+            Material appearMat = new Material(Shader.Find("Custom/SpriteDissolve"));
+            if (appearMat != null && appearMat.shader != null)
+            {
+                appearMat.SetFloat("_DissolveDir", 1f);
+                appearMat.SetFloat("_DissolveAmount", 1f);
+                if (_sr.sprite != null) appearMat.mainTexture = _sr.sprite.texture;
+                _sr.material = appearMat;
+            }
+            _sr.enabled = true;
+
+            float appearElapsed = 0f;
+            while (appearElapsed < respawnAppearDuration)
+            {
+                appearElapsed += Time.deltaTime;
+                float appear = 1f - Mathf.Clamp01(appearElapsed / respawnAppearDuration);
+                if (appearMat != null) appearMat.SetFloat("_DissolveAmount", appear);
+                yield return null;
+            }
+            if (appearMat != null) appearMat.SetFloat("_DissolveAmount", 0f);
+
+            // 恢复原材质
+            if (_sr != null && originalMat != null) _sr.material = originalMat;
+        }
+
+        ShowBreathWeapon();
+    }
+
+    /// <summary>呼吸位置溶解残影:剑离开后,原位留下一道溶解消散的特效</summary>
+    private IEnumerator SpawnDissolveEchoAtBreath()
+    {
+        if (_sr == null || _sr.sprite == null) yield break;
+
+        GameObject echo = new GameObject("WeaponDissolveEcho");
+        echo.transform.position = _breathOrigin;
+        echo.transform.rotation = transform.rotation;
+        echo.transform.localScale = transform.lossyScale;
+
+        SpriteRenderer echoSr = echo.AddComponent<SpriteRenderer>();
+        echoSr.sprite = _sr.sprite;
+        echoSr.sortingOrder = _sr.sortingOrder;
+
+        Material mat = new Material(Shader.Find("Custom/SpriteDissolve"));
+        echoSr.material = mat;
+
+        float elapsed = 0f;
+        while (elapsed < dissolveOutDuration)
+        {
+            elapsed += Time.deltaTime;
+            mat.SetFloat("_DissolveAmount", Mathf.Clamp01(elapsed / dissolveOutDuration));
+            yield return null;
+        }
+        Destroy(echo);
+    }
+
+    /// <summary>克隆模板生成投掷物在曲线第一点,返回引用(用于等待其自毁)</summary>
+    private GameObject SpawnProjectileAtPathStart(WeaponAttackConfig config)
+    {
+        // 模板:优先用 weaponTemplate,留空用自身(默认剑)
+        GameObject template = weaponTemplate != null ? weaponTemplate : gameObject;
+        GameObject proj = Instantiate(template);
+        proj.name = "WeaponThrowClone";
+
+        // 清掉克隆来的控制组件:clone 只保留视觉(渲染/拖尾),不响应输入/不呼吸
+        var clonedThrow = proj.GetComponent<WeaponThrow>();
+        if (clonedThrow != null) Destroy(clonedThrow);
+        var clonedBreath = proj.GetComponent<WeaponBreath>();
+        if (clonedBreath != null) Destroy(clonedBreath);
+
+        // 关键:Instantiate 复制的是模板当前状态,而本体已被 HideBreathWeapon 禁用,
+        // clone 的 SpriteRenderer/TrailRenderer 也是禁用状态 → 强制启用,否则画面没东西
+        var projSr = proj.GetComponent<SpriteRenderer>();
+        if (projSr != null) projSr.enabled = true;
+        var projTrail = proj.GetComponentInChildren<TrailRenderer>();
+        if (projTrail != null) projTrail.enabled = true;
+
+        // 创建在呼吸位置基准点;WeaponProjectile 内部 _origin = 此位置,
+        // 飞行时 _origin + 路径偏移,起点即曲线第一点。若创建时就偏移,会双重偏移。
+        proj.transform.position = _breathOrigin;
+
+        // 关键:模板在玩家身上是缩小状态(w1 的 scale=0.04),投掷必须恢复标准大小,
+        // 否则 clone 继承 0.04 → 剑和拖尾都小到看不见(之前 new GameObject 方案 scale 默认 1 才正常)
+        proj.transform.localScale = Vector3.one;
+
+        // 依据世界翻转方向决定旋转(父级 flip 后仍是朝右)
+        float face = Mathf.Sign(transform.lossyScale.x);
+        float rotZ = face >= 0f ? config.rotationZ : -config.rotationZ;
+        proj.transform.rotation = Quaternion.Euler(0f, 0f, rotZ);
+
+        // 应用放大倍数(基于标准大小 1,不是模板的 0.04)
+        if (config.scaleMultiplier != 1f)
+        {
+            Vector3 s = proj.transform.localScale;
+            proj.transform.localScale = new Vector3(s.x * config.scaleMultiplier, s.y * config.scaleMultiplier, s.z);
+        }
+
+        // 溶解方向:固定 1 = 上→下(剑从顶部开始往下消退)
+        // 竖直方向不受左右翻转影响,无需按 face 区分
+        float dissolveDir = 1f;
+
+        WeaponProjectile comp = proj.AddComponent<WeaponProjectile>();
+        comp.Init(
+            pathPoints: config.pathPoints,
+            travelDuration: config.travelDuration,
+            easeOutPower: config.easeOutPower,
+            dissolveDuration: config.dissolveInDuration,
+            dissolveDirection: dissolveDir,
+            dissolveMaterial: dissolveMaterial);
+
+        return proj;
+    }
+
+    // ============================================================
+    // 编辑器可视化:选中武器时画三条路径曲线,拖点即见
+    // 第一击黄 / 第二击青 / 第三击品红
+    // ============================================================
+
+    private void OnDrawGizmosSelected()
+    {
+        DrawPathGizmo(attack1.pathPoints, new Color(1f, 0.85f, 0.3f, 0.9f));
+        DrawPathGizmo(attack2.pathPoints, new Color(0.3f, 0.85f, 1f, 0.9f));
+        DrawPathGizmo(attack3.pathPoints, new Color(1f, 0.4f, 0.8f, 0.9f));
+        DrawPathGizmo(airAttack.pathPoints, new Color(0.4f, 1f, 0.6f, 0.9f));  // 空中轨迹:绿色
+    }
+
+    private void DrawPathGizmo(Vector3[] path, Color color)
+    {
+        if (path == null || path.Length == 0) return;
+
+        Vector3 origin = transform.position;
+        Gizmos.color = color;
+
+        // 沿 Catmull-Rom 曲线采样 32 段,画出平滑曲线
+        Vector3 prev = origin + ProjectilePathPoint(path, 0f);
+        for (int k = 1; k <= 32; k++)
+        {
+            Vector3 cur = origin + ProjectilePathPoint(path, k / 32f);
+            Gizmos.DrawLine(prev, cur);
+            prev = cur;
+        }
+
+        // 锚点
+        Gizmos.color = new Color(color.r, color.g, color.b, 1f);
+        for (int i = 0; i < path.Length; i++)
+        {
+            Gizmos.DrawWireSphere(origin + path[i], 0.08f);
+        }
+    }
+
+    // 编辑器画线用的 Catmull-Rom(与 WeaponProjectile 相同算法)
+    private Vector3 ProjectilePathPoint(Vector3[] path, float t)
+    {
+        int n = path.Length;
+        if (n == 0) return Vector3.zero;
+        if (n == 1) return path[0];
 
         float scaled = t * (n - 1);
         int i = Mathf.Clamp(Mathf.FloorToInt(scaled), 0, n - 2);
         float s = scaled - i;
 
-        // 每段取前后各一个点作控制:首尾用端点自身重复
-        Vector3 p0 = pathPoints[Mathf.Max(i - 1, 0)];
-        Vector3 p1 = pathPoints[i];
-        Vector3 p2 = pathPoints[i + 1];
-        Vector3 p3 = pathPoints[Mathf.Min(i + 2, n - 1)];
+        Vector3 p0 = path[Mathf.Max(i - 1, 0)];
+        Vector3 p1 = path[i];
+        Vector3 p2 = path[i + 1];
+        Vector3 p3 = path[Mathf.Min(i + 2, n - 1)];
 
         float s2 = s * s;
         float s3 = s2 * s;
 
-        // 位置
-        Vector3 pos = 0.5f * (
+        return 0.5f * (
             (2f * p1) +
             (-p0 + p2) * s +
             (2f * p0 - 5f * p1 + 4f * p2 - p3) * s2 +
             (-p0 + 3f * p1 - 3f * p2 + p3) * s3
         );
-
-        // 切线(导数)
-        tangent = 0.5f * (
-            (-p0 + p2) +
-            2f * (2f * p0 - 5f * p1 + 4f * p2 - p3) * s +
-            3f * (-p0 + 3f * p1 - 3f * p2 + p3) * s2
-        );
-
-        if (tangent.sqrMagnitude < 0.0001f) tangent = Vector3.right;
-        return pos;
-    }
-
-    private void StartThrow()
-    {
-        _throwing = true;
-        _elapsed = 0f;
-        _throwOrigin = transform.position;
-        _startRotationZ = transform.rotation.eulerAngles.z;
-
-        // 脱离 Player 父级,独立飞行,保持当前世界位置
-        transform.SetParent(null, true);
-
-        // 停掉呼吸脚本,避免位置被覆盖
-        if (_breath != null) _breath.enabled = false;
-
-        // 生成运行时材质,不动项目里的材质资源
-        _runtimeMat = dissolveMaterial != null
-            ? new Material(dissolveMaterial)
-            : new Material(Shader.Find("Custom/SpriteDissolve"));
-        _runtimeMat.SetFloat("_DissolveAmount", 0f);
-
-        if (_sr != null) _sr.material = _runtimeMat;
-    }
-
-    // 编辑器可视化:选中武器时沿曲线采样画线,拖点即见
-    private void OnDrawGizmosSelected()
-    {
-        if (pathPoints == null || pathPoints.Length == 0) return;
-
-        Vector3 origin = transform.position;
-        Gizmos.color = new Color(1f, 0.85f, 0.3f, 0.9f);
-
-        // 沿 Catmull-Rom 曲线采样 32 段,画出平滑曲线
-        Vector3 prev = origin + GetPathPosition(0f, out _);
-        for (int k = 1; k <= 32; k++)
-        {
-            Vector3 cur = origin + GetPathPosition(k / 32f, out _);
-            Gizmos.DrawLine(prev, cur);
-            prev = cur;
-        }
-
-        Gizmos.color = Color.white;
-        for (int i = 0; i < pathPoints.Length; i++)
-        {
-            Gizmos.DrawWireSphere(origin + pathPoints[i], 0.08f);
-        }
     }
 }

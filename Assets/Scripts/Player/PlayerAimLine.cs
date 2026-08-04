@@ -88,13 +88,15 @@ public class PlayerAimLine : MonoBehaviour
         line.SetPosition(0, start);
         line.SetPosition(1, end);
 
-        // 根据鼠标水平方向更新面朝方向
-        if (Mathf.Abs(dir.x) > 0.1f)
-        {
-            float facing = dir.x > 0 ? 1 : -1;
-            Vector3 scale = transform.root.localScale;
-            scale.x = Mathf.Abs(scale.x) * facing;
-            transform.root.localScale = scale;
-        }
+        // 【注释保留】朝向翻转逻辑 — 2026-08-04 取消远程攻击后,朝向统一按近战规则
+        // (PlayerCombat.AttackDir / UpdateFacing)驱动,不再由鼠标瞄准控制。
+        // 若后续技能需要"瞄准朝向翻转角色",取消注释即可。
+        // if (Mathf.Abs(dir.x) > 0.1f)
+        // {
+        //     float facing = dir.x > 0 ? 1 : -1;
+        //     Vector3 scale = transform.root.localScale;
+        //     scale.x = Mathf.Abs(scale.x) * facing;
+        //     transform.root.localScale = scale;
+        // }
     }
 }

@@ -33,7 +33,7 @@ public class PlayerAnimation : MonoBehaviour
         // 聚合 IsMove：所有动作状态为 false 时才是移动
         // 状态源为 C# 字段（Animator 只做输出），不再每帧回读 Animator
         bool isMove = !(_jump != null && (_jump.IsJumping || _jump.IsFalling))
-                   && !(_combat != null && (_combat.IsAttacking || _combat.IsBlocking))
+                   && !(_combat != null && (_combat.IsAttacking || _combat.IsBlocking || _combat.IsAirAttacking))
                    && !(_dash != null && _dash.IsDashing)
                    && !(_health != null && (_health.IsHurt || _health.IsAirHurt));
 

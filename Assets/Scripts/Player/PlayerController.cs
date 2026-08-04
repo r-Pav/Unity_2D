@@ -57,7 +57,6 @@ public class PlayerController : PlayerCharacterBase
 
     private PlayerCombat combat;
     private PlayerGroundPound groundPound;
-    private PlayerStomp stomp;
     private SkillManager skillManager;
     private SkillPool skillPool;
     private SkillPointManager skillPointManager;
@@ -108,7 +107,6 @@ public class PlayerController : PlayerCharacterBase
         base.Awake();
         combat = GetComponent<PlayerCombat>();
         groundPound = GetComponent<PlayerGroundPound>();
-        stomp = GetComponent<PlayerStomp>();
         skillManager = GetComponent<SkillManager>();
         skillPool = GetComponent<SkillPool>();
         skillPointManager = GetComponent<SkillPointManager>();
@@ -231,7 +229,6 @@ public class PlayerController : PlayerCharacterBase
     {
         combat?.OnPlayerUpdate(this);
         groundPound?.OnPlayerUpdate(this);
-        stomp?.OnPlayerUpdate(this);
         skillManager?.OnPlayerUpdate(this);
     }
 

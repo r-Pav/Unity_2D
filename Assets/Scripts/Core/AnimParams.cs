@@ -16,6 +16,7 @@ public static class AnimParams
     public const string IsBlocking = "IsBlocking";
     public const string IsMove = "IsMove";
     public const string IsAttacking = "IsAttacking";
+    public const string IsAirAttacking = "IsAirAttacking";
     public const string IsHurt = "IsHurt";
     public const string IsAirHurt = "IsAirHurt";
 
