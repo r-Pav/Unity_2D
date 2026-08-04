@@ -155,13 +155,15 @@ public class PlayerController : PlayerCharacterBase
             return;
         }
 
+        // 计时器递减必须先于锁定判定：FreezeTimer 在 IsActionLocked 里被检查，
+        // 若递减在锁定 return 之后则永远无法归零 → 永久锁死（蹬墙跳后卡下落动画）
+        UpdateCooldowns();
+
         if (IsActionLocked()) return;
 
         // 攻击朝向跟随当前输入（Fix：UpdateFacing 在 FixedUpdate 里，攻击在 Update 里会慢一帧）
         float h = Input.GetAxisRaw("Horizontal");
         if (Mathf.Abs(h) > 0.1f) UpdateFacing(h);
-
-        UpdateCooldowns();
 
         // 冲刺组件：dash 中提早 return（跳过移动/跳跃/墙逻辑）
         if (dash?.OnPlayerUpdate(this) == true) return;
