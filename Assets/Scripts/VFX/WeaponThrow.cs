@@ -79,6 +79,9 @@ public class WeaponThrow : MonoBehaviour
     private bool _breathHidden;      // 本体是否已隐藏(控制残影只在真正隐藏时生成一次)
     private Coroutine _respawnRoutine;  // 重生等待协程(可被新攻击打断)
 
+    /// <summary>当前在飞 clone 的 BoxCollider2D(攻击范围延伸用,PlayerCombat 命中检测读取)</summary>
+    public BoxCollider2D ActiveCloneCollider { get; private set; }
+
     private void Awake()
     {
         _sr = GetComponent<SpriteRenderer>();
@@ -168,8 +171,12 @@ public class WeaponThrow : MonoBehaviour
             yield return null;
         }
 
-        // 这发结束,计数减一
+        // 这发结束,计数减一;若没有在飞的 clone 了,清掉碰撞引用(避免引用已销毁对象)
         _activeClones--;
+        if (_activeClones <= 0)
+        {
+            ActiveCloneCollider = null;
+        }
     }
 
     // ============================================================
@@ -292,6 +299,15 @@ public class WeaponThrow : MonoBehaviour
         if (projSr != null) projSr.enabled = true;
         var projTrail = proj.GetComponentInChildren<TrailRenderer>();
         if (projTrail != null) projTrail.enabled = true;
+
+        // 攻击范围延伸:clone 上的 BoxCollider2D 强制启用(本体保持 disabled),
+        // 并记录引用供 PlayerCombat 命中检测读取
+        var projCol = proj.GetComponent<BoxCollider2D>();
+        if (projCol != null)
+        {
+            projCol.enabled = true;
+            ActiveCloneCollider = projCol;
+        }
 
         // 创建在呼吸位置基准点;WeaponProjectile 内部 _origin = 此位置,
         // 飞行时 _origin + 路径偏移,起点即曲线第一点。若创建时就偏移,会双重偏移。

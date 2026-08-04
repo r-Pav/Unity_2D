@@ -38,6 +38,9 @@ public class PlayerCombat : MonoBehaviour
     [Tooltip("攻击范围中心在 Player 前方的距离")]
     [SerializeField] private float meleeRangeOffset = 1.5f;
 
+    [Tooltip("剑的 BoxCollider2D（挂在武器模板上,本体保持 disabled,clone 投掷时自动启用）。命中帧用 clone 的 bounds 做检测,不开物理碰撞")]
+    [SerializeField] private BoxCollider2D swordCollider;
+
     [Header("近战 VFX")]
     [Tooltip("近战挥砍命中特效 Prefab — 在 OverlapBox 检测到敌人时生成")]
     [SerializeField] private GameObject slashVFXPrefab;
@@ -435,7 +438,6 @@ public class PlayerCombat : MonoBehaviour
     /// <summary>AnimationEvent 调用 — 在挥砍命中帧执行伤害判定 + 卡肉 + 闪烁</summary>
     public void OnMeleeHitFrame()
     {
-        if (rangeIndicator == null) return;
 
         float damage = GetEffectiveDamage() * meleeDamage;
 
@@ -449,7 +451,10 @@ public class PlayerCombat : MonoBehaviour
         if (projectileLayer != 0)
             damageMask = enemyLayer | projectileLayer;
 
-        Collider2D[] hits = MeleeHitDetector.Detect(rangeIndicator, damageMask);
+        // 方框范围 + 剑碰撞范围(攻击范围延伸):合并检测,统一走伤害
+        Collider2D[] boxHits = MeleeHitDetector.Detect(rangeIndicator, damageMask);
+        Collider2D[] swordHits = GetSwordColliderHits(damageMask);
+        Collider2D[] hits = MergeHits(boxHits, swordHits);
 
         bool hitAnything = false;
 
@@ -495,6 +500,37 @@ public class PlayerCombat : MonoBehaviour
             HitStopController.Instance?.Trigger(meleeHitStopDuration);
 
         rangeIndicator.Flash();
+    }
+
+    /// <summary>剑碰撞检测:用当前在飞 clone 的 BoxCollider2D 的 bounds 做 OverlapBox。
+    /// 本体(默认剑)的 collider 保持 disabled 不参与;只有 clone 投掷时被 WeaponThrow 启用。
+    /// swordCollider 字段只是"是否启用该功能"的标记 + 模板引用。</summary>
+    private Collider2D[] GetSwordColliderHits(LayerMask mask)
+    {
+        if (swordCollider == null) return new Collider2D[0];  // 没拖字段 = 功能关闭
+        if (_weaponThrow == null || _weaponThrow.ActiveCloneCollider == null) return new Collider2D[0];
+
+        Bounds b = _weaponThrow.ActiveCloneCollider.bounds;
+        return Physics2D.OverlapBoxAll(b.center, b.size, 0f, mask);
+    }
+
+    /// <summary>合并两组命中,按 collider 实例去重(剑范围与方框重叠时只算一次)</summary>
+    private Collider2D[] MergeHits(Collider2D[] a, Collider2D[] b)
+    {
+        if (a.Length == 0) return b;
+        if (b.Length == 0) return a;
+
+        var merged = new System.Collections.Generic.List<Collider2D>(a.Length + b.Length);
+        var seen = new System.Collections.Generic.HashSet<Collider2D>();
+        foreach (var c in a)
+        {
+            if (c != null && seen.Add(c)) merged.Add(c);
+        }
+        foreach (var c in b)
+        {
+            if (c != null && seen.Add(c)) merged.Add(c);
+        }
+        return merged.ToArray();
     }
 
     // ============================================================
