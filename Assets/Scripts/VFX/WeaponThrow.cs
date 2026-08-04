@@ -306,6 +306,19 @@ public class WeaponThrow : MonoBehaviour
         float rotZ = face >= 0f ? config.rotationZ : -config.rotationZ;
         proj.transform.rotation = Quaternion.Euler(0f, 0f, rotZ);
 
+        // 路径镜像:轨迹锚点是"朝右"配置的相对偏移,朝左时 x 取反,
+        // 否则剑会沿朝右的路径飞到身后。复制数组,不改序列化配置。
+        Vector3[] path = config.pathPoints;
+        if (face < 0f && path != null && path.Length > 0)
+        {
+            path = new Vector3[path.Length];
+            for (int i = 0; i < config.pathPoints.Length; i++)
+            {
+                Vector3 p = config.pathPoints[i];
+                path[i] = new Vector3(-p.x, p.y, p.z);
+            }
+        }
+
         // 应用放大倍数(基于标准大小 1,不是模板的 0.04)
         if (config.scaleMultiplier != 1f)
         {
@@ -319,7 +332,7 @@ public class WeaponThrow : MonoBehaviour
 
         WeaponProjectile comp = proj.AddComponent<WeaponProjectile>();
         comp.Init(
-            pathPoints: config.pathPoints,
+            pathPoints: path,
             travelDuration: config.travelDuration,
             easeOutPower: config.easeOutPower,
             dissolveDuration: config.dissolveInDuration,
