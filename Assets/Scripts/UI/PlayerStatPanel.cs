@@ -109,13 +109,14 @@ public class PlayerStatPanel : MonoBehaviour, IPanel
             valueCritDmg.text = $"暴击伤害 +{critDmg:F0}%";
         }
 
-        if (valueInterval != null)
-        {
-            float baseCD = combat != null ? combat.BaseMeleeAttackCooldown : 0.15f;
-            float intervalMult = statMod.GetFinalValue(1f, StatId.AttackInterval);
-            float interval = baseCD / Mathf.Max(0.1f, intervalMult);
-            valueInterval.text = $"攻击间隔 {interval:F2}s";
-        }
+        // 攻速已移除 — 攻击间隔显示不再使用
+        // if (valueInterval != null)
+        // {
+        //     float baseCD = combat != null ? combat.BaseMeleeAttackCooldown : 0.15f;
+        //     float intervalMult = statMod.GetFinalValue(1f, StatId.AttackInterval);
+        //     float interval = baseCD / Mathf.Max(0.1f, intervalMult);
+        //     valueInterval.text = $"攻击间隔 {interval:F2}s";
+        // }
 
         if (valueDefense != null)
         {

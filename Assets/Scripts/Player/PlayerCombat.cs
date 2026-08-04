@@ -195,13 +195,10 @@ public class PlayerCombat : MonoBehaviour
 
     private void TickTimers()
     {
-        // 攻击冷却
+        // 攻击冷却(攻速已移除,冷却按原始值递减)
         if (attackCooldownTimer > 0f)
         {
-            float intervalMult = statModManager != null
-                ? statModManager.GetFinalValue(1f, StatId.AttackInterval)
-                : 1f;
-            attackCooldownTimer -= Time.deltaTime * intervalMult;
+            attackCooldownTimer -= Time.deltaTime;
         }
 
         // 战斗超时
@@ -267,9 +264,11 @@ public class PlayerCombat : MonoBehaviour
             // 攻击中再次点击：直接切下一段（Play 强制切换，不经过子机 Exit，无 loc 间隙）
             if (comboIndex < comboLimit)
             {
+                comboIndex++;  // 关键：连击直切时同步递增，否则快速连点永远卡在下一段
                 _inAttackAnim = true;
                 Anim.SetBool(AnimParams.IsAttacking, true);
-                Anim.Play("Attack" + (comboIndex + 1), 0, 0f);
+                Anim.SetInteger(AnimParams.AttackIndex, comboIndex);
+                Anim.Play("Attack" + comboIndex, 0, 0f);
             }
         }
         else
@@ -280,20 +279,21 @@ public class PlayerCombat : MonoBehaviour
         }
     }
 
-    /// <summary>状态进入：设置 IsAttacking、同步攻速、更新朝向</summary>
+    /// <summary>状态进入：设置 IsAttacking、更新朝向(攻速已移除,不再改 Anim.speed)</summary>
     private void EnterAttack()
     {
-
         Anim?.SetBool(AnimParams.IsAttacking, true);
 
         if (_owner != null)
             _owner.UpdateFacing(AttackDir);
 
-        if (Anim != null && statModManager != null)
-        {
-            float intervalMult = statModManager.GetFinalValue(1f, StatId.AttackInterval);
-            Anim.speed = Mathf.Max(0.1f, intervalMult);
-        }
+        // 攻速已移除:Anim.speed 保持 1,不再按 AttackInterval 修改
+        // (原逻辑:Anim.speed = intervalMult,攻击结束未恢复导致跑步/跳跃动画变速)
+        // if (Anim != null && statModManager != null)
+        // {
+        //     float intervalMult = statModManager.GetFinalValue(1f, StatId.AttackInterval);
+        //     Anim.speed = Mathf.Max(0.1f, intervalMult);
+        // }
     }
 
     /// <summary>状态退出：comboIndex++，溢出归1，记录时间</summary>
@@ -589,12 +589,14 @@ public class PlayerCombat : MonoBehaviour
     // 属性修饰器查询
     // ============================================================
 
-    /// <summary>受 AttackInterval 修饰后的攻击冷却</summary>
+    /// <summary>受攻击冷却(攻速已移除,直接返回基础冷却)</summary>
     private float GetEffectiveAttackCooldown(float baseCD)
     {
-        if (statModManager == null) return baseCD;
-        float mult = statModManager.GetFinalValue(1f, StatId.AttackInterval);
-        return baseCD / Mathf.Max(0.1f, mult);
+        return baseCD;
+        // 攻速已移除 — 原逻辑:冷却 = baseCD / intervalMult
+        // if (statModManager == null) return baseCD;
+        // float mult = statModManager.GetFinalValue(1f, StatId.AttackInterval);
+        // return baseCD / Mathf.Max(0.1f, mult);
     }
 
     /// <summary>暴击判定：受 CritRate/CritDamage 修饰</summary>

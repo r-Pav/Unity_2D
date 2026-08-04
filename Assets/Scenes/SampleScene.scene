@@ -22988,6 +22988,7 @@ GameObject:
   serializedVersion: 7
   m_Component:
   - component: {fileID: 952423016}
+  - component: {fileID: 952423020}
   - component: {fileID: 952423017}
   - component: {fileID: 952423018}
   - component: {fileID: 952423019}
@@ -23106,16 +23107,21 @@ MonoBehaviour:
     travelDuration: 0.3
     easeOutPower: 3.5
     dissolveInDuration: 0.4
+    stickToWall: 1
+    stickHoldDuration: 0.6
+    stickDepth: 0.2
   attack2:
     pathPoints:
-    - {x: 1.06, y: -0.99, z: 0}
-    - {x: 1.8, y: 0, z: 0}
-    - {x: 2.46, y: 0.88, z: 0}
+    - {x: 0.64, y: -1.53, z: 0}
+    - {x: 1.88, y: 0.09, z: 0}
     rotationZ: 140
     scaleMultiplier: 0.08
     travelDuration: 0.3
     easeOutPower: 3.5
     dissolveInDuration: 0.4
+    stickToWall: 1
+    stickHoldDuration: 0.6
+    stickDepth: 0.2
   attack3:
     pathPoints:
     - {x: 0.84, y: 0, z: 0}
@@ -23126,20 +23132,75 @@ MonoBehaviour:
     travelDuration: 0.3
     easeOutPower: 4
     dissolveInDuration: 0.4
+    stickToWall: 1
+    stickHoldDuration: 0.6
+    stickDepth: 0.2
   airAttack:
     pathPoints:
-    - {x: 1.8, y: 1.29, z: 0}
-    - {x: 1.8, y: 0, z: 0}
-    - {x: 1.8, y: -1.36, z: 0}
+    - {x: 1.9, y: 0.91, z: 0}
+    - {x: 1.9, y: 0, z: 0}
+    - {x: 1.9, y: -2.82, z: 0}
     rotationZ: 0
     scaleMultiplier: 0.09
     travelDuration: 0.3
     easeOutPower: 4
     dissolveInDuration: 1
+    stickToWall: 0
+    stickHoldDuration: 0.6
+    stickDepth: 0.2
   respawnDelay: 3
   respawnAppearDuration: 0.3
   dissolveOutDuration: 0.1
   dissolveMaterial: {fileID: 0}
+  wallLayer:
+    serializedVersion: 2
+    m_Bits: 2048
+--- !u!61 &952423020
+BoxCollider2D:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 952423015}
+  m_Enabled: 0
+  serializedVersion: 3
+  m_Density: 1
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_ForceSendLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_ForceReceiveLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_ContactCaptureLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_CallbackLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_IsTrigger: 0
+  m_UsedByEffector: 0
+  m_CompositeOperation: 0
+  m_CompositeLayer: 0
+  m_Offset: {x: 0.0000054836273, y: -3.0122762}
+  m_SpriteTilingProperty:
+    border: {x: 0, y: 0, z: 0, w: 0}
+    pivot: {x: 0.5, y: 0.5}
+    oldSize: {x: 7.34375, y: 30.9375}
+    newSize: {x: 7.34375, y: 30.9375}
+    adaptiveTilingThreshold: 0.5
+    drawMode: 0
+    adaptiveTiling: 0
+  m_AutoTiling: 0
+  m_Size: {x: 2.5333924, y: 25.236835}
+  m_EdgeRadius: 0
 --- !u!1 &954597377
 GameObject:
   m_ObjectHideFlags: 0
@@ -34826,7 +34887,6 @@ GameObject:
   - component: {fileID: 1427529639}
   - component: {fileID: 1427529659}
   - component: {fileID: 1427529644}
-  - component: {fileID: 1427529645}
   - component: {fileID: 1427529652}
   - component: {fileID: 1427529637}
   - component: {fileID: 1427529654}
@@ -34980,13 +35040,15 @@ MonoBehaviour:
   meleeAttackType: Sword
   meleeFinisherAttackType: Sword_Heavy
   rangeIndicator: {fileID: 945450417}
-  meleeRangeOffset: 0.95
+  meleeRangeOffset: 0.68
+  swordCollider: {fileID: 952423020}
   slashVFXPrefab: {fileID: 0}
   meleeDamage: 1
   meleeAttackCooldown: 0.15
   meleeKnockbackForce: 4
   meleeKnockbackUpForce: 3
-  meleeHitStopDuration: 0.08
+  swordKnockbackForce: 8
+  meleeHitStopDuration: 0.1
   parryMaxWindow: 0.2
   blockDamageReduction: 0.5
   projectileLayer:
@@ -35053,28 +35115,6 @@ MonoBehaviour:
     m_Bits: 128
   shakeDuration: 0.2
   shakeMagnitude: 0.3
---- !u!114 &1427529645
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1427529632}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9ca0bd05164b0284796758231d177a0c, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  enemyLayer:
-    m_Bits: 128
-  footAreaHeight: 0.15
-  footWidthMultiplier: 0.8
-  headAreaRatio: 0.25
-  bounceForceX: 3
-  bounceForceY: 6
-  stompCooldown: 0.18
-  owner: {fileID: 0}
-  cooldownTimer: 0
 --- !u!114 &1427529646
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -35387,6 +35427,7 @@ MonoBehaviour:
   hurtDuration: 0.3
   hitVFXPrefab: {fileID: 0}
   hitVFXOffset: {x: 0, y: -0.17}
+  airHurtTimeout: 1.5
 --- !u!114 &1427529660
 MonoBehaviour:
   m_ObjectHideFlags: 0

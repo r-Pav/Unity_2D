@@ -66,8 +66,8 @@ public static class StatId
     public const string CritDamage = "critDamage";
     /// <summary>单次发射子弹数加成（Flat，默认 0）</summary>
     public const string ShotsPerClick = "shotsPerClick";
-    /// <summary>攻击间隔缩短比例（Percent，默认 0.0，填 10=缩短10%）</summary>
-    public const string AttackInterval = "attackInterval";
+    /// <summary>攻击间隔缩短比例（Percent，默认 0.0，填 10=缩短10%）— 攻速已移除，注释保留</summary>
+    // public const string AttackInterval = "attackInterval";
     /// <summary>攻击速度倍率（默认 1.0）</summary>
     public const string AttackSpeedMultiplier = "attackSpeedMultiplier";
     /// <summary>闪避率 [0~1]（默认 0.0）</summary>

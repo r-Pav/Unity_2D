@@ -146,8 +146,9 @@ public class ItemSO : ScriptableObject
     [Tooltip("每次多发射子弹数")]
     public int shotsPerClick;
 
-    [Tooltip("攻击间隔缩短%，10 = 间隔缩短10%")]
-    public float attackInterval;
+    // 攻速已移除(远程攻击取消后无意义) — 需要时取消注释恢复
+    // [Tooltip("攻击间隔缩短%，10 = 间隔缩短10%")]
+    // public float attackInterval;
 
     [Header("=== 防具属性 ===")]
     [Tooltip("减伤%，10 = 10%")]
@@ -187,7 +188,8 @@ public class ItemSO : ScriptableObject
             [(StatId.CritRate, ModifierType.Percent)] = (item, v) => item.critRate = v * 100f,
             [(StatId.CritDamage, ModifierType.Percent)] = (item, v) => item.critDamage = v * 100f,
             [(StatId.ShotsPerClick, ModifierType.Flat)] = (item, v) => item.shotsPerClick = (int)v,
-            [(StatId.AttackInterval, ModifierType.Percent)] = (item, v) => item.attackInterval = v * 100f,
+            // 攻速已移除
+            // [(StatId.AttackInterval, ModifierType.Percent)] = (item, v) => item.attackInterval = v * 100f,
             [(StatId.DamageReduction, ModifierType.Percent)] = (item, v) => item.defense = v * 100f,
             [(StatId.MaxHealth, ModifierType.Flat)] = (item, v) => item.maxHealth = v,
             [(StatId.MoveSpeed, ModifierType.Percent)] = (item, v) => item.moveSpeed = v * 100f,
@@ -220,7 +222,8 @@ public class ItemSO : ScriptableObject
         Add(StatId.CritRate, critRate, ModifierType.Percent, percent: true);
         Add(StatId.CritDamage, critDamage, ModifierType.Percent, percent: true);
         Add(StatId.ShotsPerClick, shotsPerClick, ModifierType.Flat, percent: false);
-        Add(StatId.AttackInterval, attackInterval, ModifierType.Percent, percent: true);
+        // 攻速已移除
+        // Add(StatId.AttackInterval, attackInterval, ModifierType.Percent, percent: true);
         Add(StatId.DamageReduction, defense, ModifierType.Percent, percent: true);
         Add(StatId.MaxHealth, maxHealth, ModifierType.Flat, percent: false);
         Add(StatId.MoveSpeed, moveSpeed, ModifierType.Percent, percent: true);
@@ -244,7 +247,7 @@ public class ItemSO : ScriptableObject
         if (equipmentStats?.bonuses == null) return;
 
         if (attackDamage != 0 || critRate != 0 || critDamage != 0
-            || shotsPerClick != 0 || attackInterval != 0 || defense != 0
+            || shotsPerClick != 0 || defense != 0
             || maxHealth != 0 || moveSpeed != 0 || dodgeRate != 0
             || maxMana != 0 || manaRegen != 0
             || strength != 0 || intelligence != 0 || agility != 0)
