@@ -22992,7 +22992,7 @@ GameObject:
   - component: {fileID: 952423017}
   - component: {fileID: 952423018}
   - component: {fileID: 952423019}
-  m_Layer: 0
+  m_Layer: 13
   m_HasEditorInfo: 1
   m_Name: w1_transparent
   m_TagString: Untagged
@@ -35455,6 +35455,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   maxJumps: 2
+  jumpBreaksAttack: 1
+  jumpBufferWindow: 0.2
 --- !u!114 &1427529662
 MonoBehaviour:
   m_ObjectHideFlags: 0

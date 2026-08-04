@@ -248,6 +248,31 @@ public class PlayerCombat : MonoBehaviour
         _weaponThrow?.OnAttackEnd();
     }
 
+    /// <summary>跳跃打断攻击(PlayerJump 调用):解锁输入 + 退出攻击状态 + 重置连击</summary>
+    public void CancelAttackForJump()
+    {
+        IsInputLocked = false;
+        _inAttackAnim = false;
+        IsAirAttacking = false;
+        comboIndex = 1;   // 攻击被打断,连段归零
+        Anim?.SetBool(AnimParams.IsAttacking, false);
+        Anim?.SetBool(AnimParams.IsAirAttacking, false);
+
+        // 空中攻击可能改过重力,恢复
+        if (_owner != null && _airAttackGravityRestored == false)
+        {
+            Rigidbody2D rb = _owner.GetRigidbody();
+            if (rb != null)
+            {
+                rb.gravityScale = _airAttackOriginalGravity;
+                _airAttackGravityRestored = true;
+            }
+        }
+
+        // 武器投掷:被打断也触发重生判定,剑回位
+        _weaponThrow?.OnAttackEnd();
+    }
+
     /// <summary>攻击键按下时调用</summary>
     private void TriggerAttack()
     {
@@ -332,27 +357,6 @@ public class PlayerCombat : MonoBehaviour
     // 空中攻击
     // ============================================================
 
-    /// <summary>Debug:空中攻击期间每帧输出 Animator 状态(排查卡第一帧)</summary>
-    private float _airDebugTimer;
-
-    private void Update()
-    {
-        // 空中攻击期间每帧跟踪动画状态,10 帧后自动停
-        if (IsAirAttacking && Anim != null)
-        {
-            var st = Anim.GetCurrentAnimatorStateInfo(0);
-            var clipInfo = Anim.GetCurrentAnimatorClipInfo(0);
-            string clipName = clipInfo.Length > 0 ? clipInfo[0].clip.name : "NO_CLIP";
-            float clipLen = clipInfo.Length > 0 ? clipInfo[0].clip.length : -1f;
-            Debug.Log($"[AirDebug] frame={Time.frameCount} state={st.shortNameHash} clip={clipName} " +
-                      $"clipLen={clipLen:F3} stateTime={st.normalizedTime:F3} " +
-                      $"animSpeed={Anim.speed} timeScale={Time.timeScale} " +
-                      $"animEnabled={Anim.enabled} updateMode={Anim.updateMode}");
-
-            if (++_airDebugTimer > 10f) _airDebugTimer = 0f;  // 每 10 帧停一下防刷屏
-        }
-    }
-
     /// <summary>空中攻击:触发 AirAttack 动画 + 滞空(水平速度减半 + 垂直速度归零 + 重力减小)</summary>
     private void ExecuteAirAttack(PlayerController owner)
     {
@@ -360,22 +364,6 @@ public class PlayerCombat : MonoBehaviour
         IsAirAttacking = true;
         IsInputLocked = true;
         Anim?.SetBool(AnimParams.IsAirAttacking, true);
-
-        // Debug:确认 Animator 实际状态与参数
-        if (Anim != null)
-        {
-            var st = Anim.GetCurrentAnimatorStateInfo(0);
-            string clipName = Anim.GetCurrentAnimatorClipInfo(0).Length > 0
-                ? Anim.GetCurrentAnimatorClipInfo(0)[0].clip.name
-                : "NO_CLIP";
-            Debug.Log($"[Combat] ExecuteAirAttack: anim={(Anim != null)} " +
-                      $"currentState={clipName} " +
-                      $"nameHash={st.shortNameHash} time={st.normalizedTime:F3} speed={Anim.speed}");
-        }
-        else
-        {
-            Debug.Log("[Combat] ExecuteAirAttack: Anim == null!!");
-        }
 
         if (_owner != null)
             _owner.UpdateFacing(AttackDir);

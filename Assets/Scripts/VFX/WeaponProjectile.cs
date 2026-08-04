@@ -83,9 +83,9 @@ public class WeaponProjectile : MonoBehaviour
         }
 
         // 诊断日志:确认剑不可见的原因
-        Debug.Log($"[WeaponProjectile] sr={( _sr != null)} sprite={(_sr != null && _sr.sprite != null)} " +
-                  $"shaderFind={(_runtimeMat != null && _runtimeMat.shader != null ? _runtimeMat.shader.name : "NULL")} " +
-                  $"hasDissolve={_hasDissolve} mat={( _runtimeMat != null ? _runtimeMat.name : "NULL")}");
+        // Debug.Log($"[WeaponProjectile] sr={(_sr != null)} sprite={(_sr != null && _sr.sprite != null)} " +
+        //           $"shaderFind={(_runtimeMat != null && _runtimeMat.shader != null ? _runtimeMat.shader.name : "NULL")} " +
+        //           $"hasDissolve={_hasDissolve} mat={(_runtimeMat != null ? _runtimeMat.name : "NULL")}");
 
         StartCoroutine(FlyAndDissolve());
     }

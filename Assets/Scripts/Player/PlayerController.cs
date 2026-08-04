@@ -150,8 +150,6 @@ public class PlayerController : PlayerCharacterBase
         {
             if (grounded)
                 health.ClearAirHurt();
-            else
-                Debug.Log($"[LockDebug] AirHurt 卡住: grounded={grounded} frame={Time.frameCount}");
             return;
         }
 
@@ -161,8 +159,9 @@ public class PlayerController : PlayerCharacterBase
 
         if (IsActionLocked())
         {
-            Debug.Log($"[LockDebug] IsActionLocked: hurt={health != null && health.IsHurt} " +
-                      $"inputLock={combat != null && combat.IsInputLocked} freeze={FreezeTimer}");
+            // 攻击/受击锁定期间:仍要处理跳跃输入(打断攻击/缓冲补跳),
+            // 否则 PlayerJump 永远不被调用 → 攻击中按空格无效(吞键)
+            jump?.OnLockedUpdate(this);
             return;
         }
 

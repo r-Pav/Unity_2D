@@ -26,7 +26,6 @@ MonoBehaviour:
   critRate: 15
   critDamage: 0
   shotsPerClick: 1
-  attackInterval: 10
   defense: 0
   maxHealth: 0
   moveSpeed: 0

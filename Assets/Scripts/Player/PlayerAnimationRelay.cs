@@ -16,8 +16,6 @@ public class PlayerAnimationRelay : MonoBehaviour
         _health = GetComponentInParent<PlayerHealth>();
         // WeaponThrow 挂在 Player 的子物体(武器)上,从 Player 根向下找
         _weaponThrow = GetComponentInParent<PlayerController>()?.GetComponentInChildren<WeaponThrow>();
-
-        Debug.Log($"[Relay] Awake: combat={( _combat != null)} health={(_health != null)} weaponThrow={(_weaponThrow != null)}");
     }
 
     public void OnAttackAnimationStart() => _combat?.OnAttackAnimationStart();
@@ -32,15 +30,6 @@ public class PlayerAnimationRelay : MonoBehaviour
     public void OnWeaponAttackEnd() => _weaponThrow?.OnAttackEnd();
 
     // 空中攻击(动画事件下拉里选这些,转发到 PlayerCombat)
-    public void OnAirAttackHitFrame()
-    {
-        Debug.Log("[Relay] OnAirAttackHitFrame 收到");
-        _combat?.OnAirAttackHitFrame();
-    }
-
-    public void OnAirAttackEnd()
-    {
-        Debug.Log("[Relay] OnAirAttackEnd 收到");
-        _combat?.OnAirAttackEnd();
-    }
+    public void OnAirAttackHitFrame() => _combat?.OnAirAttackHitFrame();
+    public void OnAirAttackEnd() => _combat?.OnAirAttackEnd();
 }
