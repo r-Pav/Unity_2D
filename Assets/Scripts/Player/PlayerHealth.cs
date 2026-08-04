@@ -68,10 +68,13 @@ public class PlayerHealth : MonoBehaviour
     /// <summary>地面受击硬直中（Hurt 动画播放期间）</summary>
     public bool IsHurt { get; private set; }
 
-    /// <summary>空中受击（AirHurt 动画，落地后清除）</summary>
+    /// <summary>空中受击（AirHurt 动画，落地后清除；超时兜底防卡死）</summary>
     public bool IsAirHurt { get; private set; }
 
-    /// <summary>清除空中受击状态（落地时由 PlayerController 调用）</summary>
+    [Tooltip("空中受击最大时长(秒)— 超时强制恢复控制,防止被敌人顶着不落地导致永久锁死")]
+    [SerializeField] private float airHurtTimeout = 1.5f;
+
+    /// <summary>清除空中受击状态（落地时由 PlayerController 调用,或超时兜底）</summary>
     public void ClearAirHurt()
     {
         IsAirHurt = false;
@@ -196,6 +199,9 @@ public class PlayerHealth : MonoBehaviour
             {
                 IsAirHurt = true;
                 Anim.SetBool(AnimParams.IsAirHurt, true);
+                // 超时兜底:被敌人顶着不落地时强制恢复控制(防永久锁死)
+                StopCoroutine(nameof(AirHurtTimeoutRoutine));
+                StartCoroutine(nameof(AirHurtTimeoutRoutine));
             }
             else
             {
@@ -250,6 +256,13 @@ public class PlayerHealth : MonoBehaviour
         IsHurt = false;
         if (Anim != null)
             Anim.SetBool(AnimParams.IsHurt, false);
+    }
+
+    /// <summary>空中受击超时兜底:超过 airHurtTimeout 秒仍未落地(被敌人顶着)则强制恢复控制</summary>
+    private IEnumerator AirHurtTimeoutRoutine()
+    {
+        yield return new WaitForSeconds(airHurtTimeout);
+        ClearAirHurt();
     }
 
     /// <summary>获取控制减免值 [0~1]</summary>

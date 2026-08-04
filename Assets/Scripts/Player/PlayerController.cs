@@ -150,6 +150,8 @@ public class PlayerController : PlayerCharacterBase
         {
             if (grounded)
                 health.ClearAirHurt();
+            else
+                Debug.Log($"[LockDebug] AirHurt 卡住: grounded={grounded} frame={Time.frameCount}");
             return;
         }
 
@@ -157,7 +159,12 @@ public class PlayerController : PlayerCharacterBase
         // 若递减在锁定 return 之后则永远无法归零 → 永久锁死（蹬墙跳后卡下落动画）
         UpdateCooldowns();
 
-        if (IsActionLocked()) return;
+        if (IsActionLocked())
+        {
+            Debug.Log($"[LockDebug] IsActionLocked: hurt={health != null && health.IsHurt} " +
+                      $"inputLock={combat != null && combat.IsInputLocked} freeze={FreezeTimer}");
+            return;
+        }
 
         // 攻击朝向跟随当前输入（Fix：UpdateFacing 在 FixedUpdate 里，攻击在 Update 里会慢一帧）
         float h = Input.GetAxisRaw("Horizontal");

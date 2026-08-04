@@ -29,6 +29,15 @@ public class WeaponAttackConfig
 
     [Tooltip("飞行结束后溶解消失时长(秒)")]
     public float dissolveInDuration = 1.2f;
+
+    [Tooltip("飞行中碰到墙时插在墙上固定住(第三击用)。false = 正常飞行+溶解")]
+    public bool stickToWall = false;
+
+    [Tooltip("插墙后停留时长(秒),随后溶解消失")]
+    public float stickHoldDuration = 0.6f;
+
+    [Tooltip("插入墙内深度:检测到墙后沿飞行方向后退此距离再固定(控制剑插进墙多少)")]
+    public float stickDepth = 0.2f;
 }
 
 /// <summary>
@@ -66,6 +75,9 @@ public class WeaponThrow : MonoBehaviour
 
     [Tooltip("溶解材质(留空自动用 Custom/SpriteDissolve 生成)")]
     [SerializeField] private Material dissolveMaterial;
+
+    [Tooltip("墙 Layer(插墙判定用,stickToWall=true 时生效)")]
+    [SerializeField] private LayerMask wallLayer = 1 << 8;
 
     // ============================================================
     // 运行时状态
@@ -353,7 +365,11 @@ public class WeaponThrow : MonoBehaviour
             easeOutPower: config.easeOutPower,
             dissolveDuration: config.dissolveInDuration,
             dissolveDirection: dissolveDir,
-            dissolveMaterial: dissolveMaterial);
+            dissolveMaterial: dissolveMaterial,
+            stickToWall: config.stickToWall,
+            stickHoldDuration: config.stickHoldDuration,
+            stickDepth: config.stickDepth,
+            wallLayer: wallLayer);
 
         return proj;
     }

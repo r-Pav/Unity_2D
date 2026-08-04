@@ -58,6 +58,9 @@ public class PlayerCombat : MonoBehaviour
     [Tooltip("近战击退上挑力度（Y 轴最小值，保证敌人浮空）")]
     [SerializeField] private float meleeKnockbackUpForce = 0.3f;
 
+    [Tooltip("剑碰撞(clone)第三段击退力度 — 独立于方框,可单独调大")]
+    [SerializeField] private float swordKnockbackForce = 8f;
+
     [Tooltip("近战命中卡肉时长（秒）")]
     [SerializeField] private float meleeHitStopDuration = 0.08f;
 
@@ -456,6 +459,11 @@ public class PlayerCombat : MonoBehaviour
         Collider2D[] swordHits = GetSwordColliderHits(damageMask);
         Collider2D[] hits = MergeHits(boxHits, swordHits);
 
+        // 剑命中的 collider 集合(用于区分击退力度:剑第三段用 swordKnockbackForce)
+        var swordHitSet = new System.Collections.Generic.HashSet<Collider2D>();
+        foreach (var c in swordHits)
+            if (c != null) swordHitSet.Add(c);
+
         bool hitAnything = false;
 
         foreach (var col in hits)
@@ -466,7 +474,7 @@ public class PlayerCombat : MonoBehaviour
                 float dmg = RollCrit(damage);
                 bool isFinisher = comboIndex >= comboLimit;
 
-                // 第三段才施加击退
+                // 第三段才施加击退;剑碰撞(clone)命中用独立的更大力度
                 if (isFinisher)
                 {
                     Rigidbody2D enemyRb = enemy.GetComponent<Rigidbody2D>();
@@ -475,7 +483,8 @@ public class PlayerCombat : MonoBehaviour
                         Vector2 knockDir = ((Vector2)(enemy.transform.position - transform.position)).normalized;
                         if (knockDir.magnitude < 0.01f) knockDir = Vector2.right * AttackDir;
                         knockDir.y = Mathf.Max(knockDir.y, meleeKnockbackUpForce);
-                        enemyRb.AddForce(knockDir * meleeKnockbackForce, ForceMode2D.Impulse);
+                        float force = swordHitSet.Contains(col) ? swordKnockbackForce : meleeKnockbackForce;
+                        enemyRb.AddForce(knockDir * force, ForceMode2D.Impulse);
                     }
                 }
 

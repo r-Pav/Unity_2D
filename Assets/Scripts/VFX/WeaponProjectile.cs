@@ -16,6 +16,11 @@ public class WeaponProjectile : MonoBehaviour
     private SpriteRenderer _sr;
     private Material _runtimeMat;
     private bool _hasDissolve;   // 是否真的用了溶解 shader(否则只做 alpha 渐隐)
+    private bool _stickToWall;   // 飞行中碰到墙时插墙固定
+    private float _stickHoldDuration;
+    private float _stickDepth;   // 插入墙内深度(沿飞行方向后退距离)
+    private LayerMask _wallLayer;
+    private BoxCollider2D _col;  // clone 的碰撞体(插墙检测用,也是攻击范围延伸数据源)
 
     /// <summary>由 WeaponThrow 调用:传入路径/参数,随后自动飞行+溶解+自毁。
     /// SpriteRenderer / TrailRenderer 等视觉组件由模板继承,这里只换溶解材质。</summary>
@@ -25,14 +30,23 @@ public class WeaponProjectile : MonoBehaviour
         float easeOutPower,
         float dissolveDuration,
         float dissolveDirection,
-        Material dissolveMaterial)
+        Material dissolveMaterial,
+        bool stickToWall,
+        float stickHoldDuration,
+        float stickDepth,
+        LayerMask wallLayer)
     {
         _path = pathPoints;
         _travelDuration = travelDuration;
         _dissolveDuration = dissolveDuration;
         _easeOutPower = Mathf.Max(1f, easeOutPower);
+        _stickToWall = stickToWall;
+        _stickHoldDuration = Mathf.Max(0f, stickHoldDuration);
+        _stickDepth = stickDepth;
+        _wallLayer = wallLayer;
         _origin = transform.position;
         _sr = GetComponent<SpriteRenderer>();
+        _col = GetComponent<BoxCollider2D>();
 
         // 溶解材质:
         // - 拖了 dissolveMaterial 字段 → 用它
@@ -83,6 +97,7 @@ public class WeaponProjectile : MonoBehaviour
     private IEnumerator FlyAndDissolve()
     {
         // 阶段 1:沿路径飞行,由快变慢(缓出曲线,强度可调)
+        Vector3 prevPos = transform.position;
         float elapsed = 0f;
         while (elapsed < _travelDuration)
         {
@@ -93,6 +108,32 @@ public class WeaponProjectile : MonoBehaviour
             float t = 1f - Mathf.Pow(1f - raw, _easeOutPower);
 
             transform.position = _origin + GetPathPosition(t);
+
+            // 插墙检测:用射线扫本帧位移路径,路径穿过墙就停(任何速度都不穿透)
+            if (_stickToWall)
+            {
+                Vector3 dir = (transform.position - prevPos).normalized;
+                if (dir.sqrMagnitude < 0.01f) dir = Vector3.right;
+
+                float travelDist = (transform.position - prevPos).magnitude;
+                RaycastHit2D wallHit = Physics2D.Raycast(prevPos, dir, travelDist + 0.1f, _wallLayer);
+                if (wallHit.collider != null)
+                {
+                    // 停在墙面,碰撞器(已缩小到剑首)自然"插进"墙内:
+                    // 位置 = 上一帧位置 + (墙面距离 - 碰撞器沿飞行方向的半宽),让碰撞器前沿贴墙
+                    float halfLen = _col != null ? Mathf.Abs(_col.size.x) * 0.5f * transform.lossyScale.x : 0f;
+                    if (halfLen < 0f) halfLen = -halfLen;
+                    float stopDist = Mathf.Max(0f, wallHit.distance - halfLen);
+                    transform.position = prevPos + dir * stopDist;
+
+                    yield return StartCoroutine(StickAndDissolve());
+                    gameObject.SetActive(false);
+                    Destroy(gameObject);
+                    yield break;
+                }
+            }
+
+            prevPos = transform.position;
             yield return null;
         }
 
@@ -117,6 +158,34 @@ public class WeaponProjectile : MonoBehaviour
         // 自毁:先停用整个物体(让编辑器 Inspector 停止访问 TrailRenderer),再销毁
         gameObject.SetActive(false);
         Destroy(gameObject);
+    }
+
+    /// <summary>插墙:固定在当前位置,停留 stickHoldDuration 秒,再原地溶解</summary>
+    private IEnumerator StickAndDissolve()
+    {
+        // 固定不动:停留期间位置不再变化(插入墙内)
+        float hold = 0f;
+        while (hold < _stickHoldDuration)
+        {
+            hold += Time.deltaTime;
+            yield return null;
+        }
+
+        // 停留结束,原地溶解消失
+        float elapsed = 0f;
+        while (elapsed < _dissolveDuration)
+        {
+            elapsed += Time.deltaTime;
+            float dissolve = Mathf.Clamp01(elapsed / _dissolveDuration);
+
+            if (_hasDissolve)
+            {
+                _runtimeMat.SetFloat("_DissolveAmount", dissolve);
+            }
+            if (_sr != null) _sr.color = new Color(1f, 1f, 1f, 1f - dissolve);
+            yield return null;
+        }
+        if (_hasDissolve) _runtimeMat.SetFloat("_DissolveAmount", 1f);
     }
 
     // ============================================================
