@@ -13,6 +13,7 @@ public class WeaponProjectile : MonoBehaviour
     private float _dissolveDuration;
     private float _easeOutPower = 2f;   // 缓出强度:越大前段甩得越快
     private Vector3 _origin;
+    private Transform _followTarget;   // 非空时每帧基准跟随该物体(玩家移动中攻击不脱节)
     private SpriteRenderer _sr;
     private Material _runtimeMat;
     private bool _hasDissolve;   // 是否真的用了溶解 shader(否则只做 alpha 渐隐)
@@ -34,7 +35,8 @@ public class WeaponProjectile : MonoBehaviour
         bool stickToWall,
         float stickHoldDuration,
         float stickDepth,
-        LayerMask wallLayer)
+        LayerMask wallLayer,
+        Transform followTarget)
     {
         _path = pathPoints;
         _travelDuration = travelDuration;
@@ -47,6 +49,7 @@ public class WeaponProjectile : MonoBehaviour
         _origin = transform.position;
         _sr = GetComponent<SpriteRenderer>();
         _col = GetComponent<BoxCollider2D>();
+        _followTarget = followTarget;
 
         // 溶解材质:
         // - 拖了 dissolveMaterial 字段 → 用它
@@ -107,7 +110,10 @@ public class WeaponProjectile : MonoBehaviour
             // 缓出:前段甩得快,后段飘。power 越大前段越猛
             float t = 1f - Mathf.Pow(1f - raw, _easeOutPower);
 
-            transform.position = _origin + GetPathPosition(t);
+            // 基准点:有跟随目标(玩家)时每帧取玩家当前位置,移动中攻击不脱节;
+            // 无目标时固定用出手位置(原行为)
+            Vector3 basePos = _followTarget != null ? _followTarget.position : _origin;
+            transform.position = basePos + GetPathPosition(t);
 
             // 插墙检测:用射线扫本帧位移路径,路径穿过墙就停(任何速度都不穿透)
             if (_stickToWall)

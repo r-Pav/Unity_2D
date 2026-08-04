@@ -369,7 +369,8 @@ public class WeaponThrow : MonoBehaviour
             stickToWall: config.stickToWall,
             stickHoldDuration: config.stickHoldDuration,
             stickDepth: config.stickDepth,
-            wallLayer: wallLayer);
+            wallLayer: wallLayer,
+            followTarget: transform);
 
         return proj;
     }
