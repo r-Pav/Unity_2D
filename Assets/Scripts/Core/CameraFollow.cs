@@ -40,7 +40,8 @@ public class CameraFollow : MonoBehaviour
     [SerializeField] private float deadZoneHalf = 1.5f;
 
     [Header("追踪平滑")]
-    [SerializeField] [Range(0.1f, 20f)] private float smoothSpeed = 4f;
+    [Tooltip("玩家满速(≈此值时相机紧跟,0.08s 平滑);速度 0 时 0.3s 平稳")]
+    [SerializeField] private float maxFollowSpeed = 10f;
 
     [Header("垂直偏移")]
     [SerializeField] private float verticalOffset = 1f;
@@ -110,7 +111,17 @@ public class CameraFollow : MonoBehaviour
 
         // 相机平滑移动到目标位置
         Vector3 desired = new Vector3(desiredX, desiredY, -10f);
-        Vector3 pos = Vector3.SmoothDamp(transform.position - shakeOffset, desired, ref _posVelocity, 0.3f);
+
+        // 动态跟随:玩家速度越快,平滑时间越小(跟得越紧),防高速跑动时相机甩丢
+        // 慢速 0.3s 平稳,满速(≈12)0.08s 紧贴,中间线性过渡
+        float playerSpeed = 0f;
+        if (target != null)
+        {
+            var targetRb = target.GetComponent<Rigidbody2D>();
+            if (targetRb != null) playerSpeed = Mathf.Abs(targetRb.velocity.x);
+        }
+        float smoothTime = Mathf.Lerp(0.3f, 0.08f, Mathf.Clamp01(playerSpeed / maxFollowSpeed));
+        Vector3 pos = Vector3.SmoothDamp(transform.position - shakeOffset, desired, ref _posVelocity, smoothTime);
 
         // ── 震动 ──
         if (isShaking)

@@ -14,7 +14,13 @@ public abstract class CharacterBase : MonoBehaviour
 
     [Header("移动")]
     [Tooltip("基础移动速度（实际移速 = 基础值 + 修饰器叠加）")]
-    [SerializeField] protected float baseMoveSpeed = 6f;
+    [SerializeField] protected float baseMoveSpeed = 10f;
+
+    /// <summary>临时速度覆盖(非 null 时直接作为 MoveSpeed,绕过修饰器管线;用于管道内限速等场景)</summary>
+    private float? _moveSpeedOverride;
+
+    /// <summary>设置临时速度覆盖,null 恢复原速(修饰器管线)</summary>
+    public void SetMoveSpeedOverride(float? speed) => _moveSpeedOverride = speed;
 
     [Header("地面检测")]
     [Tooltip("要检测为地面的 Layer")]
@@ -61,10 +67,10 @@ public abstract class CharacterBase : MonoBehaviour
     public Collider2D Col => col;
     public Animator Animator => _animator;
 
-    /// <summary>当前移动速度（如有 StatModifierManager 则走修饰器管线，否则返回 baseMoveSpeed）</summary>
-    protected float MoveSpeed => statModManager != null
+    /// <summary>当前移动速度（有临时覆盖直接用；否则走修饰器管线）</summary>
+    protected float MoveSpeed => _moveSpeedOverride ?? (statModManager != null
         ? statModManager.GetFinalValue(baseMoveSpeed, StatId.MoveSpeed)
-        : baseMoveSpeed;
+        : baseMoveSpeed);
 
     // ============================================================
     // 生命周期

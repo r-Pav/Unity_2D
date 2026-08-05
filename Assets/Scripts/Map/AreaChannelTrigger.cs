@@ -23,6 +23,10 @@ public class AreaChannelTrigger : MonoBehaviour
     [Tooltip("镜头过渡速度")]
     [SerializeField] private float zoomSpeed = 3f;
 
+    [Header("管道内限速")]
+    [Tooltip("管道内玩家移动速度(进管道时强制,出管道恢复原速;0=不限速)")]
+    [SerializeField] private float channelMoveSpeed = 5f;
+
     private void OnTriggerEnter2D(Collider2D other)
     {
         if (!other.CompareTag("Player")) return;
@@ -40,19 +44,26 @@ public class AreaChannelTrigger : MonoBehaviour
             return;
         }
 
+        // 管道内限速:进管道设速度,出管道恢复
+        var character = other.GetComponentInParent<CharacterBase>();
+
         if (Mathf.Sign(dirFromPlayer) == Mathf.Sign(outsideDirection))
         {
-            // 从本侧地区进入管道:显示对侧地区(前后场景同时加载)+ 镜头拉近
+            // 从本侧地区进入管道:显示对侧地区(前后场景同时加载)+ 镜头拉近 + 限速
             zm.ShowArea(otherSideArea);
             if (zoomAmount > 0f)
                 zm.ZoomIn(zoomAmount, zoomSpeed);
+            if (character != null && channelMoveSpeed > 0f)
+                character.SetMoveSpeedOverride(channelMoveSpeed);
         }
         else
         {
-            // 从管道返回本侧地区:关闭对侧地区(来源)+ 镜头恢复
+            // 从管道返回本侧地区:关闭对侧地区(来源)+ 镜头恢复 + 恢复原速
             zm.HideArea(otherSideArea);
             if (zoomAmount > 0f)
                 zm.ZoomOut(zoomSpeed);
+            if (character != null)
+                character.SetMoveSpeedOverride(null);
         }
     }
 

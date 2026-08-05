@@ -109,9 +109,15 @@ public class PlayerJump : MonoBehaviour
         wasGrounded = grounded;
     }
 
-    /// <summary>尝试跳跃:消耗跳跃次数。成功返回 true</summary>
+    /// <summary>尝试跳跃:优先空中翻顶,否则消耗跳跃次数。成功返回 true</summary>
     private bool TryJump(PlayerController owner)
     {
+        // 空中/贴墙接近墙顶:优先翻顶(蹬墙跳飞行中接近对面墙顶可直接翻上去)
+        if (owner.NearWallTop() && owner.CanVault())
+        {
+            owner.WallClingState?.TriggerVault();
+            return true;
+        }
         if (jumpsLeft > 0)
         {
             jumpsLeft--;

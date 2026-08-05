@@ -117,7 +117,7 @@ public class PlayerGroundPound : MonoBehaviour
         float height = GetHeightAboveGround(grounded);
         // Debug.Log($"[GroundPound] Q pressed | cooldownTimer={cooldownTimer:F3} (limit={0}) | grounded={grounded} | height={height:F2} (min={minHeight}) | RESULT={cooldownTimer <= 0f && !grounded && height >= minHeight}");
 
-        if (cooldownTimer <= 0f && !grounded && height >= minHeight)
+        if (cooldownTimer <= 0f && !grounded && height >= minHeight && !pc.IsTouchingWall)
             StartPound(pc);
     }
 
