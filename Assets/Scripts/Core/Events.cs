@@ -365,6 +365,25 @@ public readonly struct ParryBuffConsumedEvent { }
 // 章节进度事件（被动解锁改造）
 // ============================================================
 
+// ============================================================
+// 地区切换事件
+// ============================================================
+
+/// <summary>地区切换完成事件 — 离开来源地区、进入目标地区后触发</summary>
+public readonly struct AreaSwitchEvent
+{
+    /// <summary>来源地区 key（null = 初始场景地区，非 Addressable 加载）</summary>
+    public readonly string sourceKey;
+    /// <summary>目标地区 key</summary>
+    public readonly string targetKey;
+
+    public AreaSwitchEvent(string sourceKey, string targetKey)
+    {
+        this.sourceKey = sourceKey;
+        this.targetKey = targetKey;
+    }
+}
+
 /// <summary>章节进度变化事件 — PassiveEquipManager.SetChapter/AdvanceChapter 触发</summary>
 public readonly struct ChapterChangedEvent
 {
