@@ -10,8 +10,7 @@ public class WallClingState : IState
     private readonly StateMachine stateMachine;
     private readonly Rigidbody2D rb;
 
-    // ---- 蹬墙跳额外跳跃 ----
-    private bool _hasExtraJump;
+    // ---- 蹬墙跳冷却 ----
     private float _kickCooldown;
 
     // ---- 翻顶去重 ----
@@ -22,7 +21,6 @@ public class WallClingState : IState
     private const float GapAdjustSpeed = 8f;
 
     // ---- 公开访问器 ----
-    public bool HasExtraJump => _hasExtraJump;
     public bool IsWallKicking { get; private set; }
 
     public WallClingState(PlayerCharacterBase player, StateMachine stateMachine)
@@ -35,15 +33,23 @@ public class WallClingState : IState
     public void OnEnter()
     {
         player.SetVelocityPublic(x: 0f, y: 0f);
-        _hasExtraJump = false;
         _kickCooldown = 0f;
         _vaultTriggered = false;
         IsWallKicking = false;
+
+        // 贴墙自动面向墙面(左墙面朝左、右墙面朝右),不依赖玩家输入
+        if (player.WallDirection != 0)
+            player.UpdateFacing(player.WallDirection);
     }
 
     public void OnUpdate()
     {
         if (CheckExit()) return;
+
+        // 贴墙期间锁定朝向朝墙(防方向键把玩家翻成背对墙下滑的奇怪视觉;
+        // 蹬墙跳时由 WallKick 改成弹出方向,之后朝向交给输入)
+        if (player.WallDirection != 0)
+            player.UpdateFacing(player.WallDirection);
 
         _kickCooldown -= Time.deltaTime;
 
@@ -74,12 +80,6 @@ public class WallClingState : IState
     public void OnExit()
     {
         IsWallKicking = false;
-    }
-
-    /// <summary>消耗额外跳跃机会（供 PlayerJump 调用）</summary>
-    public void ConsumeExtraJump()
-    {
-        _hasExtraJump = false;
     }
 
     // ---- 内部方法 ----
@@ -123,7 +123,10 @@ public class WallClingState : IState
         player.SetVelocityPublic(x: forceX, y: 0f);
         rb.AddForce(Vector2.up * forceY, ForceMode2D.Impulse);
 
-        _hasExtraJump = true;
+        // 蹬墙跳自动朝向:面向弹出方向(离墙,朝对面墙飞)
+        if (player.WallDirection != 0)
+            player.UpdateFacing(-player.WallDirection);
+
         _kickCooldown = 0.3f;
         IsWallKicking = true;
 

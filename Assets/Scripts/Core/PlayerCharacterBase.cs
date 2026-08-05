@@ -105,9 +105,17 @@ public abstract class PlayerCharacterBase : CharacterBase
         bool footHit = Physics2D.Raycast(footOrigin, dir, dist, layer);
         bool headHit = Physics2D.Raycast(headOrigin, dir, dist, layer);
 
-        if (footHit && headHit)      { isTouchingWall = true;  wallDirection = facing; }
-        else if (isTouchingWall && (footHit || headHit)) { }
-        else                         { isTouchingWall = false; wallDirection = 0; }
+        // 两条检测线都命中才算贴墙;只有一条命中不贴(墙不完整,防墙顶/墙沿边缘误贴)
+        if (footHit && headHit)
+        {
+            isTouchingWall = true;
+            wallDirection = facing;
+        }
+        else
+        {
+            isTouchingWall = false;
+            wallDirection = 0;
+        }
     }
 
     // ============================================================

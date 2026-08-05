@@ -65,8 +65,6 @@ public class PlayerJump : MonoBehaviour
             IsJumping = false;
             Anim?.SetBool(AnimParams.IsFalling, false);
             Anim?.SetBool(AnimParams.IsJumping, false);
-            if (owner.WallClingState != null)
-                owner.WallClingState.ConsumeExtraJump();
         }
 
         if (owner.IsDashing())
@@ -111,21 +109,12 @@ public class PlayerJump : MonoBehaviour
         wasGrounded = grounded;
     }
 
-    /// <summary>尝试跳跃:消耗次数/蹬墙额外跳。成功返回 true</summary>
+    /// <summary>尝试跳跃:消耗跳跃次数。成功返回 true</summary>
     private bool TryJump(PlayerController owner)
     {
         if (jumpsLeft > 0)
         {
             jumpsLeft--;
-            owner.ExecuteJump(owner.JumpForce);
-            IsJumping = true;
-            IsFalling = false;
-            Anim?.SetBool(AnimParams.IsJumping, true);
-            return true;
-        }
-        if (owner.WallClingState != null && owner.WallClingState.HasExtraJump)
-        {
-            owner.WallClingState.ConsumeExtraJump();
             owner.ExecuteJump(owner.JumpForce);
             IsJumping = true;
             IsFalling = false;
