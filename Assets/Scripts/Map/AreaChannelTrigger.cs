@@ -1,72 +1,63 @@
 using UnityEngine;
 
 /// <summary>
-/// 地区通道触发器 — 挂通道两端各一个实例。
-/// 玩家进入时调用 ZoneManager 执行地区切换协程。
+/// 管道触发器 — 双向自动识别进出方向,操作的都是"对侧地区"。
+/// 玩家从本侧地区进入管道 → 显示对侧地区 + 镜头拉近(前后场景同时加载)
+/// 玩家从管道返回本侧地区 → 关闭对侧地区 + 镜头恢复(对侧即来源地区)
+/// 设计前提:管道水平,本侧地区在触发器的 outsideDirection 方向。
 /// </summary>
 public class AreaChannelTrigger : MonoBehaviour
 {
-    // ============================================================
-    // 配置字段（编辑器设置）
-    // ============================================================
-
-    [Header("自动移动")]
-    [Tooltip("自动移动速度")]
-    [SerializeField] private float moveSpeed = 4f;
-
     [Header("地区")]
-    [Tooltip("目标地区根物体（进通道后到达出口时显示）")]
-    [SerializeField] private GameObject targetArea;
+    [Tooltip("对侧地区:从本侧进入管道时显示,从管道返回时关闭")]
+    [SerializeField] private GameObject otherSideArea;
 
-    [Tooltip("来源地区根物体（到达出口时隐藏；初始场景地区可留空）")]
-    [SerializeField] private GameObject sourceArea;
-
-    [Header("落点")]
-    [Tooltip("出口位置：玩家自动移动的终点（落地位置）")]
-    [SerializeField] private Vector3 targetSpawnPoint;
+    [Header("方向")]
+    [Tooltip("本侧地区相对触发器的方向:+1=右,-1=左(水平通道;用于判断玩家从哪边进入)")]
+    [SerializeField] private int outsideDirection = -1;
 
     [Header("镜头")]
-    [Tooltip("通道内镜头缩放量（orthoSize 缩小到此值，值越小镜头越近）")]
+    [Tooltip("管道内镜头缩放(orthoSize,越小越近;0=不缩放)")]
     [SerializeField] private float zoomAmount = 3f;
 
-    // ============================================================
-    // 公开属性（供 ZoneManager 读取）
-    // ============================================================
-
-    public float MoveSpeed => moveSpeed;
-    public GameObject TargetArea => targetArea;
-    public GameObject SourceArea => sourceArea;
-    public Vector3 TargetSpawnPoint => targetSpawnPoint;
-    public float ZoomAmount => zoomAmount;
-
-    // ============================================================
-    // 触发逻辑
-    // ============================================================
+    [Tooltip("镜头过渡速度")]
+    [SerializeField] private float zoomSpeed = 3f;
 
     private void OnTriggerEnter2D(Collider2D other)
     {
         if (!other.CompareTag("Player")) return;
 
+        var col = GetComponent<Collider2D>();
+        if (col == null) return;
+
+        // 判断玩家从哪边进入:玩家 x 相对触发器中心的方向
+        float dirFromPlayer = Mathf.Sign(other.transform.position.x - col.bounds.center.x);
+
         var zm = ZoneManager.Instance;
         if (zm == null)
         {
-            Debug.LogError("[AreaChannelTrigger] 场景中未找到 ZoneManager，请确保主场景有 ZoneManager 节点");
+            Debug.LogError("[AreaChannelTrigger] 场景中未找到 ZoneManager");
             return;
         }
 
-        if (!zm.CanTrigger) return;
-
-        if (targetArea == null)
+        if (Mathf.Sign(dirFromPlayer) == Mathf.Sign(outsideDirection))
         {
-            Debug.LogWarning("[AreaChannelTrigger] targetArea 为空，跳过切换");
-            return;
+            // 从本侧地区进入管道:显示对侧地区(前后场景同时加载)+ 镜头拉近
+            zm.ShowArea(otherSideArea);
+            if (zoomAmount > 0f)
+                zm.ZoomIn(zoomAmount, zoomSpeed);
         }
-
-        zm.StartTransition(this, other.transform);
+        else
+        {
+            // 从管道返回本侧地区:关闭对侧地区(来源)+ 镜头恢复
+            zm.HideArea(otherSideArea);
+            if (zoomAmount > 0f)
+                zm.ZoomOut(zoomSpeed);
+        }
     }
 
     // ============================================================
-    // Gizmos（编辑器可视化）
+    // Gizmos(编辑器可视化)
     // ============================================================
 
 #if UNITY_EDITOR
@@ -81,21 +72,10 @@ public class AreaChannelTrigger : MonoBehaviour
         Gizmos.color = new Color(0.2f, 0.8f, 0.2f, 0.6f);
         Gizmos.DrawWireCube(col.bounds.center, col.bounds.size);
 
-        // 移动方向箭头:从触发器中心指向落点
-        Vector3 arrowOrigin = col.bounds.center;
+        // 本侧方向指示(黄色箭头指向本侧地区)
+        Vector3 center = col.bounds.center;
         Gizmos.color = Color.yellow;
-        Gizmos.DrawRay(arrowOrigin, targetSpawnPoint - arrowOrigin);
-
-        // 箭头尖
-        Vector3 tip = targetSpawnPoint;
-        Gizmos.DrawRay(tip, Quaternion.Euler(0, 0, 150) * (tip - arrowOrigin).normalized * 0.5f);
-        Gizmos.DrawRay(tip, Quaternion.Euler(0, 0, -150) * (tip - arrowOrigin).normalized * 0.5f);
-
-        // 目标落点
-        Gizmos.color = Color.cyan;
-        Gizmos.DrawWireSphere(targetSpawnPoint, 0.3f);
-        Gizmos.DrawRay(targetSpawnPoint, Vector3.up * 1f);
-        Gizmos.DrawRay(targetSpawnPoint, Vector3.down * 1f);
+        Gizmos.DrawRay(center, new Vector3(outsideDirection, 0f, 0f) * 1.5f);
     }
 #endif
 }

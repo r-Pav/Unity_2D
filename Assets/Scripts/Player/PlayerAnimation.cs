@@ -2,12 +2,6 @@ using UnityEngine;
 
 public class PlayerAnimation : MonoBehaviour
 {
-    /// <summary>自动移动中(地区切换通道内):强制播放移动动画,不被 velocity 驱动逻辑覆盖</summary>
-    public bool AutoMoving { get; set; }
-
-    /// <summary>自动移动动画速度(Animator Speed 参数值)</summary>
-    public float AutoMoveSpeed { get; set; } = 4f;
-
     private Animator _animator;
     private Rigidbody2D _rb;
     private PlayerJump _jump;
@@ -33,14 +27,6 @@ public class PlayerAnimation : MonoBehaviour
     void Update()
     {
         if (_animator == null || _rb == null) return;
-
-        // 自动移动(地区切换通道内):强制移动动画,不受 velocity 驱动逻辑覆盖
-        if (AutoMoving)
-        {
-            _animator.SetFloat(AnimParams.Speed, AutoMoveSpeed);
-            _animator.SetBool(AnimParams.IsMove, true);
-            return;
-        }
 
         _animator.SetFloat(AnimParams.Speed, Mathf.Abs(_rb.velocity.x));
 
