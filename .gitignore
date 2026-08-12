@@ -81,3 +81,6 @@ Assets/Graphics/Font/AlibabaPuHuiTi-3/AlibabaPuHuiTi-3-55-RegularL3/*SDF*.asset.
 
 # 验证报告不入库
 验证报告_*.md
+
+# 项目文档不入库（本地维护）
+/Docs/
