@@ -363,7 +363,8 @@ public class EquipmentManager : MonoBehaviour
             Random.Range(-0.5f, 0.5f),
             Random.Range(0f, 0.3f));
 
-        DropItem.Spawn(dropItemPrefab, item, dropLevel, ownerMask, pos);
+        // useAnimation: true — 掉落物带落地动画，能看到装备掉出的过程（与 EnemyLootDrop 一致）
+        DropItem.Spawn(dropItemPrefab, item, dropLevel, ownerMask, pos, useAnimation: true);
 
         // Debug.Log($"[EquipmentManager] 生成掉落物：{item.DisplayName} at {pos}");
     }

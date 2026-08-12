@@ -30,6 +30,12 @@ public class ShockwaveProjectile : MonoBehaviour
     private float traveled;
     private bool hit;
 
+    /// <summary>发射者（ICombatant）— 由 BossSkillSlots 通过 SetSource 注入；null 表示环境/无攻击者</summary>
+    private ICombatant source;
+
+    /// <summary>设置发射者（由 BossSkillSlots 在 Initialize 后调用）— P1a</summary>
+    public void SetSource(ICombatant s) => source = s;
+
     // ── 拖尾计时 ──
     private float trailTimer;
     private const float TrailInterval = 0.08f;
@@ -95,13 +101,27 @@ public class ShockwaveProjectile : MonoBehaviour
         if (hitVFXPrefab != null)
             VFXSpawner.SpawnInWorld(hitVFXPrefab, transform.position);
 
-        PlayerController player = other.GetComponent<PlayerController>();
-        if (player != null)
+        PlayerHealth health = other.GetComponent<PlayerHealth>();
+        if (health != null)
         {
             Vector2 knockDir = direction;
             knockDir.y = 0f; // 地面波水平击退
             if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
-            player.TakeDamageWithKnockback(damage, knockDir);
+            // P1a:统一走 CombatResolver 结算（击退力度用配置字段 knockbackForce，修复原 10f 硬编码吞掉配置值的问题；时长与原 0.2s 一致）
+            CombatResolver.Resolve(source, health, new DamageInfo
+            {
+                amount = damage,
+                source = source,
+                sourcePosition = (Vector2)transform.position,
+                attackLabel = "",
+                knockback = new Knockback
+                {
+                    direction = knockDir,
+                    force = knockbackForce, // 原 TakeDamageWithKnockback 硬编码 10f → 改为配置字段生效
+                    duration = 0.2f,        // 原 KnockbackRoutine 硬编码硬直时长
+                    ignoreResistance = false
+                }
+            });
         }
 
         Destroy(gameObject);

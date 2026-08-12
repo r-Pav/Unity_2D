@@ -324,7 +324,25 @@ public class BossSkillSlots : MonoBehaviour
             {
                 Vector2 knockDir = dir;
                 knockDir.y = 0f;
-                pc.TakeDamageWithKnockback(so.damage, knockDir);
+                // P4c:统一走 CombatResolver 结算(原 pc.TakeDamageWithKnockback;攻击标签按原无标签,击退按原硬编码 10f/0.2s)
+                var ph = pc.GetComponent<PlayerHealth>();
+                if (ph != null)
+                {
+                    CombatResolver.Resolve(owner, ph, new DamageInfo
+                    {
+                        amount = so.damage,
+                        source = owner,
+                        sourcePosition = (Vector2)transform.position,
+                        attackLabel = "",
+                        knockback = new Knockback
+                        {
+                            direction = knockDir,
+                            force = 10f,     // 原 TakeDamageWithKnockback 硬编码击退力度
+                            duration = 0.2f, // 原 KnockbackRoutine 硬编码硬直时长
+                            ignoreResistance = false
+                        }
+                    });
+                }
                 if (so.hitVFXPrefab != null)
                     VFXSpawner.SpawnOnPlayer(so.hitVFXPrefab, pc.transform.position);
             }
@@ -354,7 +372,25 @@ public class BossSkillSlots : MonoBehaviour
                 Vector2 knockDir = ((Vector2)(pc.transform.position - (Vector3)center)).normalized;
                 knockDir.y = 0f;
                 if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
-                pc.TakeDamageWithKnockback(so.damage, knockDir);
+                // P4c:统一走 CombatResolver 结算(原 pc.TakeDamageWithKnockback;攻击标签按原无标签,击退按原硬编码 10f/0.2s)
+                var ph = pc.GetComponent<PlayerHealth>();
+                if (ph != null)
+                {
+                    CombatResolver.Resolve(owner, ph, new DamageInfo
+                    {
+                        amount = so.damage,
+                        source = owner,
+                        sourcePosition = (Vector2)transform.position,
+                        attackLabel = "",
+                        knockback = new Knockback
+                        {
+                            direction = knockDir,
+                            force = 10f,     // 原 TakeDamageWithKnockback 硬编码击退力度
+                            duration = 0.2f, // 原 KnockbackRoutine 硬编码硬直时长
+                            ignoreResistance = false
+                        }
+                    });
+                }
                 if (so.hitVFXPrefab != null)
                     VFXSpawner.SpawnOnPlayer(so.hitVFXPrefab, pc.transform.position);
             }
@@ -410,6 +446,7 @@ public class BossSkillSlots : MonoBehaviour
                 proj = wave.AddComponent<ShockwaveProjectile>();
             proj.Initialize(waveDir, so.waveSpeed, so.waveMaxDistance,
                             so.waveHeight, so.damage, so.knockbackForce);
+            proj.SetSource(owner); // P1a:携带发射者，命中玩家时作为 DamageInfo.source 触发弹反等结算
         }
 
         yield return new WaitForSeconds(so.activeTime);

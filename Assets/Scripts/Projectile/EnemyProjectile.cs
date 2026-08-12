@@ -51,7 +51,8 @@ public class EnemyProjectile : Projectile
     public static EnemyProjectile Spawn(Vector2 position, Vector2 direction,
         float damage, float speed, LayerMask hitLayers,
         float radius, Color color, Transform parent = null,
-        LayerMask wallLayers = default, LayerMask sourceLayer = default)
+        LayerMask wallLayers = default, LayerMask sourceLayer = default,
+        ICombatant source = null)
     {
         EnemyProjectile p = Pool.Get();
         if (parent != null) p.transform.SetParent(parent);
@@ -61,6 +62,8 @@ public class EnemyProjectile : Projectile
         p.Initialize(direction, damage, speed, hitLayers, sourceLayer);
         p.wallLayers = wallLayers;
         p.SetAppearance(radius, color);
+        // 携带发射者（ICombatant），命中结算时作为 DamageInfo.source — P1a
+        p.SetSource(source);
         // 确保子弹渲染在最前面，不被背景遮挡
         if (p.spriteRenderer != null)
             p.spriteRenderer.sortingOrder = 10;

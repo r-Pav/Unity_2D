@@ -270,6 +270,27 @@ public class SkillPool : MonoBehaviour
     // 公共接口 — 查询
     // ============================================================
 
+    /// <summary>
+    /// 按 skillName 查找初始技能 SO（读档恢复技能池用：初始技能在 initialSkills 配置，
+    /// 不在 SkillManager 槽位中，SaveSystem.FindSkillDataByName 找不到时兜底到这里）
+    /// </summary>
+    public bool TryGetInitialSkill(string skillName, out SkillData data)
+    {
+        if (initialSkills != null)
+        {
+            for (int i = 0; i < initialSkills.Count; i++)
+            {
+                if (initialSkills[i] != null && initialSkills[i].skillName == skillName)
+                {
+                    data = initialSkills[i];
+                    return true;
+                }
+            }
+        }
+        data = null;
+        return false;
+    }
+
     /// <summary>是否拥有某技能（按 skillName 查找）</summary>
     public bool HasSkill(string skillId)
     {

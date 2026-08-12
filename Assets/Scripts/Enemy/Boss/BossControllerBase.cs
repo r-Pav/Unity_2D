@@ -150,6 +150,19 @@ public abstract class BossControllerBase : EnemyControllerBase
     protected override void Awake()
     {
         base.Awake();
+
+        // [Boss 单独设计] EnemyConfigSO 已 Lv 收敛化（不含 Boss 专属字段），此覆盖块注释保留——
+        // 后续剥离到独立 BossConfigSO 时恢复：bossName/hpThresholds/phaseTransitionDuration/
+        // knockbackResistance/deathDelay 从 BossConfigSO 读取。
+        // if (config != null)
+        // {
+        //     bossName = config.bossName;
+        //     hpThresholds = config.hpThresholds;
+        //     phaseTransitionDuration = config.phaseTransitionDuration;
+        //     knockbackResistance = config.knockbackResistance;
+        //     deathDelay = config.deathDelay;
+        // }
+
         currentHealth = maxHealth;
         initialMaxHealth = maxHealth;
         currentPhase = 0;
@@ -267,6 +280,51 @@ public abstract class BossControllerBase : EnemyControllerBase
             // 阶段检测
             CheckPhaseTransition();
         }
+    }
+
+    // ============================================================
+    // ICombatant 覆写（P4b 玩家→敌人结算统一 — CombatResolver 直接调用时保留 Boss 专属规则）
+    // 注：ApplyDamage 不覆写 — 直接调用路径(base.TakeDamage→ApplyDamage)与 Resolve 路径共用基类
+    //     扣血/VFX 实现，避免虚调用导致 skillInterrupt/BossHpChangedEvent 在 TakeDamageFrom 中重复触发。
+    // ============================================================
+
+    /// <summary>可受击：非死亡 + 已激活 + 非阶段切换无敌</summary>
+    public override bool CanBeDamaged => !isDead && isActivated && !isPhaseTransitioning;
+
+    /// <summary>受击状态推送：中断当前技能 + 血量事件 + 立即切回追击（原 TakeDamageFrom 尾部逻辑）</summary>
+    public override void OnHitBy(DamageInfo info)
+    {
+        // 与原 TakeDamageFrom 一致：受击时中断当前技能 + 血量事件（死亡后也触发）
+        if (!isActivated) return;
+        if (isPhaseTransitioning) return;
+
+        skillSlots?.Interrupt();
+        EventBus.Trigger(new BossHpChangedEvent(this, currentHealth, maxHealth));
+
+        if (isDead) return;
+
+        // Boss 不被硬直打断，立即切回追击
+        EnterStunState();
+
+        float dir = (info.sourcePosition.x > transform.position.x) ? 1f : -1f;
+        moveInput = dir;
+        fsm.ChangeState(CreateChaseState());
+
+        // 阶段检测
+        CheckPhaseTransition();
+    }
+
+    /// <summary>施加击退（带抵抗系数）：resistance=1 时完全不吃击退</summary>
+    public override void ApplyKnockback(Knockback knockback)
+    {
+        if (rb == null || knockback.force <= 0f) return;
+        float knockMultiplier = 1f - knockbackResistance;
+        if (knockMultiplier <= 0.001f) return;
+
+        Vector2 knockDir = knockback.direction;
+        knockDir.y = 0f;  // Boss 不受上挑
+        if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
+        rb.AddForce(knockDir * knockback.force * knockMultiplier, ForceMode2D.Impulse);
     }
 
     // ============================================================
@@ -398,9 +456,9 @@ public abstract class BossControllerBase : EnemyControllerBase
 
     /// <summary>
     /// Boss 攻击循环协程：选择可用技能 → 执行 → fallback 普攻。
-    /// 供 FirstBoss.BossAttackState 调用。
+    /// 供 FirstBoss.BossAttackState 调用（提升独立文件后需 public）。
     /// </summary>
-    protected System.Collections.IEnumerator ExecuteBossSkillCycle()
+    public System.Collections.IEnumerator ExecuteBossSkillCycle()
     {
         if (skillSlots == null)
         {

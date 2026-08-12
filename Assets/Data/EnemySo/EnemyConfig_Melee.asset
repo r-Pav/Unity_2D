@@ -1,0 +1,45 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a64ecb58d1de7a2449c9834784439b65, type: 3}
+  m_Name: EnemyConfig_Melee
+  m_EditorClassIdentifier: 
+  maxHealth: 3
+  detectionWidth: 8
+  detectionHeight: 3
+  attackWidth: 1.5
+  attackHeight: 1.5
+  attackCooldownDuration: 1
+  rangedKnockbackForce: 5
+  patrolRange: 3
+  meleeDamage: 1
+  contactPushForce: 3
+  contactCooldown: 0.3
+  contactDetectRadius: 0.6
+  retreatWidth: 3
+  retreatHeight: 3
+  retreatRecoverWidth: 10
+  retreatRecoverHeight: 6
+  rangedDamage: 1
+  bulletSpeed: 6
+  bulletRadius: 0.5
+  bossName: Boss
+  hpThresholds:
+  - 0.6
+  - 0.25
+  phaseTransitionDuration: 1.5
+  knockbackResistance: 0.8
+  deathDelay: 2
+  hpMultiplier: 12
+  moveSpeedMultiplier: 0.5
+  attackRangeMultiplier: 1.5
+  p2MoveSpeedMult: 1.2
+  p3MoveSpeedMult: 1.5

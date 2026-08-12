@@ -2,11 +2,12 @@ using UnityEngine;
 using System.Collections;
 
 /// <summary>
-/// 玩家战斗模块（子组件）— 由 PlayerController 自动查找并调用
-/// 挂到 Player 对象上即可激活攻击功能，不挂则无
-/// 遵循组件模式：主组件控制流程，子组件实现具体功能
-/// P1 改造：引用 StatModifierManager，伤害倍率加成，公开闪避/减伤判定方法
-/// 近战三连击：武器挥砍动画 + 中间帧 OverlapBox 判定 + 连击窗口链式输入
+/// 玩家战斗模块（子组件）— 由 PlayerController 自动查找
+/// P2 改造:攻击/格挡/空中攻击/下坠攻击的输入入口已迁移至 FSM 状态类
+/// (PlayerAttackState / PlayerAirAttackState / PlayerBlockState / PlayerGroundPoundState),
+/// 本组件保留:伤害判定核心(OnMeleeHitFrame)、暴击/闪避/减伤查询、
+/// 格挡减伤修饰器 + 弹反 Buff + 弹反闪烁视觉、OnAttack 战斗态锁定事件、
+/// OnAttackAnimationStart/End 等动画事件薄转发(正式事件迁移在 P5)
 /// </summary>
 public class PlayerCombat : MonoBehaviour
 {
@@ -88,6 +89,13 @@ public class PlayerCombat : MonoBehaviour
     [Tooltip("[预留] 格挡结束 Animator Trigger 名")]
     [SerializeField] private string blockEndAnimTrigger = "";
 
+    [Header("连击")]
+    [Tooltip("连击重置时间（秒）— 超过此时间未连击则 comboIndex 重置为 1")]
+    [SerializeField] private float comboResetTimer = 0.6f;
+
+    [Tooltip("动画结束后此窗口内(秒)点击直接接下一段,不落 idle。窗口内无点击则正常退出回 idle")]
+    [SerializeField] private float comboExitWindow = 0.12f;
+
     // ============================================================
     // 运行时状态
     // ============================================================
@@ -95,30 +103,7 @@ public class PlayerCombat : MonoBehaviour
     private float attackCooldownTimer;
     private PlayerController _owner;
     private StatModifierManager statModManager;
-    private PassiveEquipManager passiveEquipManager;
-    private CharacterBase _charBase;
     private WeaponThrow _weaponThrow;   // 武器投掷(挂在 Player 子物体武器上)
-
-    // 空中攻击状态
-    private float _airAttackOriginalGravity = 1f;   // 空中攻击前的重力(结束时恢复)
-    private bool _airAttackGravityRestored = true;  // 重力是否已恢复(防重复恢复)
-
-    // 延迟初始化：CharacterBase 的 Awake 可能未跑完，在访问时懒加载
-    private Animator Anim => _charBase != null ? _charBase.Animator : null;
-
-    [Header("连击")]
-    [Tooltip("连击重置时间（秒）— 超过此时间未连击则 comboIndex 重置为 1")]
-    [SerializeField] private float comboResetTimer = 0.6f;
-
-    private int comboIndex = 1;
-    private const int comboLimit = 3;
-    private float timeLastAttackExit;
-    private bool _inAttackAnim;
-
-    /// <summary>战斗超时计时器</summary>
-    private float combatTimeoutTimer;
-    private const float CombatTimeoutDuration = 5f;
-    private bool playerCombatFlag; // 玩家侧 combat 标记（防止重复 +1）
 
     /// <summary>攻击时触发（供 PlayerController 订阅，用于战斗态锁定）</summary>
     public System.Action OnAttack;
@@ -126,21 +111,12 @@ public class PlayerCombat : MonoBehaviour
     /// <summary>公开近战基础冷却（供 PlayerStatPanel 读取）</summary>
     public float BaseMeleeAttackCooldown => meleeAttackCooldown;
 
-    public bool IsAttacking => _inAttackAnim;
-    public bool IsAirAttacking { get; private set; }  // 空中攻击状态(PlayerAnimation 聚合用)
-    public bool IsInputLocked { get; private set; }
-
     // ── 格挡/弹反 ──
     /// <summary>是否正在格挡（按住右键）</summary>
     private bool isBlocking;
 
-    /// <summary>是否正在格挡（C# 字段为状态源）</summary>
-    public bool IsBlocking => isBlocking;
-
-    /// <summary>是否持有弹反 Buff</summary>
+    /// <summary>是否持有弹反 Buff（OnMeleeHitFrame 重击分支读取）</summary>
     private bool hasParryBuff;
-    /// <summary>格挡开始时间（用于区分长短按）</summary>
-    private float blockStartTime;
     /// <summary>玩家原始颜色（格挡/弹反恢复用）</summary>
     private Color _playerOriginalColor;
     private Coroutine _parryFlashRoutine;
@@ -154,9 +130,8 @@ public class PlayerCombat : MonoBehaviour
 
     private void Awake()
     {
+        _owner = GetComponent<PlayerController>();
         statModManager = GetComponent<StatModifierManager>();
-        passiveEquipManager = GetComponent<PassiveEquipManager>();
-        _charBase = GetComponent<CharacterBase>();
         // 武器投掷(挂在 Player 子物体武器上),攻击结束事件顺带触发其重生判定
         _weaponThrow = GetComponentInChildren<WeaponThrow>();
 
@@ -181,241 +156,86 @@ public class PlayerCombat : MonoBehaviour
     }
 
     // ============================================================
-    // 父类调用接口
+    // 攻击冷却 — 由 PlayerController.UpdateCooldowns 驱动递减,状态类进入攻击前查询
     // ============================================================
 
-    /// <summary>每帧递减攻击冷却 / 战斗超时 / 连击窗口，处理输入</summary>
-    public void OnPlayerUpdate(PlayerController owner)
+    /// <summary>攻击冷却是否就绪（Idle/Move/Jump/Fall 状态进入 Attack/AirAttack 前判断）</summary>
+    public bool AttackCooldownReady => attackCooldownTimer <= 0f;
+
+    /// <summary>消耗攻击冷却：记录一次攻击起始（AttackState/AirAttackState.OnEnter 调用）</summary>
+    public void ConsumeAttackCooldown()
     {
-        _owner = owner;
-        TickTimers();
-        HandleBlockParryInput(owner);
-        TryAttack(owner);
+        attackCooldownTimer = GetEffectiveAttackCooldown(meleeAttackCooldown);
     }
 
-    private void TickTimers()
+    /// <summary>每帧递减攻击冷却（原 OnPlayerUpdate → TickTimers 迁出,由 PlayerController.UpdateCooldowns 调用）</summary>
+    public void TickTimers()
     {
-        // 攻击冷却(攻速已移除,冷却按原始值递减)
         if (attackCooldownTimer > 0f)
-        {
             attackCooldownTimer -= Time.deltaTime;
-        }
-
-        // 战斗超时
-        if (combatTimeoutTimer > 0f)
-        {
-            combatTimeoutTimer -= Time.deltaTime;
-            if (combatTimeoutTimer <= 0f && playerCombatFlag)
-            {
-                passiveEquipManager?.SetCombatState(false);
-                playerCombatFlag = false;
-            }
-        }
-
     }
 
     // ============================================================
-    // 近战攻击 — 三连击系统
+    // 连击配置 — 供 PlayerController 创建 PlayerAttackState 时注入
     // ============================================================
 
-    /// <summary>
-    /// 近战攻击 — 触发动画，伤害判定由动画事件 OnMeleeHitFrame 驱动
-    /// </summary>
-    private void ExecuteMeleeAttack()
-    {
-        OnAttack?.Invoke();
-        TriggerAttack();
-    }
+    /// <summary>连击重置时间（秒）</summary>
+    public float ComboResetTimer => comboResetTimer;
+    /// <summary>动画结束后预输入缓冲窗口（秒）</summary>
+    public float ComboExitWindow => comboExitWindow;
+    /// <summary>弹反判定最大时长（秒）</summary>
+    public float ParryMaxWindow => parryMaxWindow;
 
-    /// <summary>Attack.anim 首帧触发</summary>
+    /// <summary>近战攻击标签（供 ICombatant.CurrentAttackLabel 查询）</summary>
+    public string MeleeAttackType => meleeAttackType;
+
+    /// <summary>终结重击攻击标签（供 ICombatant.CurrentAttackLabel 查询）</summary>
+    public string MeleeFinisherAttackType => meleeFinisherAttackType;
+
+    // ============================================================
+    // 动画事件薄转发 — 正式事件迁移在 P5,P2 先转发给 FSM 当前状态类
+    // ============================================================
+
+    /// <summary>AttackN.anim 首帧触发 → 转发 AttackState.OnAnimStart（进入攻击表现:朝向）</summary>
     public void OnAttackAnimationStart()
     {
-        _inAttackAnim = true;  // 攻击动画播放期间 IsAttacking 为 true
-        IsInputLocked = true;
-        EnterAttack();
+        if (_owner != null && _owner.PlayerFsm?.CurrentState is PlayerAttackState atk)
+            atk.OnAnimStart();
     }
 
-    /// <summary>末帧触发：无排队则退子机回 Locomotion。连击不依赖此事件，由 TriggerAttack 的 Play 直切实现</summary>
+    /// <summary>AttackN.anim 末帧触发 → 转发 AttackState.OnAnimEnd（排队直切/预输入缓冲）</summary>
     public void OnAttackAnimationEnd()
     {
-        IsInputLocked = false;
-        ExitAttack();
-        _inAttackAnim = false;
-        // IsAttacking=false 触发攻击子机 Exit（控制器条件），退回父层 Locomotion
-        Anim?.SetBool(AnimParams.IsAttacking, false);
-
-        // 武器投掷重生判定:攻击结束,respawnDelay 秒内无新攻击则剑归位
-        _weaponThrow?.OnAttackEnd();
+        if (_owner != null && _owner.PlayerFsm?.CurrentState is PlayerAttackState atk)
+            atk.OnAnimEnd();
     }
 
-    /// <summary>跳跃打断攻击(PlayerJump 调用):解锁输入 + 退出攻击状态 + 重置连击</summary>
-    public void CancelAttackForJump()
-    {
-        IsInputLocked = false;
-        _inAttackAnim = false;
-        IsAirAttacking = false;
-        comboIndex = 1;   // 攻击被打断,连段归零
-        Anim?.SetBool(AnimParams.IsAttacking, false);
-        Anim?.SetBool(AnimParams.IsAirAttacking, false);
-
-        // 空中攻击可能改过重力,恢复
-        if (_owner != null && _airAttackGravityRestored == false)
-        {
-            Rigidbody2D rb = _owner.GetRigidbody();
-            if (rb != null)
-            {
-                rb.gravityScale = _airAttackOriginalGravity;
-                _airAttackGravityRestored = true;
-            }
-        }
-
-        // 武器投掷:被打断也触发重生判定,剑回位
-        _weaponThrow?.OnAttackEnd();
-    }
-
-    /// <summary>攻击键按下时调用</summary>
-    private void TriggerAttack()
-    {
-        if (Anim == null) return;
-
-        // comboReset：超时或越界重置
-        if (Time.time > timeLastAttackExit + comboResetTimer)
-            comboIndex = 1;
-        if (comboIndex > comboLimit)
-            comboIndex = 1;
-
-        if (_inAttackAnim)
-        {
-            // 攻击中再次点击：直接切下一段（Play 强制切换，不经过子机 Exit，无 loc 间隙）
-            if (comboIndex < comboLimit)
-            {
-                comboIndex++;  // 关键：连击直切时同步递增，否则快速连点永远卡在下一段
-                _inAttackAnim = true;
-                Anim.SetBool(AnimParams.IsAttacking, true);
-                Anim.SetInteger(AnimParams.AttackIndex, comboIndex);
-                Anim.Play("Attack" + comboIndex, 0, 0f);
-            }
-        }
-        else
-        {
-            _inAttackAnim = true;
-            Anim.SetBool(AnimParams.IsAttacking, true);
-            Anim.SetInteger(AnimParams.AttackIndex, comboIndex);
-        }
-    }
-
-    /// <summary>状态进入：设置 IsAttacking、更新朝向(攻速已移除,不再改 Anim.speed)</summary>
-    private void EnterAttack()
-    {
-        Anim?.SetBool(AnimParams.IsAttacking, true);
-
-        if (_owner != null)
-            _owner.UpdateFacing(AttackDir);
-
-        // 攻速已移除:Anim.speed 保持 1,不再按 AttackInterval 修改
-        // (原逻辑:Anim.speed = intervalMult,攻击结束未恢复导致跑步/跳跃动画变速)
-        // if (Anim != null && statModManager != null)
-        // {
-        //     float intervalMult = statModManager.GetFinalValue(1f, StatId.AttackInterval);
-        //     Anim.speed = Mathf.Max(0.1f, intervalMult);
-        // }
-    }
-
-    /// <summary>状态退出：comboIndex++，溢出归1，记录时间</summary>
-    private void ExitAttack()
-    {
-        comboIndex++;
-        if (comboIndex > comboLimit) comboIndex = 1;
-        timeLastAttackExit = Time.time;
-    }
-
-    private void TryAttack(PlayerController owner)
-    {
-        if (!Input.GetMouseButtonDown(0)) return;
-        if (attackCooldownTimer > 0f) return;
-        if (owner.IsDashing()) return;
-
-        attackCooldownTimer = GetEffectiveAttackCooldown(meleeAttackCooldown);
-        if (!playerCombatFlag)
-        {
-            passiveEquipManager?.SetCombatState(true);
-            playerCombatFlag = true;
-        }
-        combatTimeoutTimer = CombatTimeoutDuration;
-
-        // 空中攻击分支:空中按攻击键 → AirAttack 动画 + 滞空,不走地面连击
-        if (!owner.IsGrounded())
-        {
-            ExecuteAirAttack(owner);
-            return;
-        }
-
-        ExecuteMeleeAttack();
-    }
-
-    // ============================================================
-    // 空中攻击
-    // ============================================================
-
-    /// <summary>空中攻击:触发 AirAttack 动画 + 滞空(水平速度减半 + 垂直速度归零 + 重力减小)</summary>
-    private void ExecuteAirAttack(PlayerController owner)
-    {
-        _inAttackAnim = true;
-        IsAirAttacking = true;
-        IsInputLocked = true;
-        Anim?.SetBool(AnimParams.IsAirAttacking, true);
-
-        if (_owner != null)
-            _owner.UpdateFacing(AttackDir);
-
-        // 滞空:水平速度减半 + 垂直速度归零 + 重力减小
-        Rigidbody2D rb = owner.GetRigidbody();
-        if (rb != null)
-        {
-            rb.velocity = new Vector2(rb.velocity.x * 0.5f, 0f);
-            _airAttackOriginalGravity = rb.gravityScale;
-            rb.gravityScale = Mathf.Max(0.3f, _airAttackOriginalGravity * 0.3f);
-            _airAttackGravityRestored = false;
-        }
-
-        OnAttack?.Invoke();
-    }
-
-    /// <summary>空中攻击命中帧(动画事件):伤害判定 + 触发武器投掷</summary>
+    /// <summary>AirAttack.anim 命中帧 → 转发 AirAttackState.OnAirAttackHitFrame（伤害+武器投掷）</summary>
     public void OnAirAttackHitFrame()
     {
-        // 伤害判定:复用近战命中检测
-        OnMeleeHitFrame();
-
-        // 触发空中武器投掷(如果挂了 WeaponThrow)
-        _weaponThrow?.OnAirAttackStart();
+        if (_owner != null && _owner.PlayerFsm?.CurrentState is PlayerAirAttackState air)
+            air.OnAirAttackHitFrame();
     }
 
-    /// <summary>空中攻击结束(动画事件):恢复重力,退出 AirAttack 状态,触发武器重生判定</summary>
+    /// <summary>AirAttack.anim 结束 → 转发 AirAttackState.OnAirAttackEnd（退回下落）</summary>
     public void OnAirAttackEnd()
     {
-        Debug.Log("[Combat] OnAirAttackEnd 收到");
-        IsInputLocked = false;
-        _inAttackAnim = false;
-        IsAirAttacking = false;
-        Anim?.SetBool(AnimParams.IsAirAttacking, false);
-
-        // 武器投掷重生判定:空中攻击结束,respawnDelay 秒内无新攻击则剑归位
-        _weaponThrow?.OnAttackEnd();
-
-        // 恢复重力
-        if (_owner != null)
-        {
-            Rigidbody2D rb = _owner.GetRigidbody();
-            if (rb != null && _airAttackGravityRestored == false)
-            {
-                rb.gravityScale = _airAttackOriginalGravity;
-                _airAttackGravityRestored = true;
-            }
-        }
+        if (_owner != null && _owner.PlayerFsm?.CurrentState is PlayerAirAttackState air)
+            air.OnAirAttackEnd();
     }
 
-    private int AttackDir
+    /// <summary>AnimationEvent 入口（P2 动画事件仍经 Relay 调用）：从 FSM 当前状态读取连击参数后走伤害核心</summary>
+    public void OnMeleeHitFrame()
+    {
+        // 兜底:非攻击状态收到命中帧(切换竞态/延迟事件),按第 1 段处理
+        int idx = 1;
+        if (_owner != null && _owner.PlayerFsm?.CurrentState is PlayerAttackState atk)
+            idx = atk.ComboIndex;
+        OnMeleeHitFrame(idx, 3, false);
+    }
+
+    /// <summary>攻击朝向：优先当前输入,否则取玩家朝向（供状态类/伤害核心读取）</summary>
+    public int AttackDir
     {
         get
         {
@@ -426,8 +246,12 @@ public class PlayerCombat : MonoBehaviour
         }
     }
 
-    /// <summary>AnimationEvent 调用 — 在挥砍命中帧执行伤害判定 + 卡肉 + 闪烁</summary>
-    public void OnMeleeHitFrame()
+    // ============================================================
+    // 近战伤害判定核心（保留,由 AttackState.OnHitFrame / 动画事件调用）
+    // ============================================================
+
+    /// <summary>挥砍命中帧伤害判定 — OverlapBox 检测/卡肉/击退/闪白（原 OnMeleeHitFrame 核心,参数化连击上下文）</summary>
+    public void OnMeleeHitFrame(int comboIndex, int comboLimit, bool isAirAttack)
     {
 
         float damage = GetEffectiveDamage() * meleeDamage;
@@ -462,22 +286,42 @@ public class PlayerCombat : MonoBehaviour
                 float dmg = RollCrit(damage);
                 bool isFinisher = comboIndex >= comboLimit;
 
-                // 第三段才施加击退;剑碰撞(clone)命中用独立的更大力度
-                if (isFinisher)
-                {
-                    Rigidbody2D enemyRb = enemy.GetComponent<Rigidbody2D>();
-                    if (enemyRb != null)
-                    {
-                        Vector2 knockDir = ((Vector2)(enemy.transform.position - transform.position)).normalized;
-                        if (knockDir.magnitude < 0.01f) knockDir = Vector2.right * AttackDir;
-                        knockDir.y = Mathf.Max(knockDir.y, meleeKnockbackUpForce);
-                        float force = swordHitSet.Contains(col) ? swordKnockbackForce : meleeKnockbackForce;
-                        enemyRb.AddForce(knockDir * force, ForceMode2D.Impulse);
-                    }
-                }
+                // 基础击退:第三段才有,沿"远离 player"方向(剑命中用更大力度)
+                float baseForce = isFinisher ? (swordHitSet.Contains(col) ? swordKnockbackForce : meleeKnockbackForce) : 0f;
+
+                // 武器击退:每击独立配 (x, y) 向量,x 按朝向镜像,方向由武器决定(不依赖 player 位置)
+                Vector2 weaponForce = Vector2.zero;
+                if (_weaponThrow != null)
+                    weaponForce = _weaponThrow.GetKnockbackBonus(comboIndex, isAirAttack);
+                if (weaponForce.x != 0f) weaponForce.x *= AttackDir;
+
+                // 实际击退 = 基础方向 × 基础力度 + 武器向量(向量相加)
+                Vector2 knockDir = ((Vector2)(enemy.transform.position - transform.position)).normalized;
+                if (knockDir.magnitude < 0.01f) knockDir = Vector2.right * AttackDir;
+                knockDir.y = Mathf.Max(knockDir.y, meleeKnockbackUpForce);
+                Vector2 totalForce = knockDir * baseForce + weaponForce;
 
                 string atkType = isFinisher ? meleeFinisherAttackType : meleeAttackType;
-                enemy.TakeDamageFrom(dmg, (Vector2)transform.position, atkType);
+
+                // P4b:统一走 CombatResolver 结算(不再直接 enemy.TakeDamageFrom + enemyRb.AddForce)。
+                // 击退向量(含 facing 镜像/上挑)构造进 Knockback,由敌人侧 ApplyKnockback 施加;
+                // source = 玩家 ICombatant 实现(P4c PlayerHealth 接入后 GetComponent 自动取到;当前为 null 不影响敌人侧结算)
+                ICombatant source = GetComponent<ICombatant>();
+                DamageInfo info = new DamageInfo
+                {
+                    amount = dmg,
+                    source = source,
+                    sourcePosition = (Vector2)transform.position,
+                    attackLabel = atkType,
+                    knockback = new Knockback
+                    {
+                        direction = totalForce.sqrMagnitude > 0.0001f ? totalForce.normalized : Vector2.right * AttackDir,
+                        force = totalForce.sqrMagnitude > 0.0001f ? totalForce.magnitude : 0f,
+                        duration = 0f,
+                        ignoreResistance = false
+                    }
+                };
+                CombatResolver.Resolve(source, enemy, info);
                 hitAnything = true;
 
                 VFXSpawner.SpawnOnPlayer(slashVFXPrefab, col.transform.position);
@@ -534,7 +378,9 @@ public class PlayerCombat : MonoBehaviour
 
     /// <summary>
     /// 弹反重击 — 高击退力 + 强制硬直，消耗弹反 Buff。
-    /// 由 PerformMeleeHitDetection 在检测到 hasParryBuff 时调用。
+    /// 由 OnMeleeHitFrame 在检测到 hasParryBuff 时调用。
+    /// P6:统一走 CombatResolver 结算(原 enemy.TakeDamage + enemyRb.AddForce(8f) + EnterStunState 三处直接调用删除)。
+    /// 数值保持:伤害=RollCrit(baseDamage)、击退 8f(构造进 Knockback.force,原 3f→8f)、强制硬直(重击标签 → OnHitBy 近战路径 → EnterStunState)。
     /// </summary>
     private void ExecuteHeavyMeleeAttack(float baseDamage)
     {
@@ -551,19 +397,32 @@ public class PlayerCombat : MonoBehaviour
             if (enemy != null)
             {
                 float dmg = RollCrit(baseDamage);
-                enemy.TakeDamage(dmg, meleeAttackType);
                 hitAnything = true;
 
-                // 强化击退：8f（原 3f）
+                // 强化击退方向：水平远离玩家（原逻辑，Y 轴归零）
                 Vector2 knockDir = ((Vector2)(enemy.transform.position - transform.position)).normalized;
                 knockDir.y = 0f;
                 if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
-                Rigidbody2D enemyRb = enemy.GetComponent<Rigidbody2D>();
-                if (enemyRb != null)
-                    enemyRb.AddForce(knockDir * 8f, ForceMode2D.Impulse);
 
-                // 强制硬直
-                enemy.EnterStunState();
+                // 与其他玩家→敌人路径一致：attackLabel 用重击标签(meleeFinisherAttackType)，
+                // Poise.IsMeleeAttack("Sword_Heavy")=true → OnHitBy 近战路径 → EnterStunState 强制硬直；
+                // 敌人 hitVFXVariants 均为空数组 → GetHitVFX 一律回退默认,标签切换不影响受击 VFX。
+                ICombatant source = GetComponent<ICombatant>();
+                DamageInfo info = new DamageInfo
+                {
+                    amount = dmg,
+                    source = source,
+                    sourcePosition = (Vector2)transform.position,
+                    attackLabel = meleeFinisherAttackType,
+                    knockback = new Knockback
+                    {
+                        direction = knockDir,
+                        force = 8f,          // 原强化击退 8f(原 3f),构造进 Knockback.force
+                        duration = 0f,
+                        ignoreResistance = false
+                    }
+                };
+                CombatResolver.Resolve(source, enemy, info);
             }
         }
 
@@ -627,56 +486,13 @@ public class PlayerCombat : MonoBehaviour
     }
 
     // ============================================================
-    // 格挡/弹反系统
+    // 格挡/弹反 — 减伤修饰器 + 弹反检测 + 视觉(由 PlayerBlockState 驱动时机)
     // ============================================================
 
-    /// <summary>
-    /// 格挡/弹反输入处理 — 由 OnPlayerUpdate 每帧调用。
-    /// Mouse1 Down → 开始格挡；Mouse1 Up → 判定弹反/结束格挡。
-    /// Dash 中自动取消格挡。
-    /// </summary>
-    private void HandleBlockParryInput(PlayerController owner)
-    {
-        // Dash 中取消格挡
-        if (isBlocking && owner.IsDashing())
-        {
-            CancelBlock();
-            return;
-        }
-
-        // 鼠标右键按下 → 开始格挡
-        if (Input.GetMouseButtonDown(1))
-        {
-            StartBlocking();
-            return;
-        }
-
-        // 鼠标右键松开 → 判定弹反/结束格挡
-        if (Input.GetMouseButtonUp(1) && isBlocking)
-        {
-            float holdDuration = Time.time - blockStartTime;
-            isBlocking = false;
-            RemoveBlockModifier();
-
-            // 短按判定为弹反
-            if (holdDuration <= parryMaxWindow)
-            {
-                AttemptParry();
-            }
-            else
-            {
-                // 长按：正常格挡结束，恢复颜色
-                // [预留] Animator.SetTrigger(blockEndAnimTrigger)
-                RestorePlayerColor();
-            }
-        }
-    }
-
-    /// <summary>开始格挡：注入减伤修饰器 + 换色</summary>
-    private void StartBlocking()
+    /// <summary>开始格挡：注入减伤修饰器 + 换色（PlayerBlockState.OnEnter 调用）</summary>
+    public void StartBlocking()
     {
         isBlocking = true;
-        blockStartTime = Time.time;
 
         if (statModManager != null)
         {
@@ -694,8 +510,8 @@ public class PlayerCombat : MonoBehaviour
             playerRenderer.color = blockColor;
     }
 
-    /// <summary>取消格挡：移除修饰器，重置状态，恢复颜色</summary>
-    private void CancelBlock()
+    /// <summary>取消格挡：移除修饰器，重置状态，恢复颜色（PlayerBlockState.OnExit / Dash 打断 / 死亡调用）</summary>
+    public void CancelBlock()
     {
         if (!isBlocking) return;
         isBlocking = false;
@@ -712,9 +528,9 @@ public class PlayerCombat : MonoBehaviour
 
     /// <summary>
     /// 弹反判定：OverlapBox 检测范围内是否有正在攻击帧的敌人。
-    /// 成功 → OnParrySuccess()；失败 → 无惩罚。
+    /// 成功 → OnParrySuccess()；失败 → 无惩罚。PlayerBlockState 松手(短按)时调用。
     /// </summary>
-    private void AttemptParry()
+    public void AttemptParry()
     {
         if (rangeIndicator == null)
         {
@@ -738,8 +554,8 @@ public class PlayerCombat : MonoBehaviour
         RestorePlayerColor();
     }
 
-    /// <summary>弹反成功：设置 Buff，闪烁，触发事件</summary>
-    private void OnParrySuccess()
+    /// <summary>弹反成功：设置 Buff，闪烁，触发事件（P4c:PlayerHealth.TryParry 弹反成功时也调用，免疫伤害+授予弹反重击）</summary>
+    public void OnParrySuccess()
     {
         hasParryBuff = true;
 
@@ -753,7 +569,7 @@ public class PlayerCombat : MonoBehaviour
         EventBus.Trigger(new ParrySuccessEvent());
     }
 
-    private System.Collections.IEnumerator ParryFlashRoutine()
+    private IEnumerator ParryFlashRoutine()
     {
         playerRenderer.color = parrySuccessColor;
         yield return new WaitForSeconds(parryFlashDuration);

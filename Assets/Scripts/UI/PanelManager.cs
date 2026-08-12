@@ -22,6 +22,16 @@ public interface IPanel
 }
 
 /// <summary>
+/// 面板向左渐隐关闭接口 — SaveLoadPanel 等二级面板实现。
+/// PanelManager.CloseTopPanel 优先检测此接口（优先于 UIFadeManager 分支），
+/// 播完动画后由回调里 SetActive(false)。
+/// </summary>
+public interface ISlideClose
+{
+    void SlideClose(System.Action onComplete);
+}
+
+/// <summary>
 /// Manages panel stacking (ESC close-order), pause state, player input, and cursor state.
 ///
 /// Panels implement <see cref="IPanel"/> and are auto-discovered from the Canvas subtree
@@ -73,6 +83,10 @@ public sealed class PanelManager : MonoBehaviour
     private UIFadeManager _fadeManager;
     private PlayerController _player;
 
+    [Header("ESC 菜单")]
+    [Tooltip("无面板打开时按 ESC 打开的菜单（拖 PauseMenu）")]
+    [SerializeField] private GameObject escapeMenu;
+
     public bool IsAnyPanelOpen => _panelStack.Count > 0;
 
     // ============================================================
@@ -114,8 +128,12 @@ public sealed class PanelManager : MonoBehaviour
 
     private void Update()
     {
-        if (Input.GetKeyDown(KeyCode.Escape) && IsAnyPanelOpen)
+        if (!Input.GetKeyDown(KeyCode.Escape)) return;
+
+        if (IsAnyPanelOpen)
             CloseTopPanel();
+        else if (escapeMenu != null)
+            OpenPanel(escapeMenu);
     }
 
     private void OnEnable()
@@ -202,6 +220,25 @@ public sealed class PanelManager : MonoBehaviour
 
         RegisteredPanel closedEntry = _FindRegistered(panel);
         bool isFullScreen = closedEntry != null && closedEntry.type == PanelType.FullScreen;
+
+        // 优先走 ISlideClose（二级面板向左渐隐）——本类动画接管，不走 UIFadeManager 分支
+        if (!_closingPanels.Contains(panel))
+        {
+            ISlideClose slideClose = panel.GetComponent<ISlideClose>();
+            if (slideClose != null)
+            {
+                _closingPanels.Add(panel);
+                slideClose.SlideClose(() =>
+                {
+                    _closingPanels.Remove(panel);
+                    if (panel != null) panel.SetActive(false);
+                    if (isFullScreen) _RestorePreviousFullScreenPanel();
+                    _ApplyInteractionState();
+                });
+                // 动画期间锁输入/暂停态仍生效，防止连点 ESC
+                return;
+            }
+        }
 
         // 若面板已注册淡出动画 → 播完再隐藏；否则立即隐藏
         if (_fadeManager != null && _fadeManager.IsManaged(panel) && !_closingPanels.Contains(panel))

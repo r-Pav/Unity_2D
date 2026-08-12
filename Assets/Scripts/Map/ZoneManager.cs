@@ -33,13 +33,6 @@ public class ZoneManager : MonoBehaviour
     [SerializeField] private GameObject currentArea;
 
     // ============================================================
-    // 运行时状态
-    // ============================================================
-
-    private float _originalOrtho;   // 镜头原始缩放(第一次拉近时记录)
-    private bool _orthoSaved;
-
-    // ============================================================
     // 地区显隐
     // ============================================================
 
@@ -55,45 +48,5 @@ public class ZoneManager : MonoBehaviour
     {
         if (area != null)
             area.SetActive(false);
-    }
-
-    // ============================================================
-    // 镜头缩放(过渡提示,不锁玩家控制)
-    // ============================================================
-
-    /// <summary>进管道:镜头拉近</summary>
-    public void ZoomIn(float targetOrtho, float speed = 3f)
-    {
-        var cam = Camera.main;
-        if (cam == null) return;
-        if (!_orthoSaved)
-        {
-            _originalOrtho = cam.orthographicSize;
-            _orthoSaved = true;
-        }
-        StopAllCoroutines();
-        StartCoroutine(ZoomRoutine(targetOrtho, speed));
-    }
-
-    /// <summary>出管道:镜头恢复原始缩放</summary>
-    public void ZoomOut(float speed = 3f)
-    {
-        var cam = Camera.main;
-        if (cam == null) return;
-        float target = _orthoSaved ? _originalOrtho : cam.orthographicSize;
-        StopAllCoroutines();
-        StartCoroutine(ZoomRoutine(target, speed));
-    }
-
-    private IEnumerator ZoomRoutine(float target, float speed)
-    {
-        var cam = Camera.main;
-        if (cam == null) yield break;
-        while (Mathf.Abs(cam.orthographicSize - target) > 0.05f)
-        {
-            cam.orthographicSize = Mathf.Lerp(cam.orthographicSize, target, speed * Time.deltaTime);
-            yield return null;
-        }
-        cam.orthographicSize = target;
     }
 }

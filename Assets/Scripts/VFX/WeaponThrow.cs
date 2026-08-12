@@ -38,6 +38,9 @@ public class WeaponAttackConfig
 
     [Tooltip("插入墙内深度:检测到墙后沿飞行方向后退此距离再固定(控制剑插进墙多少)")]
     public float stickDepth = 0.2f;
+
+    [Tooltip("该击武器命中敌人时的击退向量(x=水平,按朝向自动镜像;y=垂直击飞)。与 PlayerCombat 基础击退(第三段)向量相加。(0,0) = 该击不附加击退")]
+    public Vector2 knockbackForce = Vector2.zero;
 }
 
 /// <summary>
@@ -93,6 +96,22 @@ public class WeaponThrow : MonoBehaviour
 
     /// <summary>当前在飞 clone 的 BoxCollider2D(攻击范围延伸用,PlayerCombat 命中检测读取)</summary>
     public BoxCollider2D ActiveCloneCollider { get; private set; }
+
+    /// <summary>
+    /// 按当前攻击段取武器击退向量(每击独立配置,airAttack 走空中)。PlayerCombat 命中时调用,
+    /// x 分量由调用方按朝向镜像。返回 (0,0) 表示该击不附加击退。
+    /// </summary>
+    public Vector2 GetKnockbackBonus(int comboIndex, bool isAir)
+    {
+        if (isAir) return airAttack != null ? airAttack.knockbackForce : Vector2.zero;
+        switch (comboIndex)
+        {
+            case 1: return attack1 != null ? attack1.knockbackForce : Vector2.zero;
+            case 2: return attack2 != null ? attack2.knockbackForce : Vector2.zero;
+            case 3: return attack3 != null ? attack3.knockbackForce : Vector2.zero;
+            default: return Vector2.zero;
+        }
+    }
 
     private void Awake()
     {

@@ -11,17 +11,20 @@ public class EnemyMeleeController : EnemyControllerBase
     // ============================================================
 
     [Header("巡逻")]
-    [Tooltip("巡逻范围（左右各多少单位）")]
-    [SerializeField] private float patrolRange = 3f;
+    [Tooltip("巡逻范围（左右各多少单位；0 = 未设置，用 SO 对应 Lv 档 / 内置 3f 兜底）")]
+    [SerializeField] private float patrolRange = 0f;
     public float PatrolRange => patrolRange;
+
+    /// <summary>巡逻范围内置默认（Inspector 与 SO 均未设置时兜底）</summary>
+    private const float DefaultPatrolRange = 3f;
 
     // ============================================================
     // 抽象方法实现
     // ============================================================
 
-    protected override IState GetInitialState() => new MeleeIdleState(this);
-    public override IState CreateChaseState() => new MeleeChaseState(this);
-    public override IState CreateFallbackState() => new MeleePatrolState(this);
+    protected override IState GetInitialState() => new MeleeIdleState(this, Fsm, Animator);
+    public override IState CreateChaseState() => new MeleeChaseState(this, Fsm, Animator);
+    public override IState CreateFallbackState() => new MeleePatrolState(this, Fsm, Animator);
 
     // ============================================================
     // 生命周期
@@ -29,7 +32,10 @@ public class EnemyMeleeController : EnemyControllerBase
 
     protected new void Start()
     {
-        stunState = new EnemyStunState(this, fsm);
+        // [Lv 收敛] patrolRange：Inspector(>0) → SO 对应 Lv 档 → 内置 3f（0 = 未设置）
+        patrolRange = Resolve(patrolRange, LvStats?.patrolRange ?? 0f, DefaultPatrolRange);
+
+        stunState = new EnemyStunState(this, Fsm);
         SetStunState(stunState);
         base.Start();
     }

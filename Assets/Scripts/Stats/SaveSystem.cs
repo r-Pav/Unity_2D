@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections;
 using System.Collections.Generic;
 
 /// <summary>
@@ -25,6 +26,11 @@ public class SaveSystem : MonoBehaviour
     private const string SaveKey = "PlayerSkillSave";
     private const string InventorySaveKey = "PlayerInventorySave";
     private const int MaxSlots = 4;
+
+    // [存档UI] 槽位化：0-4 手动槽，5 = 自动存档槽
+    private const int SaveSlotCount = 6;
+    /// <summary>自动存档槽索引（固定最底部，覆盖式）</summary>
+    public const int AutoSlotIndex = SaveSlotCount - 1;
 
     // ============================================================
     // 运行时引用
@@ -53,17 +59,56 @@ public class SaveSystem : MonoBehaviour
         weaponSkillLink = GetComponent<WeaponSkillLink>();
     }
 
+    private void OnEnable()
+    {
+        // 进入新地区（过管道）→ 自动存档到自动槽
+        EventBus.Subscribe<AreaEnterEvent>(OnAreaEnter);
+    }
+
+    private void OnDisable()
+    {
+        EventBus.Unsubscribe<AreaEnterEvent>(OnAreaEnter);
+    }
+
+    private void OnAreaEnter(AreaEnterEvent e)
+    {
+        AutoSave();
+    }
+
     // ============================================================
     // 公开接口 — Save / Load
     // ============================================================
 
-    /// <summary>
-    /// 保存当前所有技能状态到 PlayerPrefs。
-    /// 返回 true 表示保存成功。
-    /// </summary>
+    /// <summary>旧无参接口保留 — 槽 0 别名（兼容现有调用）</summary>
     public bool SaveGame()
     {
+        return SaveGame(0);
+    }
+
+    /// <summary>
+    /// 保存当前所有技能状态到 PlayerPrefs 指定槽位。
+    /// 槽 0 沿用旧 key 兼容老存档；槽 1-5 用 SaveKey+"_N"。
+    /// 返回 true 表示保存成功。
+    /// </summary>
+    public bool SaveGame(int slot)
+    {
+        if (slot < 0 || slot >= SaveSlotCount)
+        {
+            Debug.LogWarning($"[SaveSystem] 无效存档槽位: {slot}");
+            return false;
+        }
+
         var data = new SaveData();
+        data.saveTime = System.DateTime.Now.ToString("MM-dd HH:mm");
+        data.areaName = ""; // 地区名追踪属后续优化（存档点自动定位），字段预留
+        Transform playerT = PlayerController.Instance != null ? PlayerController.Instance.transform : null;
+        if (playerT != null)
+        {
+            data.posX = playerT.position.x;
+            data.posY = playerT.position.y;
+            data.posZ = playerT.position.z;
+        }
+
         CollectSkillPoints(data);
         CollectSkillSlots(data);
         CollectSkillPool(data);
@@ -77,31 +122,41 @@ public class SaveSystem : MonoBehaviour
         // 保存章节进度（被动解锁改造）
         data.currentChapter = passiveEquipManager != null ? passiveEquipManager.CurrentChapter : 1;
 
+        string key = slot == 0 ? SaveKey : SaveKey + "_" + slot;
         string json = JsonUtility.ToJson(data, prettyPrint: false);
-        PlayerPrefs.SetString(SaveKey, json);
+        PlayerPrefs.SetString(key, json);
 
         // [Phase5] 保存背包/仓库/装备数据（独立 key，方便单独重置背包）
-        SaveInventory();
+        SaveInventory(slot);
 
         PlayerPrefs.Save();
 
-        DebugOnce("[SaveSystem] 存档完成");
+        DebugOnce("[SaveSystem] 存档完成 槽位=" + slot);
         return true;
     }
 
-    /// <summary>
-    /// 从 PlayerPrefs 读取存档并恢复到所有管理器。
-    /// 返回 true 表示有存档数据并成功加载；false = 无存档或部分失败。
-    /// </summary>
+    /// <summary>旧无参接口保留 — 槽 0 别名（兼容现有调用）</summary>
     public bool LoadGame()
     {
-        if (!PlayerPrefs.HasKey(SaveKey))
+        return LoadGame(0);
+    }
+
+    /// <summary>
+    /// 从 PlayerPrefs 指定槽位读取存档并恢复到所有管理器。
+    /// 返回 true 表示有存档数据并成功加载；false = 无存档或部分失败。
+    /// </summary>
+    public bool LoadGame(int slot)
+    {
+        if (slot < 0 || slot >= SaveSlotCount) return false;
+
+        string key = slot == 0 ? SaveKey : SaveKey + "_" + slot;
+        if (!PlayerPrefs.HasKey(key))
         {
-            DebugOnce("[SaveSystem] 无存档数据，跳过加载");
+            DebugOnce("[SaveSystem] 无存档数据，跳过加载 槽位=" + slot);
             return false;
         }
 
-        string json = PlayerPrefs.GetString(SaveKey, "");
+        string json = PlayerPrefs.GetString(key, "");
         if (string.IsNullOrEmpty(json))
             return false;
 
@@ -127,18 +182,95 @@ public class SaveSystem : MonoBehaviour
 
         // [Phase5] 恢复属性分配点和背包数据
         RestoreAttributePoints(data);
-        LoadInventory();
+        LoadInventory(slot);
 
-        DebugOnce("[SaveSystem] 读档完成");
+        // 恢复位置：延迟一帧等地区显隐稳定后再设置，防止与地区显隐冲突
+        StartCoroutine(RestorePositionNextFrame(data));
+
+        DebugOnce("[SaveSystem] 读档完成 槽位=" + slot);
         return true;
     }
 
-    /// <summary>删除存档（调试/重置用）</summary>
+    /// <summary>旧无参接口保留 — 槽 0 别名（兼容现有调用）</summary>
     public void DeleteSave()
     {
-        PlayerPrefs.DeleteKey(SaveKey);
-        PlayerPrefs.DeleteKey(InventorySaveKey);
+        DeleteSave(0);
+    }
+
+    /// <summary>删除指定槽位存档（调试/重置用）</summary>
+    public void DeleteSave(int slot)
+    {
+        if (slot < 0 || slot >= SaveSlotCount) return;
+
+        string key = slot == 0 ? SaveKey : SaveKey + "_" + slot;
+        string invKey = slot == 0 ? InventorySaveKey : InventorySaveKey + "_" + slot;
+        PlayerPrefs.DeleteKey(key);
+        PlayerPrefs.DeleteKey(invKey);
         PlayerPrefs.Save();
+    }
+
+    /// <summary>指定槽位是否有存档数据</summary>
+    public bool HasSave(int slot)
+    {
+        if (slot < 0 || slot >= SaveSlotCount) return false;
+        string key = slot == 0 ? SaveKey : SaveKey + "_" + slot;
+        return PlayerPrefs.HasKey(key);
+    }
+
+    /// <summary>读取指定槽位元数据（时间/章节/技能点/三属性摘要），用于存档槽 UI</summary>
+    public SlotMeta GetSlotMeta(int slot)
+    {
+        if (slot < 0 || slot >= SaveSlotCount || !HasSave(slot))
+            return new SlotMeta { hasData = false };
+
+        string key = slot == 0 ? SaveKey : SaveKey + "_" + slot;
+        string json = PlayerPrefs.GetString(key, "");
+        SaveData data;
+        try
+        {
+            data = JsonUtility.FromJson<SaveData>(json);
+        }
+        catch (System.Exception)
+        {
+            return new SlotMeta { hasData = false };
+        }
+        if (data == null) return new SlotMeta { hasData = false };
+
+        // 三属性摘要 = 存档的分配点数 + 基础值（无配置时默认 5，与 PlayerAttributeSystem 默认一致）
+        int baseStr = 5, baseInt = 5, baseAgi = 5;
+        PlayerAttrConfigSO cfg = AttrSystem != null ? AttrSystem.AttrConfig : null;
+        if (cfg != null)
+        {
+            baseStr = cfg.baseStr;
+            baseInt = cfg.baseInt;
+            baseAgi = cfg.baseAgi;
+        }
+
+        return new SlotMeta
+        {
+            hasData = true,
+            saveTime = string.IsNullOrEmpty(data.saveTime) ? "-" : data.saveTime,
+            chapter = data.currentChapter,
+            skillPoints = data.skillPoints,
+            str = data.assignedStr + baseStr,
+            @int = data.assignedInt + baseInt,
+            agi = data.assignedAgi + baseAgi,
+        };
+    }
+
+    /// <summary>自动存档 → 固定槽 5（覆盖式，不占手动槽）</summary>
+    public void AutoSave()
+    {
+        SaveGame(AutoSlotIndex);
+    }
+
+    /// <summary>恢复玩家位置 — 延迟一帧，等地区显隐稳定后再设置 Transform</summary>
+    private IEnumerator RestorePositionNextFrame(SaveData data)
+    {
+        yield return null;
+        PlayerController player = PlayerController.Instance;
+        if (player == null) yield break;
+        player.transform.position = new Vector3(data.posX, data.posY, data.posZ);
     }
 
     // ============================================================
@@ -426,6 +558,12 @@ public class SaveSystem : MonoBehaviour
             if (data != null && data.skillName == skillName)
                 return data;
         }
+
+        // 兜底：初始技能配置在 SkillPool.initialSkills（不在技能槽位中），
+        // 不查这里会导致读档后技能池恢复为空、HUD 装备报"不在池中"
+        if (skillPool != null && skillPool.TryGetInitialSkill(skillName, out SkillData initial))
+            return initial;
+
         return null;
     }
 
@@ -464,10 +602,10 @@ public class SaveSystem : MonoBehaviour
     // ============================================================
 
     /// <summary>
-    /// 保存背包/仓库/装备数据
+    /// 保存背包/仓库/装备数据到指定槽位对应的 key
     /// 延迟查找 InventoryManager（可能在 SaveSystem 之后初始化）
     /// </summary>
-    private void SaveInventory()
+    private void SaveInventory(int slot)
     {
         InventoryManager inv = InventoryManager.Instance;
         if (inv == null)
@@ -479,19 +617,21 @@ public class SaveSystem : MonoBehaviour
         InventorySaveData invData = inv.SaveToData();
         if (invData != null)
         {
+            string key = slot == 0 ? InventorySaveKey : InventorySaveKey + "_" + slot;
             string json = JsonUtility.ToJson(invData, prettyPrint: false);
-            PlayerPrefs.SetString(InventorySaveKey, json);
+            PlayerPrefs.SetString(key, json);
         }
     }
 
     /// <summary>
-    /// 加载背包/仓库/装备数据
+    /// 从指定槽位加载背包/仓库/装备数据
     /// </summary>
-    private void LoadInventory()
+    private void LoadInventory(int slot)
     {
-        if (!PlayerPrefs.HasKey(InventorySaveKey)) return;
+        string key = slot == 0 ? InventorySaveKey : InventorySaveKey + "_" + slot;
+        if (!PlayerPrefs.HasKey(key)) return;
 
-        string json = PlayerPrefs.GetString(InventorySaveKey, "");
+        string json = PlayerPrefs.GetString(key, "");
         if (string.IsNullOrEmpty(json)) return;
 
         InventorySaveData invData;
@@ -572,6 +712,22 @@ public class SaveSystem : MonoBehaviour
         public int assignedAgi;
         // 被动解锁改造：章节进度
         public int currentChapter = 1;
+        // [存档UI] 槽位元数据
+        public string saveTime;  // DateTime.Now.ToString("MM-dd HH:mm")
+        public string areaName;  // 玩家所在地区名（地区名追踪后续优化，字段预留）
+        public float posX, posY, posZ; // 玩家位置（读档恢复）
+    }
+
+    /// <summary>存档槽元数据 — 供存档槽 UI 显示（时间/章节/技能点/三属性摘要）</summary>
+    public struct SlotMeta
+    {
+        public bool hasData;
+        public string saveTime;
+        public int chapter;
+        public int skillPoints;
+        public int str;
+        public int @int;  // 智力（字段名与方案一致，int 为关键字需 @ 转义）
+        public int agi;
     }
 
     [System.Serializable]

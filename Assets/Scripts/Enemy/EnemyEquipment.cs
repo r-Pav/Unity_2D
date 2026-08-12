@@ -8,8 +8,8 @@ using UnityEngine;
 ///   3. 等级缩放属性加成（注入到 StatModifierManager）
 ///   4. 视觉控制（无装备隐藏图标，有装备 50% 透明度）
 ///
-/// 等级缩放：f(level) = 1.0 + (level-1) × 0.25，clamp(2.0)
-///   Lv1=1.00x  Lv2=1.25x  Lv3=1.50x  Lv4=1.75x  Lv5+=2.00x
+/// 等级缩放：f(level) = level（线性，saika 要求：1 级 +10 血、2 级 +20 血，若 bonus.value=10）
+///   Lv1=1x  Lv2=2x  Lv3=3x ...
 /// </summary>
 public class EnemyEquipment : MonoBehaviour, IPickupReceiver
 {
@@ -180,42 +180,49 @@ public class EnemyEquipment : MonoBehaviour, IPickupReceiver
     // ============================================================
 
     /// <summary>
-    /// 注入装备属性加成到 StatModifierManager
-    /// 加成值 = 原值 × 等级缩放倍率 f(level)
+    /// 注入装备属性加成到 StatModifierManager。
+    /// [2026-08-10 用户裁决] 按装备槽类型映射属性：
+    ///   武器 → 攻击力(EnemyDamage)、防具 → 血量(MaxHealth)、饰品 → 移速(MoveSpeed)
+    /// 加成量 = 自身基础值的 10% × 装备等级（Lv1=10%、Lv2=20%、Lv3=30%）。
+    /// Percent 修饰器基于基础值计算（result = base × (1 + ΣPercent)），天然实现"自身值的百分比"。
     /// source = "EnemyEquip_{instanceId}_{statId}"
     /// </summary>
     private void AddEquipmentModifiers(ItemInstance item, int level)
     {
-        if (statModManager == null) return;
+        if (statModManager == null || item?.template == null) return;
 
-        var stats = item.template.equipmentStats;
-        if (stats == null || stats.Value.bonuses == null) return;
+        string statId = GetEquipStatId(item.template.slotType);
+        if (statId == null) return;
 
-        float scale = GetLevelScale(level);
+        // 10% × 等级（Lv1=0.1、Lv2=0.2、Lv3=0.3）
+        float percent = 0.1f * level;
+        string source = GetEnemyEquipSource(statId);
+        statModManager.AddModifier(new Modifier(statId, percent, ModifierType.Percent, source, priority: 0));
 
-        foreach (var bonus in stats.Value.bonuses)
-        {
-            float scaledValue = bonus.value * scale;
-            string source = GetEnemyEquipSource(bonus.statId);
-            var mod = new Modifier(bonus.statId, scaledValue, bonus.type, source, priority: 0);
-            statModManager.AddModifier(mod);
-        }
-
-        Debug.Log($"[EnemyEquipment] 注入属性加成：{item.DisplayName} scale={scale:F2}x (instanceId={_instanceId})");
+        Debug.Log($"[EnemyEquipment] 注入属性：{item.DisplayName} → {statId} +{percent * 100:F0}%（Lv.{level}） (instanceId={_instanceId})");
     }
 
     /// <summary>移除由当前装备注入的所有修饰器</summary>
     private void RemoveEquipmentModifiers()
     {
-        if (statModManager == null || _equippedItem == null) return;
+        if (statModManager == null || _equippedItem?.template == null) return;
 
-        var stats = _equippedItem.template.equipmentStats;
-        if (stats == null || stats.Value.bonuses == null) return;
+        string statId = GetEquipStatId(_equippedItem.template.slotType);
+        if (statId == null) return;
 
-        foreach (var bonus in stats.Value.bonuses)
+        statModManager.RemoveModifier(GetEnemyEquipSource(statId));
+    }
+
+    /// <summary>按装备槽类型映射属性 ID：武器→攻击力、防具→血量、饰品→移速；其他返回 null</summary>
+    private static string GetEquipStatId(EquipmentSlotType slotType)
+    {
+        switch (slotType)
         {
-            string source = GetEnemyEquipSource(bonus.statId);
-            statModManager.RemoveModifier(source);
+            case EquipmentSlotType.Weapon:    return StatId.EnemyDamage;
+            case EquipmentSlotType.Armor:     return StatId.MaxHealth;
+            case EquipmentSlotType.Accessory0:
+            case EquipmentSlotType.Accessory1: return StatId.MoveSpeed;
+            default: return null;
         }
     }
 
@@ -279,15 +286,6 @@ public class EnemyEquipment : MonoBehaviour, IPickupReceiver
     // ============================================================
     // 辅助方法
     // ============================================================
-
-    /// <summary>
-    /// 等级缩放公式：f(level) = min(2.0, 1.0 + (level-1) × 0.25)
-    /// </summary>
-    private static float GetLevelScale(int level)
-    {
-        if (level <= 1) return 1.0f;
-        return Mathf.Min(2.0f, 1.0f + (level - 1) * 0.25f);
-    }
 
     /// <summary>生成敌人装备修饰器的唯一 source 标识符</summary>
     private string GetEnemyEquipSource(string statId)

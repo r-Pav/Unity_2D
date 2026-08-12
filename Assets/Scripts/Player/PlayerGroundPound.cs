@@ -2,8 +2,9 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 玩家快速落地模块 — 空中按 Q 砸地
-/// 落地时通过 EventBus 触发 GroundPoundEvent 替代直接操作敌人
+/// 玩家下坠攻击执行器 — P2 起 isPounding 状态由 PlayerGroundPoundState(FSM)表达,
+/// 本组件只保留物理/伤害执行:高度检测、启动下坠、落地 AOE、空中擦敌击退、冷却计时
+/// 输入检测(空中按 S)在 PlayerJumpState/PlayerFallState,满足条件后切换至 GroundPoundState
 /// </summary>
 public class PlayerGroundPound : MonoBehaviour
 {
@@ -42,8 +43,6 @@ public class PlayerGroundPound : MonoBehaviour
     // ============================================================
 
     private float cooldownTimer;
-    private bool isPounding;
-    private bool wasGrounded;
     private PlayerController owner;
     private CameraFollow cachedCam;
     private float heightDebugTimer;
@@ -55,79 +54,40 @@ public class PlayerGroundPound : MonoBehaviour
 
     private void Awake()
     {
+        owner = GetComponent<PlayerController>();
         cachedCam = CameraFollow.Instance;
     }
 
     // ============================================================
-    // 父类调用接口
+    // 执行器接口(PlayerGroundPoundState / PlayerController 调用)
     // ============================================================
 
-    public void OnPlayerUpdate(PlayerController pc)
-    {
-        owner = pc;
-        UpdateTimers();
-
-        bool grounded = pc.IsGrounded();
-
-        if (isPounding)
-        {
-            HandlePoundState(pc, grounded);
-            wasGrounded = grounded;
-            return;
-        }
-
-        wasGrounded = grounded;
-        HandleInput(pc, grounded);
-    }
-
-    private void UpdateTimers()
+    /// <summary>每帧递减冷却(PlayerController.UpdateCooldowns 调用)</summary>
+    public void UpdateTimers()
     {
         if (cooldownTimer > 0f) cooldownTimer -= Time.deltaTime;
     }
 
-    private void HandlePoundState(PlayerController pc, bool grounded)
+    /// <summary>
+    /// 尝试开始下坠攻击:冷却就绪 + 空中 + 高度够 + 非贴墙则启动,返回是否进入。
+    /// (原 HandleInput 的非输入部分,输入由 FSM 状态检测)
+    /// </summary>
+    public bool TryStartPound(PlayerController pc)
     {
-        if (grounded && !wasGrounded)
-            OnLand(pc);
-        else
-            HandleMidairEnemyCollisions(pc);
+        if (cooldownTimer > 0f) return false;
+        if (pc.IsGrounded()) return false;
+        if (pc.IsTouchingWall) return false;   // 贴墙抑制下坠攻击
+
+        float height = GetHeightAboveGround(false);
+        if (height < minHeight) return false;
+
+        StartPound(pc);
+        return true;
     }
 
-    private void HandleMidairEnemyCollisions(PlayerController pc)
+    /// <summary>启动下坠:设置速度 + 冷却 + 清空已命中集合(PlayerGroundPoundState.OnEnter 调用)</summary>
+    public void StartPound(PlayerController pc)
     {
-        Collider2D[] hits = Physics2D.OverlapCircleAll((Vector2)pc.transform.position, blastRadius, enemyLayer);
-        foreach (Collider2D hitEnemy in hits)
-        {
-            if (hitEnemies.Contains(hitEnemy)) continue;
-            hitEnemies.Add(hitEnemy);
-
-            Rigidbody2D enemyRb = hitEnemy.GetComponent<Rigidbody2D>();
-            if (enemyRb == null) continue;
-
-            float randomDir = Random.value > 0.5f ? 1f : -1f;
-            Vector2 knockDir = new Vector2(randomDir, 1.5f).normalized;
-            enemyRb.AddForce(knockDir * knockbackForce * 1.5f, ForceMode2D.Impulse);
-        }
-    }
-
-    private void HandleInput(PlayerController pc, bool grounded)
-    {
-        if (!Input.GetKeyDown(KeyCode.S)) return;
-
-        float height = GetHeightAboveGround(grounded);
-        // Debug.Log($"[GroundPound] Q pressed | cooldownTimer={cooldownTimer:F3} (limit={0}) | grounded={grounded} | height={height:F2} (min={minHeight}) | RESULT={cooldownTimer <= 0f && !grounded && height >= minHeight}");
-
-        if (cooldownTimer <= 0f && !grounded && height >= minHeight && !pc.IsTouchingWall)
-            StartPound(pc);
-    }
-
-    // ============================================================
-    // 快速落地
-    // ============================================================
-
-    private void StartPound(PlayerController pc)
-    {
-        isPounding = true;
         cooldownTimer = cooldown;
         hitEnemies.Clear();
 
@@ -137,9 +97,9 @@ public class PlayerGroundPound : MonoBehaviour
         rb.velocity = new Vector2(0f, -poundSpeed);
     }
 
-    private void OnLand(PlayerController pc)
+    /// <summary>落地:相机震动 + 缩放脉冲 + AOE 事件广播(PlayerGroundPoundState 落地边沿调用)</summary>
+    public void OnLand(PlayerController pc)
     {
-        isPounding = false;
         hitEnemies.Clear();
 
         // ── 相机震动（直接调用，保留现有逻辑）──
@@ -158,6 +118,24 @@ public class PlayerGroundPound : MonoBehaviour
             knockbackForce: knockbackForce,
             targetLayers: enemyLayer
         ));
+    }
+
+    /// <summary>空中擦到敌人 → 击退(PlayerGroundPoundState.OnUpdate 调用)</summary>
+    public void HandleMidairEnemyCollisions(PlayerController pc)
+    {
+        Collider2D[] hits = Physics2D.OverlapCircleAll((Vector2)pc.transform.position, blastRadius, enemyLayer);
+        foreach (Collider2D hitEnemy in hits)
+        {
+            if (hitEnemies.Contains(hitEnemy)) continue;
+            hitEnemies.Add(hitEnemy);
+
+            Rigidbody2D enemyRb = hitEnemy.GetComponent<Rigidbody2D>();
+            if (enemyRb == null) continue;
+
+            float randomDir = Random.value > 0.5f ? 1f : -1f;
+            Vector2 knockDir = new Vector2(randomDir, 1.5f).normalized;
+            enemyRb.AddForce(knockDir * knockbackForce * 1.5f, ForceMode2D.Impulse);
+        }
     }
 
     // ============================================================
@@ -240,7 +218,8 @@ public class PlayerGroundPound : MonoBehaviour
         Gizmos.DrawLine(bottom + Vector3.left * 0.5f, bottom + Vector3.right * 0.5f);
         Gizmos.DrawLine(pos, bottom);
 
-        if (isPounding)
+        // 下坠中(isPounding 由 FSM 状态表达)
+        if (owner != null && owner.PlayerFsm != null && owner.PlayerFsm.CurrentState is PlayerGroundPoundState)
         {
             Gizmos.color = Color.red;
             Gizmos.DrawRay(pos, Vector3.down * 3f);

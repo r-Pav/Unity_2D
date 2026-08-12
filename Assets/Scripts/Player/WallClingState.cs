@@ -3,11 +3,11 @@ using UnityEngine;
 /// <summary>
 /// 贴墙状态 — 下滑（默认/S加速）/ 力驱动攀爬（W）/ 蹬墙跳（Space）+ 额外跳跃计数 / 翻顶
 /// 每帧用射线维持与墙面的固定间隙
+/// P1 改造:继承 EntityState 挂入统一 PlayerFsm(anim 不绑定,IsMove 相关由 PlayerAnimation 处理)
 /// </summary>
-public class WallClingState : IState
+public class WallClingState : EntityState
 {
     private readonly PlayerCharacterBase player;
-    private readonly StateMachine stateMachine;
     private readonly Rigidbody2D rb;
 
     // ---- 蹬墙跳冷却 ----
@@ -28,13 +28,13 @@ public class WallClingState : IState
     public bool IsWallKicking { get; private set; }
 
     public WallClingState(PlayerCharacterBase player, StateMachine stateMachine)
+        : base(player, stateMachine, null)
     {
         this.player = player;
-        this.stateMachine = stateMachine;
         this.rb = player.Rb;
     }
 
-    public void OnEnter()
+    public override void OnEnter()
     {
         player.SetVelocityPublic(x: 0f, y: 0f);
         _kickCooldown = 0f;
@@ -47,7 +47,7 @@ public class WallClingState : IState
             player.UpdateFacing(player.WallDirection);
     }
 
-    public void OnUpdate()
+    public override void OnUpdate()
     {
         if (CheckExit()) return;
 
@@ -98,7 +98,7 @@ public class WallClingState : IState
         MaintainWallGap();
     }
 
-    public void OnExit()
+    public override void OnExit()
     {
         IsWallKicking = false;
     }
@@ -109,7 +109,9 @@ public class WallClingState : IState
     {
         if (!player.IsTouchingWall || player.IsGrounded)
         {
-            stateMachine.ChangeState(null);
+            // 退出贴墙回下落状态:落地由 PlayerFallState.OnUpdate 立刻切回 Idle/Move
+            var pc = player as PlayerController;
+            stateMachine.ChangeState(pc != null ? pc.FallState : null);
             return true;
         }
         return false;
@@ -153,7 +155,7 @@ public class WallClingState : IState
 
         pc.FreezeTimer = 0.1f;
         pc.ClearWallContact();
-        stateMachine.ChangeState(null);
+        stateMachine.ChangeState(pc.FallState);
     }
 
     private void CheckVault()
@@ -201,6 +203,6 @@ public class WallClingState : IState
 
         rb.position = new Vector2(targetX, wallTopY + halfH + 0.05f);
         pc.FreezeTimer = 0.15f;
-        stateMachine.ChangeState(null);
+        stateMachine.ChangeState(pc.FallState);
     }
 }

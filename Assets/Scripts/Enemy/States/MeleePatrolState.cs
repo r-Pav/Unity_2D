@@ -1,25 +1,32 @@
 using UnityEngine;
 
-public class MeleePatrolState : IState
+/// <summary>
+/// 近战敌人巡逻状态 — 在巡逻范围内来回移动，发现玩家转追击。
+/// </summary>
+public class MeleePatrolState : EntityState
 {
-    private readonly EnemyMeleeController owner;
     private float originX;
     private int patrolDir;
     private float changeDirTimer;
 
-    public MeleePatrolState(EnemyMeleeController owner) { this.owner = owner; }
-
-    public void OnEnter()
+    public MeleePatrolState(CharacterBase owner, StateMachine stateMachine, Animator anim = null)
+        : base(owner, stateMachine, anim)
     {
-        originX = owner.transform.position.x;
-        patrolDir = Random.value > 0.5f ? 1 : -1;
-        changeDirTimer = Random.Range(2f, 4f);
-        owner.OnExitCombatState();
-        owner.ApplyStateColor(new Color(0.2f, 0.4f, 1.0f));
     }
 
-    public void OnUpdate()
+    public override void OnEnter()
     {
+        var me = (EnemyMeleeController)owner;
+        originX = me.transform.position.x;
+        patrolDir = Random.value > 0.5f ? 1 : -1;
+        changeDirTimer = Random.Range(2f, 4f);
+        me.OnExitCombatState();
+        me.ApplyStateColor(new Color(0.2f, 0.4f, 1.0f));
+    }
+
+    public override void OnUpdate()
+    {
+        var me = (EnemyMeleeController)owner;
         changeDirTimer -= Time.deltaTime;
         if (changeDirTimer <= 0f)
         {
@@ -27,18 +34,19 @@ public class MeleePatrolState : IState
             changeDirTimer = Random.Range(2f, 4f);
         }
 
-        float dx = owner.transform.position.x - originX;
-        if (dx > owner.PatrolRange) patrolDir = -1;
-        else if (dx < -owner.PatrolRange) patrolDir = 1;
+        float dx = me.transform.position.x - originX;
+        if (dx > me.PatrolRange) patrolDir = -1;
+        else if (dx < -me.PatrolRange) patrolDir = 1;
 
-        owner.moveInput = patrolDir * 0.5f;
+        me.moveInput = patrolDir * 0.5f;
 
-        if (owner.CanSeePlayer())
-            owner.Fsm.ChangeState(owner.CreateChaseState());
+        if (me.CanSeePlayer())
+            me.Fsm.ChangeState(me.CreateChaseState());
     }
 
-    public void OnExit()
+    public override void OnExit()
     {
-        owner.moveInput = 0f;
+        var me = (EnemyMeleeController)owner;
+        me.moveInput = 0f;
     }
 }

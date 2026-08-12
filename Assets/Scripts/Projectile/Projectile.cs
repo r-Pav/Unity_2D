@@ -21,8 +21,14 @@ public abstract class Projectile : MonoBehaviour
     protected float sphereRadius = 0.15f;
     protected Color sphereColor = Color.cyan;
 
-    /// <summary>攻击类型标签 — 传给 Enemy TakeDamageFrom 用于匹配 VFX 变体</summary>
+    /// <summary>攻击类型标签 — 构造进 DamageInfo.attackLabel 用于匹配 VFX 变体</summary>
     protected string attackType = "";
+
+    /// <summary>发射者（ICombatant）— 由子类 Spawn 通过 SetSource 注入；null 表示环境/无攻击者</summary>
+    protected ICombatant source;
+
+    /// <summary>设置发射者（由子类 Spawn 工厂在 Initialize 后调用）</summary>
+    public void SetSource(ICombatant s) => source = s;
 
     /// <summary>是否可被近战攻击消除 (玩家近战 OverlapBox 额外检测)</summary>
     protected bool canBeDestroyedByMelee = true;
@@ -153,15 +159,39 @@ public abstract class Projectile : MonoBehaviour
         return false;
     }
 
-    /// <summary>尝试对命中目标造成伤害（玩家子弹打敌人，敌人子弹打玩家）</summary>
+    /// <summary>尝试对命中目标造成伤害（玩家子弹打敌人，敌人子弹打玩家）— P1a:统一走 CombatResolver 结算</summary>
     private void TryDealDamage(Collider2D other)
     {
+        // 玩家子弹打敌人（EnemyControllerBase 实现 ICombatant）
         if (other.TryGetComponent(out EnemyControllerBase enemy))
-            enemy.TakeDamageFrom(damage, transform.position, attackType);
-        else if (other.TryGetComponent(out PlayerController player))
         {
-            Vector2 knockDir = ((Vector2)(player.transform.position - transform.position)).normalized;
-            player.TakeDamageWithKnockback(damage, knockDir);
+            CombatResolver.Resolve(source, enemy, new DamageInfo
+            {
+                amount = damage,
+                source = source,
+                sourcePosition = (Vector2)transform.position,
+                attackLabel = attackType,
+                knockback = Knockback.None
+            });
+        }
+        // 敌人子弹打玩家（PlayerHealth 实现 ICombatant；击退力度/时长与原 TakeDamageWithKnockback 内部一致 10f/0.2s）
+        else if (other.TryGetComponent(out PlayerHealth health))
+        {
+            Vector2 knockDir = ((Vector2)(health.transform.position - transform.position)).normalized;
+            CombatResolver.Resolve(source, health, new DamageInfo
+            {
+                amount = damage,
+                source = source,
+                sourcePosition = (Vector2)transform.position,
+                attackLabel = attackType,
+                knockback = new Knockback
+                {
+                    direction = knockDir,
+                    force = 10f,     // 原 TakeDamageWithKnockback 硬编码击退力度
+                    duration = 0.2f, // 原 KnockbackRoutine 硬编码硬直时长
+                    ignoreResistance = false
+                }
+            });
         }
     }
 

@@ -62,9 +62,9 @@ public class FirstBoss : BossControllerBase
     // 抽象方法实现
     // ============================================================
 
-    protected override IState GetInitialState() => new BossIdleState(this);
-    public override IState CreateChaseState() => new BossChaseState(this);
-    public override IState CreateFallbackState() => new BossIdleState(this);
+    protected override IState GetInitialState() => new BossIdleState(this, Fsm, Animator);
+    public override IState CreateChaseState() => new BossChaseState(this, Fsm, Animator);
+    public override IState CreateFallbackState() => new BossIdleState(this, Fsm, Animator);
 
     // ============================================================
     // 生命周期
@@ -73,6 +73,18 @@ public class FirstBoss : BossControllerBase
     protected override void Awake()
     {
         base.Awake();
+
+        // [Boss 单独设计] EnemyConfigSO 已 Lv 收敛化（不含 Boss 专属字段），此覆盖块注释保留——
+        // 后续剥离到独立 BossConfigSO 时恢复：hpMultiplier/moveSpeedMultiplier/attackRangeMultiplier/
+        // p2MoveSpeedMult/p3MoveSpeedMult 从 BossConfigSO 读取。
+        // if (config != null)
+        // {
+        //     hpMultiplier = config.hpMultiplier;
+        //     moveSpeedMultiplier = config.moveSpeedMultiplier;
+        //     attackRangeMultiplier = config.attackRangeMultiplier;
+        //     p2MoveSpeedMult = config.p2MoveSpeedMult;
+        //     p3MoveSpeedMult = config.p3MoveSpeedMult;
+        // }
 
         // 应用基础属性倍率
         maxHealth *= hpMultiplier;
@@ -84,7 +96,7 @@ public class FirstBoss : BossControllerBase
 
     private new void Start()
     {
-        stunState = new EnemyStunState(this, fsm);
+        stunState = new EnemyStunState(this, Fsm);
         SetStunState(stunState);
         base.Start();
     }
@@ -203,112 +215,6 @@ public class FirstBoss : BossControllerBase
     protected override void Move(float direction)
     {
         SetVelocity(x: direction * CurrentMoveSpeed);
-    }
-
-    // ============================================================
-    // FSM 状态 — BossIdleState（激活前待机）
-    // ============================================================
-
-    public class BossIdleState : IState
-    {
-        private readonly FirstBoss owner;
-
-        public BossIdleState(FirstBoss owner) { this.owner = owner; }
-
-        public void OnEnter()
-        {
-            owner.moveInput = 0f;
-            owner.ApplyStateColor(new Color(0.5f, 0.5f, 0.5f));
-        }
-
-        public void OnUpdate()
-        {
-            if (owner.isActivated)
-                owner.fsm.ChangeState(owner.CreateChaseState());
-        }
-
-        public void OnExit() { }
-    }
-
-    // ============================================================
-    // FSM 状态 — BossChaseState（追击玩家）
-    // ============================================================
-
-    public class BossChaseState : IState
-    {
-        private readonly FirstBoss owner;
-
-        public BossChaseState(FirstBoss owner) { this.owner = owner; }
-
-        public void OnEnter()
-        {
-            owner.OnEnterCombatState();
-            owner.ApplyStateColor(new Color(0.8f, 0.2f, 0.2f));
-            owner.moveInput = owner.DirectionToPlayer();
-        }
-
-        public void OnUpdate()
-        {
-            if (owner.isDead) return;
-
-            if (owner.CanBossAttack())
-            {
-                owner.moveInput = 0f;
-                owner.fsm.ChangeState(new BossAttackState(owner));
-                return;
-            }
-
-            owner.moveInput = owner.DirectionToPlayer();
-        }
-
-        public void OnExit()
-        {
-            owner.moveInput = 0f;
-        }
-    }
-
-    // ============================================================
-    // FSM 状态 — BossAttackState（选择并执行攻击）
-    // ============================================================
-
-    public class BossAttackState : IState
-    {
-        private readonly FirstBoss owner;
-        private Coroutine attackCoroutine;
-
-        public BossAttackState(FirstBoss owner) { this.owner = owner; }
-
-        public void OnEnter()
-        {
-            owner.moveInput = 0f;
-
-            // 面朝玩家
-            float dir = owner.DirectionToPlayer();
-            if (dir != 0f)
-                owner.UpdateFacing(dir);
-
-            // 启动攻击循环（由 BossControllerBase.ExecuteBossSkillCycle 处理选择+执行）
-            attackCoroutine = owner.StartCoroutine(AttackFlow());
-        }
-
-        private System.Collections.IEnumerator AttackFlow()
-        {
-            // 执行技能循环（技能选择 → SO驱动执行 → 或 fallback 普攻）
-            yield return owner.ExecuteBossSkillCycle();
-
-            // 攻击结束后切回追击
-            if (!owner.isDead)
-                owner.fsm.ChangeState(owner.CreateChaseState());
-        }
-
-        public void OnUpdate() { }
-
-        public void OnExit()
-        {
-            if (attackCoroutine != null)
-                owner.StopCoroutine(attackCoroutine);
-            owner.moveInput = 0f;
-        }
     }
 
     // ============================================================

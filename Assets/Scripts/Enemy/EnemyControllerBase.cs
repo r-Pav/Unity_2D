@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections;
 
 /// <summary>
 /// 受击 VFX 变体条目 — 按攻击类型标签匹配不同特效。
@@ -17,14 +18,31 @@ public struct HitVFXVariant
 /// 敌人控制器抽象基类 — 继承 CharacterBase，管理共享的 AI、FSM 生命周期、受伤/死亡逻辑。
 /// 子类（EnemyMeleeController / EnemyRangedController）负责实现具体的 FSM 状态。
 /// </summary>
-public abstract class EnemyControllerBase : CharacterBase
+public abstract class EnemyControllerBase : CharacterBase, ICombatant
 {
     // ============================================================
     // 配置参数
     // ============================================================
 
+    [Header("数值配置 SO")]
+    [Tooltip("敌人数值配置 ScriptableObject（Lv 收敛：内含 Lv1/2/3 三档；为空时仅用 Inspector/内置默认）")]
+    [SerializeField] protected EnemyConfigSO config;
+
+    [Header("等级")]
+    [Tooltip("敌人等级 1~3，决定 EnemyConfigSO 取哪一档数值（Lv 收敛）")]
+    [SerializeField] protected int level = 1;
+    /// <summary>当前等级（消费组件/面板读取）</summary>
+    public int Level => level;
+
+    /// <summary>当前配置 SO（Inspector 运行时调试显示用）</summary>
+    public EnemyConfigSO Config => config;
+
+    /// <summary>当前移速（管线终值；Inspector 运行时调试显示用）</summary>
+    public float CurrentMoveSpeed => MoveSpeed;
+
     [Header("属性")]
-    [SerializeField] protected float maxHealth = 3f;
+    [Tooltip("最大血量（0 = 未设置，用 SO 对应 Lv 档 / 内置默认兜底）")]
+    [SerializeField] protected float maxHealth = 0f;
 
     [Header("受伤反馈")]
     [SerializeField] protected Color hitColor = Color.white;  // 白色闪白更明显
@@ -43,24 +61,25 @@ public abstract class EnemyControllerBase : CharacterBase
     [SerializeField] private HitVFXVariant[] hitVFXVariants;
 
     [Header("AI 检测 — 矩形")]
-    [Tooltip("检测矩形半宽（X 轴）")]
-    [SerializeField] protected float detectionWidth = 8f;
-    [Tooltip("检测矩形半高（Y 轴）")]
-    [SerializeField] protected float detectionHeight = 3f;
+    [Tooltip("检测矩形半宽（X 轴；0 = 未设置）")]
+    [SerializeField] protected float detectionWidth = 0f;
+    [Tooltip("检测矩形半高（Y 轴；0 = 未设置）")]
+    [SerializeField] protected float detectionHeight = 0f;
 
     [Header("攻击范围 — 矩形")]
-    [Tooltip("攻击矩形半宽（X 轴）")]
-    [SerializeField] protected float attackWidth = 1.5f;
-    [Tooltip("攻击矩形半高（Y 轴）")]
-    [SerializeField] protected float attackHeight = 1.5f;
+    [Tooltip("攻击矩形半宽（X 轴；0 = 未设置）")]
+    [SerializeField] protected float attackWidth = 0f;
+    [Tooltip("攻击矩形半高（Y 轴；0 = 未设置）")]
+    [SerializeField] protected float attackHeight = 0f;
 
     [Header("攻击冷却")]
-    [SerializeField] protected float attackCooldownDuration = 1f;
+    [Tooltip("攻击冷却时间（秒；0 = 未设置）")]
+    [SerializeField] protected float attackCooldownDuration = 0f;
     public float AttackCooldownDuration => attackCooldownDuration;
 
     [Header("击退")]
-    [Tooltip("远程攻击击退力度（近战击退由 EnemyPoise 控制）")]
-    [SerializeField] protected float rangedKnockbackForce = 5f;
+    [Tooltip("远程攻击击退力度（近战击退由 PoiseComponent 控制；0 = 未设置）")]
+    [SerializeField] protected float rangedKnockbackForce = 0f;
 
     /// <summary>暴露攻击矩形半宽给攻击组件读取</summary>
     public float AttackWidth => attackWidth;
@@ -81,6 +100,13 @@ public abstract class EnemyControllerBase : CharacterBase
     protected float currentHealth;
     protected bool isDead;
 
+    /// <summary>按 level 解析出的 SO 档（Awake 赋值；config 为空时为 null）— 子类/攻击组件读取</summary>
+    protected EnemyLvStats lvStats;
+    public EnemyLvStats LvStats => lvStats;
+
+    /// <summary>管线前基础血量（Awake 存；装备修饰器变化时重算 maxHealth 用）</summary>
+    private float _baseMaxHealth;
+
     /// <summary>公开死亡状态（供外部组件读取）</summary>
     public bool IsDead => isDead;
 
@@ -100,10 +126,13 @@ public abstract class EnemyControllerBase : CharacterBase
 
     /// <summary>缓存的 PassiveEquipManager 引用（通过 FindObjectOfType 获取）</summary>
     protected PassiveEquipManager passiveEquipManager;
-    /// <summary>缓存的 EnemyPoise 引用（霸体/击退组件）</summary>
-    private EnemyPoise _poise;
+    /// <summary>缓存的 PoiseComponent 引用（霸体/击退组件）</summary>
+    private PoiseComponent _poise;
     /// <summary>当前敌人是否处于战斗状态（Chase/Attack），防止重复触发 SetCombatState</summary>
     private bool isInCombatState;
+
+    /// <summary>是否处于战斗状态（进入过 Chase/Attack；Patrol/Idle 时 OnExitCombatState 清 false）— 供状态类判断仇恨是否存在</summary>
+    public bool IsInCombatState => isInCombatState;
 
     /// <summary>FSM 状态设置的移动输入（1 / -1 / 0），OnFixedUpdate 应用</summary>
     public float moveInput;
@@ -113,6 +142,9 @@ public abstract class EnemyControllerBase : CharacterBase
 
     /// <summary>是否处于攻击判定帧内 (供弹反系统查询)。当前由 PerformAttack 临时置位，后续由 AnimationEvent 驱动。</summary>
     public bool IsInAttackFrame { get; set; }
+
+    /// <summary>当前攻击标签（敌人攻击时设置，弹反/结算用；P4c 由攻击组件写入）</summary>
+    public string CurrentAttackLabel { get; set; }
 
     protected EnemyStunState stunState;
     private float stunCooldownTimer;
@@ -134,9 +166,42 @@ public abstract class EnemyControllerBase : CharacterBase
     // 生命周期
     // ============================================================
 
+    // ── 内置默认值（Inspector 与 SO 均未设置时的兜底，与原代码默认值一致）──
+    protected const float DefaultMaxHealth = 3f;
+    protected const float DefaultDetectionWidth = 8f;
+    protected const float DefaultDetectionHeight = 3f;
+    protected const float DefaultAttackWidth = 1.5f;
+    protected const float DefaultAttackHeight = 1.5f;
+    protected const float DefaultAttackCooldown = 1f;
+    protected const float DefaultRangedKnockback = 5f;
+
+    /// <summary>
+    /// 数值解析：Inspector 手填(>0) → SO 对应 Lv 档(>0) → 内置默认。
+    /// 0 = 未设置（Lv 收敛取值链，子类/攻击组件复用）。
+    /// </summary>
+    protected float Resolve(float inspector, float soValue, float fallback)
+        => inspector > 0f ? inspector : (soValue > 0f ? soValue : fallback);
+
     protected override void Awake()
     {
         base.Awake();
+
+        // [Lv 收敛] 按 level 取 SO 对应档（config 为空 → 全 null → 全走 Inspector/内置默认）
+        lvStats = config != null ? config.GetLvStats(level) : null;
+
+        // 取值链：Inspector 手填(>0) → SO 对应 Lv 档(>0) → 内置默认（0 = 未设置）
+        maxHealth = Resolve(maxHealth, lvStats?.maxHealth ?? 0f, DefaultMaxHealth);
+        detectionWidth = Resolve(detectionWidth, lvStats?.detectionWidth ?? 0f, DefaultDetectionWidth);
+        detectionHeight = Resolve(detectionHeight, lvStats?.detectionHeight ?? 0f, DefaultDetectionHeight);
+        attackWidth = Resolve(attackWidth, lvStats?.attackWidth ?? 0f, DefaultAttackWidth);
+        attackHeight = Resolve(attackHeight, lvStats?.attackHeight ?? 0f, DefaultAttackHeight);
+        attackCooldownDuration = Resolve(attackCooldownDuration, lvStats?.attackCooldownDuration ?? 0f, DefaultAttackCooldown);
+        rangedKnockbackForce = Resolve(rangedKnockbackForce, lvStats?.rangedKnockbackForce ?? 0f, DefaultRangedKnockback);
+
+        // maxHealth 终值走管线（无 manager 回退 baseValue，对齐 CharacterBase.MoveSpeed 写法）
+        // 注意：必须在 FirstBoss 的 maxHealth *= hpMultiplier 之前完成，保证 Boss 最终 = 基础值 × 倍率
+        _baseMaxHealth = maxHealth;   // 存管线前基础值（装备修饰器变化时重算用）
+        maxHealth = statModManager != null ? statModManager.GetFinalValue(_baseMaxHealth, StatId.MaxHealth) : _baseMaxHealth;
         currentHealth = maxHealth;
 
         renderers = GetComponentsInChildren<Renderer>();
@@ -146,17 +211,20 @@ public abstract class EnemyControllerBase : CharacterBase
         fsm = new StateMachine();
         player = PlayerController.Instance?.transform;
         passiveEquipManager = PassiveEquipManager.Instance;
-        _poise = GetComponent<EnemyPoise>();
+        _poise = GetComponent<PoiseComponent>();
     }
 
     protected virtual void OnEnable()
     {
         EventBus.Subscribe<GroundPoundEvent>(OnGroundPound);
+        // [2026-08-10] 捡装备/卸下注入修饰器时重算 maxHealth（对齐玩家侧 PlayerHealth）
+        EventBus.Subscribe<StatModifiersChangedEvent>(OnStatModifiersChanged);
     }
 
     protected virtual void OnDisable()
     {
         EventBus.Unsubscribe<GroundPoundEvent>(OnGroundPound);
+        EventBus.Unsubscribe<StatModifiersChangedEvent>(OnStatModifiersChanged);
         OnExitCombatState();  // 场景卸载/对象池回收时确保退出战斗计数
     }
 
@@ -183,11 +251,23 @@ public abstract class EnemyControllerBase : CharacterBase
             stunCooldownTimer -= Time.deltaTime;
     }
 
-    /// <summary>敌人动画参数更新。后续有动画 Clip 时可扩展 IsAttacking/IsDead。</summary>
+    /// <summary>
+    /// 敌人动画参数更新 — 每帧聚合 Locomotion 双参数（IsIdle/IsMove 互斥）。
+    /// busy（死亡/攻击/受击）时两者全 false → 当前 Locomotion 状态 Exit → Entry 重判命中 IsDead/IsAttacking/IsHurt。
+    /// stun 无 hurt 动画：moveInput=0 → 自然回落 Idle。
+    /// </summary>
     protected override void UpdateAnimation()
     {
         if (_animator == null) return;
-        _animator.SetFloat(AnimParams.Speed, Mathf.Abs(rb.velocity.x));
+
+        // 注：不设 Speed——melee controller 只有 Bool 参数（IsIdle/IsMove/IsAttacking/IsDead），无 Speed 参数，
+        //      SetFloat 不存在的参数会每帧报错。需要速度档位的类型（如 ranged 的 Run）override 本方法自行设置。
+        bool moving = Mathf.Abs(moveInput) > 0.01f;
+        bool busy = isDead
+            || _animator.GetBool(AnimParams.IsAttacking)
+            || _animator.GetBool(AnimParams.IsHurt);
+        _animator.SetBool(AnimParams.IsIdle, !moving && !busy);
+        _animator.SetBool(AnimParams.IsMove, moving && !busy);
     }
 
     protected override void OnUpdate()
@@ -215,6 +295,13 @@ public abstract class EnemyControllerBase : CharacterBase
     // 事件订阅
     // ============================================================
 
+    /// <summary>
+    /// 砸地攻击标签 — 复用重击近战标签（与 PlayerCombat.meleeFinisherAttackType 值一致，不跨类引用）。
+    /// 命中 PoiseComponent.meleeAttackLabels 白名单 → OnHitBy 走近战 stun 路径（保留原晕眩行为）+ 计入霸体计数器。
+    /// 禁止改空串：空串会走远程分支（不晕 + rangedKnockbackForce 击退 + 立即追击，行为变化）。
+    /// </summary>
+    private const string GroundPoundAttackLabel = "Sword_Heavy";
+
     private void OnGroundPound(GroundPoundEvent e)
     {
         if (isDead) return;
@@ -227,14 +314,48 @@ public abstract class EnemyControllerBase : CharacterBase
         float dist = toCenter.magnitude;
         if (dist > e.radius) return;
 
-        TakeDamage(e.damage);  // GroundPound 不传 attackType，使用默认 VFX
+        // P2a: 统一走 CombatResolver — 攻击标签用重击近战标签：
+        //   掉血/闪白/VFX 由 ApplyDamage，晕眩由 OnHitBy(IsMelee=true)→EnterStunState，击退走 Poise 霸体判定
+        Vector2 knockDir = toCenter.normalized;
+        knockDir.y = 0f;
+        if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
 
-        if (dist > 0.01f)
+        CombatResolver.Resolve(null, this, new DamageInfo
         {
-            Vector2 knockDir = toCenter.normalized;
-            knockDir.y = 0f;
-            if (rb != null)
-                rb.velocity = knockDir * e.knockbackForce;
+            amount = e.damage,
+            source = null,                       // GroundPoundEvent 无攻击者字段，保持 null（defender 是 enemy，source 不影响结算）
+            sourcePosition = e.center,
+            attackLabel = GroundPoundAttackLabel,
+            knockback = new Knockback
+            {
+                direction = knockDir,
+                force = e.knockbackForce * (rb != null ? rb.mass : 1f),  // 原实现直接设 velocity=knockbackForce，改 Impulse 后乘 mass 等价保持手感
+                duration = 0f,
+                ignoreResistance = false
+            }
+        });
+    }
+
+    /// <summary>
+    /// 修饰器变化（enemy 捡装备注入 / 卸下）时：MaxHealth 受影响则重算终值 + 等比缩放 currentHealth。
+    /// 对齐玩家侧 PlayerHealth.OnStatModifiersChanged（保持当前血量百分比不变）。
+    /// </summary>
+    private void OnStatModifiersChanged(StatModifiersChangedEvent e)
+    {
+        if (isDead) return;
+        foreach (var statId in e.affectedStatIds)
+        {
+            if (statId == StatId.MaxHealth)
+            {
+                float newMax = statModManager != null
+                    ? statModManager.GetFinalValue(_baseMaxHealth, StatId.MaxHealth)
+                    : _baseMaxHealth;
+                // 等比缩放：保持当前血量百分比不变
+                float ratio = maxHealth > 0f ? currentHealth / maxHealth : 1f;
+                currentHealth = Mathf.Clamp(ratio * newMax, 0f, newMax);
+                maxHealth = newMax;
+                break;
+            }
         }
     }
 
@@ -244,62 +365,45 @@ public abstract class EnemyControllerBase : CharacterBase
 
     /// <summary>
     /// 造成伤害。attackType 可选，匹配到 hitVFXVariants 中的条目时使用对应 VFX，否则用默认 hitVFXPrefab。
+    /// P4b:内部转 ApplyDamage(DamageInfo)，保留 EnterStunState 前置，外部调用方不受影响。
     /// </summary>
     public virtual void TakeDamage(float amount, string attackType = "")
     {
         if (isDead) return;
 
         EnterStunState();
-        if (ApplyDamage(amount, attackType)) Die();
+        ApplyDamage(new DamageInfo
+        {
+            amount = amount,
+            source = null,
+            sourcePosition = transform.position,
+            attackLabel = attackType,
+            knockback = Knockback.None
+        });
     }
 
+    /// <summary>
+    /// 造成伤害（含攻击来源）。attackType 匹配 VFX 变体。
+    /// P4b:内部转 ApplyDamage(DamageInfo) + OnHitBy（扣血/闪白/VFX → 近战 stun / 远程击退+追击），外部调用方不受影响。
+    /// </summary>
     public virtual void TakeDamageFrom(float amount, Vector2 attackSource, string attackType = "")
     {
         if (isDead) return;
 
-        // 受击 VFX — 朝攻击来源方向偏移，更真实
-        Vector2 hitOffset = ((Vector2)transform.position - attackSource).normalized * -0.15f;
-        Vector2 vfxPos = (Vector2)transform.position + hitOffset;
-        Vector2 hitDir = ((Vector2)transform.position - attackSource).normalized;
-
-        if (ApplyDamage(amount, attackType, vfxPos, hitDir)) { Die(); return; }
-
-        // ── 按攻击类型分流：近战走霸体控制 + stun 打断，远程保持原有逻辑 ──
-        bool isMelee = _poise != null && _poise.IsMeleeAttack(attackType);
-
-        if (isMelee)
+        DamageInfo info = new DamageInfo
         {
-            // ── 近战路径：stun 硬直 + 霸体控制轻击退 ──
+            amount = amount,
+            source = null,
+            sourcePosition = attackSource,
+            attackLabel = attackType,
+            knockback = Knockback.None
+        };
 
-            // 1. FSM 打断：始终进入 stun 硬直（不受霸体影响）
-            //    注意：不立即 fsm.ChangeState(CreateChaseState())，让 stun 真正执行 0.5s
-            //          EnemyStunState.OnUpdate 会在 timer 归零后自动转 Chase/Fallback
-            EnterStunState();
+        // 扣血 + 受击 VFX（复用原 TakeDamageFrom 核心段）
+        ApplyDamage(info);
 
-            // 2. 击退：RegisterMeleeHit 负责霸体累计 + 返回本次是否击退
-            if (_poise.RegisterMeleeHit(attackType, out float kbForce) && kbForce > 0f)
-            {
-                Vector2 knockDir = hitDir;
-                knockDir.y = 0f;
-                if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
-                rb.AddForce(knockDir * kbForce, ForceMode2D.Impulse);
-            }
-            // 注意：近战路径不再设置 moveInput 和 ChangeState(Chase)
-            //       stun state 的 OnUpdate 会在 0.5s 后自动切换到 Chase/Fallback
-        }
-        else
-        {
-            // ── 远程路径：保持原有逻辑不变（3f 击退 + 立即追击）──
-            Vector2 knockDir = hitDir;
-            knockDir.y = 0f;
-            if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
-            rb.AddForce(knockDir * rangedKnockbackForce, ForceMode2D.Impulse);
-
-            // 朝攻击源方向追击（Move 内部会乘以 moveSpeed，这里只设方向 ±1）
-            float dir = (attackSource.x > transform.position.x) ? 1f : -1f;
-            moveInput = dir;
-            fsm.ChangeState(CreateChaseState());
-        }
+        // 受击状态分流：近战 stun 硬直 / 远程击退 + 立即追击
+        OnHitBy(info);
     }
 
     /// <summary>
@@ -355,9 +459,45 @@ public abstract class EnemyControllerBase : CharacterBase
         return hitVFXPrefab;
     }
 
+    // ============================================================
+    // 通用动画事件（AnimationRelay 转发入口）
+    // ============================================================
+
+    /// <summary>攻击命中帧事件 — 转发给当前攻击状态（IEnemyAttackState），ranged/boss 后续攻击状态实现同一接口</summary>
+    public virtual void OnAttackHitFrame() => (fsm.CurrentState as IEnemyAttackState)?.OnHitFrame();
+
+    /// <summary>攻击动画结束事件 — 转发给当前攻击状态</summary>
+    public virtual void OnAttackAnimationEnd() => (fsm.CurrentState as IEnemyAttackState)?.OnAnimEnd();
+
+    /// <summary>
+    /// 死亡播放入口 — 置死亡标记 + 切死亡状态（旧状态 OnExit 自动清 IsAttacking）+ 启动超时兜底。
+    /// 原 Die() 的结算内容（VFX/掉落/事件/Destroy）全部移到 OnDeathAnimationEnd()，由 Death 动画末帧事件触发。
+    /// </summary>
     protected virtual void Die()
     {
+        if (isDead) return;
         isDead = true;
+
+        // 死亡停住：清移动输入 + 水平速度（移动中被杀时 moveInput 残留 → 死亡动画期间会继续滑动）
+        moveInput = 0f;
+        if (rb != null) rb.velocity = new Vector2(0f, rb.velocity.y);
+
+        fsm.ChangeState(new EnemyDeadState(this, fsm, _animator));
+
+        // 死亡超时兜底：Death clip 时长 + 0.5s，事件链路断时强制 OnDeathAnimationEnd 防卡死
+        StartCoroutine(DeathFallbackRoutine());
+    }
+
+    /// <summary>
+    /// 死亡动画播完 — 执行原 Die() 全部结算内容（退出战斗计数 + 死亡 VFX + 掉落 + 事件 + 销毁）。
+    /// 由 Death.anim 末帧事件 OnEnemyDeathEnd → AnimationRelay 转发，或死亡超时兜底触发。
+    /// </summary>
+    public virtual void OnDeathAnimationEnd()
+    {
+        // 守卫：只有 Die() 置过 isDead 才允许死亡结算。
+        // 防误触发（如事件误挂到 Attack.anim / 重复触发）导致 enemy 无理由销毁。
+        if (!isDead) return;
+
         OnExitCombatState();  // 死亡时退出战斗计数
 
         // 死亡 VFX
@@ -369,6 +509,126 @@ public abstract class EnemyControllerBase : CharacterBase
 
         EventBus.Trigger(new EnemyDeathEvent(this, (Vector2)transform.position));
         Destroy(gameObject);
+    }
+
+    /// <summary>
+    /// 死亡超时兜底协程 — 采样死亡 clip 时长（+0.5s）作为兜底基准；采样失败（无 Animator / 未命名 Death）回退 1.0s。
+    /// 动画事件正常时 OnEnemyDeathEnd 在 clip 末帧先到并销毁，本协程随物体销毁终止。
+    /// </summary>
+    private IEnumerator DeathFallbackRoutine()
+    {
+        // 等 Animator 过渡到死亡状态（最多 waitMax 秒），采样死亡 clip 时长
+        float elapsed = 0f;
+        float clipLen = 0f;
+        const float waitMax = 0.4f;
+        while (elapsed < waitMax)
+        {
+            elapsed += Time.deltaTime;
+            if (_animator != null)
+            {
+                var clips = _animator.GetCurrentAnimatorClipInfo(0);
+                if (clips.Length > 0 && clips[0].clip != null &&
+                    clips[0].clip.name.IndexOf("Death", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    clipLen = clips[0].clip.length;
+                    break;
+                }
+            }
+            yield return null;
+        }
+
+        float duration = clipLen > 0f ? clipLen + 0.5f : 1.0f;
+        yield return new WaitForSeconds(duration);
+        if (isDead)
+            OnDeathAnimationEnd();
+    }
+
+    // ============================================================
+    // ICombatant 接口实现（P4b 玩家→敌人结算统一）
+    // ============================================================
+
+    // ── 身份 ──
+    public GameObject GameObject => gameObject;
+    public Transform Transform => transform;
+
+    // ── 受击方 ──
+    public PoiseComponent Poise => _poise;
+    public virtual bool CanBeDamaged => !isDead;
+
+    /// <summary>
+    /// 承受伤害（含击退信息），返回实际造成伤害量。
+    /// 复用原 TakeDamageFrom 核心段：受击 VFX（普通+方向）+ 扣血 + 闪白，死亡时 Die()。
+    /// 近战 stun 硬直 / 远程追击由 OnHitBy 推送（霸体累计已由 CombatResolver 调 RegisterHit 完成，此处不重复计数）。
+    /// </summary>
+    public float ApplyDamage(DamageInfo info)
+    {
+        if (isDead) return 0f;
+
+        // 受击 VFX — 朝攻击来源方向偏移，更真实（与原 TakeDamageFrom 一致）
+        Vector2 fromSource = (Vector2)transform.position - info.sourcePosition;
+        bool hasDirection = fromSource.sqrMagnitude > 0.0001f;
+        Vector2 hitOffset = hasDirection ? fromSource.normalized * -0.15f : Vector2.zero;
+        Vector2 vfxPos = (Vector2)transform.position + hitOffset;
+        Vector2? hitDir = hasDirection ? (Vector2?)fromSource.normalized : null;
+
+        if (ApplyDamage(info.amount, info.attackLabel, vfxPos, hitDir)) Die();
+        return info.amount;
+    }
+
+    // ── 结算管线钩子（P4b 敌人侧简单实现保证行为一致；弹反/闪避判定在 P4c 玩家侧接入）──
+
+    /// <summary>闪避判定 — 敌人无闪避</summary>
+    public bool TryDodge(DamageInfo info) => false;
+
+    /// <summary>格挡/弹反判定 — 敌人无格挡弹反</summary>
+    public bool TryParry(ICombatant attacker, DamageInfo info) => false;
+
+    /// <summary>护甲减免 — 敌人无护甲</summary>
+    public float ApplyArmor(float amount) => amount;
+
+    /// <summary>减伤 — 敌人无减伤</summary>
+    public float ApplyReduction(float amount) => amount;
+
+    /// <summary>施加击退（CombatResolver 在霸体判定通过后调用；方向/力度/上挑由攻击方构造进 Knockback）</summary>
+    public virtual void ApplyKnockback(Knockback knockback)
+    {
+        if (rb == null || knockback.force <= 0f) return;
+        Vector2 knockDir = knockback.direction;
+        if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
+        rb.AddForce(knockDir * knockback.force, ForceMode2D.Impulse);
+    }
+
+    /// <summary>
+    /// 受击状态推送 — 近战进 stun 硬直，远程击退+立即追击（原 TakeDamageFrom 分流逻辑）。
+    /// 近战击退由 CombatResolver 统一在 ApplyKnockback 施加；RegisterHit 只做霸体累计/判定，不再叠加额外击退力。
+    /// </summary>
+    public virtual void OnHitBy(DamageInfo info)
+    {
+        if (isDead) return;
+
+        bool isMelee = _poise != null && _poise.IsMeleeAttack(info.attackLabel);
+
+        if (isMelee)
+        {
+            // ── 近战路径：始终进入 stun 硬直（不受霸体影响）──
+            //    注意：不立即 fsm.ChangeState(CreateChaseState())，让 stun 真正执行 0.5s
+            //          EnemyStunState.OnUpdate 会在 timer 归零后自动转 Chase/Fallback
+            EnterStunState();
+        }
+        else
+        {
+            // ── 远程路径：保持原有逻辑不变（rangedKnockbackForce 击退 + 立即追击）──
+            Vector2 hitDir = ((Vector2)transform.position - info.sourcePosition).normalized;
+            Vector2 knockDir = hitDir;
+            knockDir.y = 0f;
+            if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
+            rb.AddForce(knockDir * rangedKnockbackForce, ForceMode2D.Impulse);
+
+            // 朝攻击源方向追击（Move 内部会乘以 moveSpeed，这里只设方向 ±1）
+            float dir = (info.sourcePosition.x > transform.position.x) ? 1f : -1f;
+            moveInput = dir;
+            fsm.ChangeState(CreateChaseState());
+        }
     }
 
     // ============================================================
@@ -461,8 +721,17 @@ public abstract class EnemyControllerBase : CharacterBase
     /// <summary>当前面朝方向（1=右, -1=左），供外部组件读取</summary>
     public int Facing => facing;
 
+    /// <summary>玩家是否存活（死亡后 enemy 停止检测/追击/攻击）</summary>
+    private bool IsPlayerAlive()
+    {
+        if (player == null) return false;
+        var ph = player.GetComponent<PlayerHealth>();
+        return ph == null || !ph.IsDead;
+    }
+
     public bool CanSeePlayer()
     {
+        if (!IsPlayerAlive()) return false;
         if (player == null) return false;
         if (!IsInDetectionRect()) return false;
         return HasLineOfSight();
@@ -496,6 +765,7 @@ public abstract class EnemyControllerBase : CharacterBase
 
     public bool PlayerInAttackRange()
     {
+        if (!IsPlayerAlive()) return false;
         if (player == null) return false;
         float deltaX = player.position.x - transform.position.x;
         float deltaY = player.position.y - transform.position.y;

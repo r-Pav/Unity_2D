@@ -1,28 +1,35 @@
 using UnityEngine;
 
-public class MeleeIdleState : IState
+/// <summary>
+/// 近战敌人待机状态 — 短时静止后转巡逻，发现玩家直接追击。
+/// </summary>
+public class MeleeIdleState : EntityState
 {
-    private readonly EnemyMeleeController owner;
     private float timer;
 
-    public MeleeIdleState(EnemyMeleeController owner) { this.owner = owner; }
-
-    public void OnEnter()
+    public MeleeIdleState(CharacterBase owner, StateMachine stateMachine, Animator anim = null)
+        : base(owner, stateMachine, anim)
     {
-        timer = Random.Range(1f, 2.5f);
-        owner.moveInput = 0f;
-        owner.OnExitCombatState();
-        owner.ApplyStateColor(new Color(0.6f, 0.6f, 0.6f));
     }
 
-    public void OnUpdate()
+    public override void OnEnter()
     {
+        var me = (EnemyMeleeController)owner;
+        timer = Random.Range(1f, 2.5f);
+        me.moveInput = 0f;
+        me.OnExitCombatState();
+        me.ApplyStateColor(new Color(0.6f, 0.6f, 0.6f));
+    }
+
+    public override void OnUpdate()
+    {
+        var me = (EnemyMeleeController)owner;
         timer -= Time.deltaTime;
         if (timer <= 0f)
-            owner.Fsm.ChangeState(new MeleePatrolState(owner));
-        else if (owner.CanSeePlayer())
-            owner.Fsm.ChangeState(owner.CreateChaseState());
+            me.Fsm.ChangeState(new MeleePatrolState(owner, stateMachine, anim));
+        else if (me.CanSeePlayer())
+            me.Fsm.ChangeState(me.CreateChaseState());
     }
 
-    public void OnExit() { }
+    public override void OnExit() { }
 }

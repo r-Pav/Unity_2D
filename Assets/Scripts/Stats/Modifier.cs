@@ -54,6 +54,8 @@ public static class StatId
     // ── 已有属性（改造自 serialized field）──
     public const string MoveSpeed = "moveSpeed";
     public const string MaxHealth = "maxHealth";
+    /// <summary>敌人伤害（P2b-2 新增：enemy 侧伤害倍率管线入口，语义与玩家 DamageMultiplier 隔离）</summary>
+    public const string EnemyDamage = "enemyDamage";
 
     // ── P1 新增属性 ──
     /// <summary>伤害倍率（默认 1.0）</summary>

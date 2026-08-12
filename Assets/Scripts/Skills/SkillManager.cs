@@ -271,6 +271,11 @@ public class SkillManager : MonoBehaviour
             gameObject
         ));
 
+        // P3b:技能激活成功 → 切入技能释放状态(行为层表现 + 输入锁定,时长由状态类管理;
+        // 技能冷却/法力逻辑保留在 SkillManager 数据层;快捷键(CheckHotkeys)/UI 按钮调用均触发)
+        if (owner != null && owner.PlayerFsm != null && owner.SkillCastState != null)
+            owner.PlayerFsm.ChangeState(owner.SkillCastState);
+
         Debug.Log($"[Skill] {data.skillName} activated (slot {index})");
     }
 

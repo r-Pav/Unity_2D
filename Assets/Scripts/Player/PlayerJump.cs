@@ -1,5 +1,11 @@
 using UnityEngine;
 
+/// <summary>
+/// 跳跃执行器(降级) — P1 起不再持有 IsJumping/IsFalling 状态(迁移到 FSM 状态类)
+/// 保留:跳跃次数管理(ResetJumps)、跳跃执行(TryJump→owner.ExecuteJump)、
+///      跳跃缓冲(UpdateJumpBuffer)、锁定期间打断/缓冲(OnLockedUpdate)
+/// 由 PlayerJumpState/PlayerFallState 等 FSM 状态类调用
+/// </summary>
 public class PlayerJump : MonoBehaviour
 {
     [SerializeField] private int maxJumps = 2;
@@ -7,24 +13,13 @@ public class PlayerJump : MonoBehaviour
     [Tooltip("跳跃打断攻击:攻击锁定期间按空格直接打断当前攻击并跳跃(优先级:跳 > 攻击)。false = 缓冲补跳")]
     [SerializeField] private bool jumpBreaksAttack = true;
 
-    [Tooltip("跳跃缓冲窗口(秒):方案1用,攻击锁定期间按空格记录意图,解锁后窗口内自动补跳")]
+    [Tooltip("跳跃缓冲窗口(秒):攻击锁定期间按空格记录意图,解锁后窗口内自动补跳")]
     [SerializeField] private float jumpBufferWindow = 0.2f;
 
     private int jumpsLeft;
-    private bool wasGrounded;
     private float jumpBufferTimer;   // >0 = 有待执行的跳跃意图(缓冲方案用)
     private CharacterBase _charBase;
     private Animator Anim => _charBase != null ? _charBase.Animator : null;
-
-    // ============================================================
-    // 跳跃状态（C# 字段为状态源，Animator 只做单向输出）
-    // ============================================================
-
-    /// <summary>是否处于跳跃上升（Jump 动画）</summary>
-    public bool IsJumping { get; private set; }
-
-    /// <summary>是否处于下落（Fall 动画）</summary>
-    public bool IsFalling { get; private set; }
 
     void Awake()
     {
@@ -35,82 +30,64 @@ public class PlayerJump : MonoBehaviour
     public void ResetJumps() => jumpsLeft = maxJumps;
 
     /// <summary>锁定期间调用(PlayerController.IsActionLocked 分支):处理跳跃打断/缓冲。
-    /// 正常移动/落地检测不在此处理,只响应空格输入。</summary>
+    /// P2:攻击锁定由 FSM 状态表达(PlayerAttackState/PlayerAirAttackState 当前状态),
+    /// 跳跃打断攻击 = ChangeState(JumpState),状态 OnExit 自动清理(原 CancelAttackForJump 职责)。
+    /// 正常移动/落地检测由 FSM 状态接管,此处只响应空格输入。</summary>
     public void OnLockedUpdate(PlayerController owner)
     {
-        if (owner.Combat != null && owner.Combat.IsInputLocked && Input.GetKeyDown(KeyCode.Space))
+        // 只有攻击类状态可被跳跃打断(原 combat.IsInputLocked 条件)
+        bool inBreakableAttack = owner.PlayerFsm != null
+            && (owner.PlayerFsm.CurrentState is PlayerAttackState
+                || owner.PlayerFsm.CurrentState is PlayerAirAttackState);
+        if (!inBreakableAttack) return;
+        if (!Input.GetKeyDown(KeyCode.Space)) return;
+
+        if (jumpBreaksAttack)
         {
-            if (jumpBreaksAttack)
+            // 墙顶优先翻顶:翻顶同样打断攻击,但不进入跳跃状态(TriggerVault 已切换状态)
+            if (owner.NearWallTop() && owner.CanVault())
             {
-                // 方案2:跳跃打断攻击
-                if (TryJump(owner))
-                    owner.Combat.CancelAttackForJump();
+                owner.WallClingState?.TriggerVault();
+                return;
             }
-            else
-            {
-                // 方案1:缓冲 — 记录跳跃意图,解锁后 OnPlayerUpdate 窗口内补跳
-                jumpBufferTimer = jumpBufferWindow;
-            }
+            // 跳跃打断攻击(力由 TryJump 施加;攻击状态由 ChangeState 自动退出并清理)
+            if (TryJump(owner))
+                owner.PlayerFsm.ChangeState(owner.JumpState);
+        }
+        else
+        {
+            // 缓冲 — 记录跳跃意图,解锁后各状态 OnUpdate 窗口内补跳
+            jumpBufferTimer = jumpBufferWindow;
         }
     }
 
-    public void OnPlayerUpdate(PlayerController owner)
+    /// <summary>跳跃缓冲递减:>0 时尝试补跳。返回 true 表示已跳起(调用方切换 JumpState);
+    /// 翻顶时返回 false(TriggerVault 已切换状态,不再需要 JumpState)。</summary>
+    public bool UpdateJumpBuffer(PlayerController owner)
     {
-        bool grounded = owner.IsGrounded();
+        if (jumpBufferTimer <= 0f) return false;
+        jumpBufferTimer -= Time.deltaTime;
+        if (jumpBufferTimer <= 0f) return false;
 
-        if (grounded && !wasGrounded)
+        // 墙顶优先翻顶
+        if (owner.NearWallTop() && owner.CanVault())
         {
-            jumpsLeft = maxJumps;
-            IsFalling = false;
-            IsJumping = false;
-            Anim?.SetBool(AnimParams.IsFalling, false);
-            Anim?.SetBool(AnimParams.IsJumping, false);
+            jumpBufferTimer = 0f;
+            owner.WallClingState?.TriggerVault();
+            return false;
         }
 
-        if (owner.IsDashing())
+        if (TryJump(owner))
         {
-            wasGrounded = grounded;
-            return;
+            jumpBufferTimer = 0f;
+            return true;
         }
-
-        if (owner.FreezeTimer > 0f)
-        {
-            wasGrounded = grounded;
-            return;
-        }
-
-        // 缓冲窗口递减(方案1:锁定期间记录意图,解锁后窗口内补跳)
-        if (jumpBufferTimer > 0f)
-        {
-            jumpBufferTimer -= Time.deltaTime;
-            if (jumpBufferTimer > 0f && TryJump(owner))
-                jumpBufferTimer = 0f;
-        }
-
-        // 正常即时跳跃
-        if (Input.GetKeyDown(KeyCode.Space))
-        {
-            TryJump(owner);
-        }
-
-        // 跳跃转下落
-        if (!grounded)
-        {
-            Rigidbody2D rb = owner.GetRigidbody();
-            if (rb != null && rb.velocity.y < -0.1f)
-            {
-                IsJumping = false;
-                IsFalling = true;
-                Anim?.SetBool(AnimParams.IsJumping, false);
-                Anim?.SetBool(AnimParams.IsFalling, true);
-            }
-        }
-
-        wasGrounded = grounded;
+        return false;
     }
 
-    /// <summary>尝试跳跃:优先空中翻顶,否则消耗跳跃次数。成功返回 true</summary>
-    private bool TryJump(PlayerController owner)
+    /// <summary>尝试跳跃:优先空中翻顶,否则消耗跳跃次数并施加跳跃力。成功返回 true。
+    /// 由 FSM 状态类(Idle/Move/Jump/Fall)在输入或缓冲命中时调用。</summary>
+    public bool TryJump(PlayerController owner)
     {
         // 空中/贴墙接近墙顶:优先翻顶(蹬墙跳飞行中接近对面墙顶可直接翻上去)
         if (owner.NearWallTop() && owner.CanVault())
@@ -122,9 +99,6 @@ public class PlayerJump : MonoBehaviour
         {
             jumpsLeft--;
             owner.ExecuteJump(owner.JumpForce);
-            IsJumping = true;
-            IsFalling = false;
-            Anim?.SetBool(AnimParams.IsJumping, true);
             return true;
         }
         return false;

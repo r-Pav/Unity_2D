@@ -384,6 +384,9 @@ public readonly struct AreaSwitchEvent
     }
 }
 
+/// <summary>进入新地区事件 — 管道切换自动存档触发（SaveSystem 订阅 → AutoSave）</summary>
+public readonly struct AreaEnterEvent { }
+
 /// <summary>章节进度变化事件 — PassiveEquipManager.SetChapter/AdvanceChapter 触发</summary>
 public readonly struct ChapterChangedEvent
 {

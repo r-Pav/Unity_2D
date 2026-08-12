@@ -19,7 +19,13 @@ public class StatModifierManager : MonoBehaviour
         get
         {
             if (_instance == null)
-                _instance = FindObjectOfType<StatModifierManager>();
+            {
+                // P2b-2（cehua 5.3 方案 2）：优先从玩家查找，防止 enemy 挂 StatModifierManager 后
+                // FindObjectOfType 命中 enemy 实例导致玩家侧消费方（PassiveEquipManager/PlayerAttributeSystem）错乱
+                _instance = PlayerController.Instance?.GetComponent<StatModifierManager>();
+                if (_instance == null)
+                    _instance = FindObjectOfType<StatModifierManager>();
+            }
             return _instance;
         }
     }

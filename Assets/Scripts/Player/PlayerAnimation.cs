@@ -14,10 +14,7 @@ public class PlayerAnimation : MonoBehaviour
 
     private Animator _animator;
     private Rigidbody2D _rb;
-    private PlayerJump _jump;
-    private PlayerCombat _combat;
-    private PlayerDash _dash;
-    private PlayerHealth _health;
+    private PlayerController _pc;
 
     void Awake()
     {
@@ -27,16 +24,13 @@ public class PlayerAnimation : MonoBehaviour
         foreach (var a in all)
             if (a.runtimeAnimatorController != null) { _animator = a; break; }
 
-        // C# 状态源组件（在 Player 根上，用 InParent 向上找）
-        _jump = GetComponentInParent<PlayerJump>();
-        _combat = GetComponentInParent<PlayerCombat>();
-        _dash = GetComponentInParent<PlayerDash>();
-        _health = GetComponentInParent<PlayerHealth>();
+        // 状态源统一查 PlayerController 公开状态属性(FSM 状态类驱动,不再是子组件 bool)
+        _pc = GetComponentInParent<PlayerController>();
     }
 
     void Update()
     {
-        if (_animator == null || _rb == null) return;
+        if (_animator == null || _rb == null || _pc == null) return;
 
         // 移速动画分档(硬分档,无中间混合):0=Idle / <run=Walk / <runJump=Run / 其余=RunJump
         float v = Mathf.Abs(_rb.velocity.x);
@@ -51,12 +45,19 @@ public class PlayerAnimation : MonoBehaviour
             speedParam = 1.5f;                                // RunJump(BlendTree 1.5)
         _animator.SetFloat(AnimParams.Speed, speedParam);
 
-        // 聚合 IsMove：所有动作状态为 false 时才是移动
-        // 状态源为 C# 字段（Animator 只做输出），不再每帧回读 Animator
-        bool isMove = !(_jump != null && (_jump.IsJumping || _jump.IsFalling))
-                   && !(_combat != null && (_combat.IsAttacking || _combat.IsBlocking || _combat.IsAirAttacking))
-                   && !(_dash != null && _dash.IsDashing)
-                   && !(_health != null && (_health.IsHurt || _health.IsAirHurt));
+        // 聚合 IsMove：FSM 当前状态非动作状态 且 非冲刺/受击 时才是移动
+        // P2:战斗状态(Attack/AirAttack/Block/GroundPound)直接查 FSM 状态类型,不再查子组件 bool
+        // P3b:冲刺排除走 _pc.IsDashing()(已改为查 FSM CurrentState is PlayerDashState),无需额外处理
+        var cur = _pc.PlayerFsm != null ? _pc.PlayerFsm.CurrentState : null;
+        bool inCombatState = cur is PlayerAttackState
+                          || cur is PlayerAirAttackState
+                          || cur is PlayerBlockState
+                          || cur is PlayerGroundPoundState;
+
+        bool isMove = !(_pc.IsJumping || _pc.IsFalling)
+                   && !inCombatState
+                   && !(_pc.IsDashing())
+                   && !(_pc.IsHurt || _pc.IsAirHurt);
 
         _animator.SetBool(AnimParams.IsMove, isMove);
     }

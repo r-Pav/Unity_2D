@@ -11,27 +11,37 @@ public class EnemyRangedController : EnemyControllerBase
     // ============================================================
 
     [Header("后退策略 — 矩形")]
-    [Tooltip("后退矩形半宽（X 轴，低于此距离后退）")]
-    [SerializeField] private float retreatWidth = 3f;
-    [Tooltip("后退矩形半高（Y 轴，低于此距离后退）")]
-    [SerializeField] private float retreatHeight = 3f;
-    [Tooltip("恢复追击矩形半宽（X 轴，迟滞区间上限）")]
-    [SerializeField] private float retreatRecoverWidth = 10f;
-    [Tooltip("恢复追击矩形半高（Y 轴，迟滞区间上限）")]
-    [SerializeField] private float retreatRecoverHeight = 6f;
+    [Tooltip("后退矩形半宽（X 轴，低于此距离后退；0 = 未设置）")]
+    [SerializeField] private float retreatWidth = 0f;
+    [Tooltip("后退矩形半高（Y 轴，低于此距离后退；0 = 未设置）")]
+    [SerializeField] private float retreatHeight = 0f;
+    [Tooltip("恢复追击矩形半宽（X 轴，迟滞区间上限；0 = 未设置）")]
+    [SerializeField] private float retreatRecoverWidth = 0f;
+    [Tooltip("恢复追击矩形半高（Y 轴，迟滞区间上限；0 = 未设置）")]
+    [SerializeField] private float retreatRecoverHeight = 0f;
+
+    /// <summary>retreat 内置默认（Inspector 与 SO 均未设置时兜底）</summary>
+    private const float DefaultRetreatWidth = 3f;
+    private const float DefaultRetreatHeight = 3f;
+    private const float DefaultRetreatRecoverWidth = 10f;
+    private const float DefaultRetreatRecoverHeight = 6f;
 
     /// <summary>暴露后退矩形半宽给攻击组件（EnemyRangedAttack）读取</summary>
     public float RetreatWidth => retreatWidth;
     /// <summary>暴露后退矩形半高给攻击组件（EnemyRangedAttack）读取</summary>
     public float RetreatHeight => retreatHeight;
+    /// <summary>暴露恢复追击矩形半宽给状态类（RangedChaseState）读取</summary>
+    public float RetreatRecoverWidth => retreatRecoverWidth;
+    /// <summary>暴露恢复追击矩形半高给状态类（RangedChaseState）读取</summary>
+    public float RetreatRecoverHeight => retreatRecoverHeight;
 
     // ============================================================
     // 抽象方法实现
     // ============================================================
 
-    protected override IState GetInitialState() => new IdleState(this);
-    public override IState CreateChaseState() => new ChaseState(this);
-    public override IState CreateFallbackState() => new IdleState(this);
+    protected override IState GetInitialState() => new RangedIdleState(this, Fsm, Animator);
+    public override IState CreateChaseState() => new RangedChaseState(this, Fsm, Animator);
+    public override IState CreateFallbackState() => new RangedIdleState(this, Fsm, Animator);
 
     // ============================================================
     // 生命周期
@@ -39,9 +49,14 @@ public class EnemyRangedController : EnemyControllerBase
 
     protected new void Start()
     {
-        attackWidth = 10f;
-        attackHeight = 6f;
-        stunState = new EnemyStunState(this, fsm);
+        // [Lv 收敛] retreat 矩形：Inspector(>0) → SO 对应 Lv 档 → 内置默认（0 = 未设置）
+        retreatWidth = Resolve(retreatWidth, LvStats?.retreatWidth ?? 0f, DefaultRetreatWidth);
+        retreatHeight = Resolve(retreatHeight, LvStats?.retreatHeight ?? 0f, DefaultRetreatHeight);
+        retreatRecoverWidth = Resolve(retreatRecoverWidth, LvStats?.retreatRecoverWidth ?? 0f, DefaultRetreatRecoverWidth);
+        retreatRecoverHeight = Resolve(retreatRecoverHeight, LvStats?.retreatRecoverHeight ?? 0f, DefaultRetreatRecoverHeight);
+        // 顺序坑 B：attackWidth/attackHeight 不再在此硬编码 10/6 — 改由基类 Awake 解析提供（远程资产填 10/6）
+
+        stunState = new EnemyStunState(this, Fsm);
         SetStunState(stunState);
         base.Start();
     }
@@ -65,161 +80,13 @@ public class EnemyRangedController : EnemyControllerBase
     // 辅助：检查玩家是否在指定矩形内
     // ============================================================
 
-    private bool InRect(float w, float h)
+    /// <summary>玩家是否在指定矩形内（供状态类 RangedChaseState 调用）</summary>
+    public bool InRect(float w, float h)
     {
         if (player == null) return false;
         float dx = Mathf.Abs(player.position.x - transform.position.x);
         float dy = Mathf.Abs(player.position.y - transform.position.y);
         return dx <= w * 0.5f && dy <= h * 0.5f;
-    }
-
-    // ============================================================
-    // FSM 状态定义
-    // ============================================================
-
-    public class IdleState : IState
-    {
-        private readonly EnemyRangedController owner;
-        private float timer;
-
-        public IdleState(EnemyRangedController owner) { this.owner = owner; }
-
-        public void OnEnter()
-        {
-            timer = Random.Range(1f, 2.5f);
-            owner.moveInput = 0f;
-            owner.OnExitCombatState();
-            owner.ApplyStateColor(new Color(0.6f, 0.6f, 0.6f)); // 灰白
-        }
-
-        public void OnUpdate()
-        {
-            timer -= Time.deltaTime;
-            if (timer <= 0f)
-                owner.fsm.ChangeState(new IdleState(owner));  // 原地循环，无 Patrol
-            else if (owner.CanSeePlayer())
-            {
-                // Debug.Log($"[{owner.name}] 发现玩家，进入Chase");
-                owner.fsm.ChangeState(owner.CreateChaseState());
-            }
-        }
-
-        public void OnExit() { }
-    }
-
-    private class ChaseState : IState
-    {
-        private readonly EnemyRangedController owner;
-        private float losePlayerTimer;
-        private float debugCooldown;
-
-        public ChaseState(EnemyRangedController owner) { this.owner = owner; }
-
-        public void OnEnter()
-        {
-            losePlayerTimer = 3f;
-            debugCooldown = 0f;
-            owner.OnEnterCombatState();
-            owner.ApplyStateColor(new Color(1.0f, 0.2f, 0.2f)); // 红色
-            owner.moveInput = owner.DirectionToPlayer();
-        }
-
-        public void OnUpdate()
-        {
-            if (owner.isDead) return;
-
-            if (owner.CanSeePlayer())
-            {
-                losePlayerTimer = 3f;
-                TryTransitionToAttack();
-            }
-            else
-            {
-                losePlayerTimer -= Time.deltaTime;
-                if (losePlayerTimer <= 0f)
-                    owner.fsm.ChangeState(new IdleState(owner));
-            }
-        }
-
-        private void TryTransitionToAttack()
-        {
-            // 三级矩形距离策略（带迟滞区间，防止 single-threshold 震荡）
-            if (owner.InRect(owner.retreatWidth, owner.retreatHeight))
-                owner.moveInput = -owner.DirectionToPlayer() * 0.5f;       // 太近，后退
-            else if (owner.InRect(owner.retreatRecoverWidth, owner.retreatRecoverHeight))
-                owner.moveInput = 0f;                                       // 迟滞区间，静止
-            else
-                owner.moveInput = owner.DirectionToPlayer();                // 足够远，追击
-
-            if (owner.CanAttack())
-            {
-                // Debug.Log($"[{owner.name}] 进入攻击！");
-                owner.fsm.ChangeState(new AttackState(owner));
-            }
-            else
-            {
-                debugCooldown -= Time.deltaTime;
-                if (debugCooldown <= 0f)
-                {
-                    debugCooldown = 0.5f;
-                    float dx = owner.player.position.x - owner.transform.position.x;
-                    float dy = owner.player.position.y - owner.transform.position.y;
-                    // Debug.Log($"[{owner.name}] CanAttack=false | CanSeePlayer={owner.CanSeePlayer()} | cooldown={owner.attackCooldownTimer:F2} | " +
-                        // $"deltaX={dx:F2} deltaY={dy:F2} | atkW={owner.AttackWidth} atkH={owner.AttackHeight} | " +
-                        // $"retW={owner.RetreatWidth} retH={owner.RetreatHeight}");
-                }
-            }
-        }
-
-        public void OnExit()
-        {
-        }
-    }
-
-    private class AttackState : IState
-    {
-        private readonly EnemyRangedController owner;
-        private IEnemyAttack attackModule;
-        private float timer;
-        private bool attacked;
-
-        public AttackState(EnemyRangedController owner) { this.owner = owner; }
-
-        public void OnEnter()
-        {
-            timer = 0.5f;
-            attacked = false;
-            owner.moveInput = 0f;
-            owner.OnEnterCombatState();
-            owner.GetComponent<Rigidbody2D>().velocity = new Vector2(0f, owner.GetComponent<Rigidbody2D>().velocity.y);
-            owner.ApplyStateColor(new Color(1.0f, 0.7f, 0.0f));
-            attackModule = owner.GetComponent<IEnemyAttack>();
-        }
-
-        public void OnUpdate()
-        {
-            timer -= Time.deltaTime;
-
-            if (!attacked && timer <= 0.3f)
-            {
-                attacked = true;
-                // Debug.Log($"[{owner.name}] 执行远程攻击");
-                attackModule?.PerformAttack(owner);
-            }
-
-            if (timer <= 0f)
-            {
-                if (owner.CanSeePlayer())
-                    owner.fsm.ChangeState(owner.CreateChaseState());
-                else
-                    owner.fsm.ChangeState(new IdleState(owner));
-            }
-        }
-
-        public void OnExit()
-        {
-            owner.attackCooldownTimer = owner.attackCooldownDuration;
-        }
     }
 
     // ============================================================
