@@ -80,7 +80,6 @@ public class AreaChannelTrigger : MonoBehaviour
         if (_movingPlayer != null)
         {
             _movingPlayer.SetMoveSpeedOverride(null);
-            _movingPlayer.Animation?.SetForcedSpeedParam(null); // 恢复动画正常速度分档
             _movingPlayer.InputEnabled = true;
             _movingPlayer.SetVelocityPublic(x: 0f);
             _movingPlayer = null;
@@ -180,9 +179,6 @@ public class AreaChannelTrigger : MonoBehaviour
         // 1b. 降低速度到 4:SetMoveSpeedOverride 限速(玩家自身移动逻辑读 MoveSpeed 时生效,
         //     兜底防任何路径用原速);协程驱动也用同一速度
         player.SetMoveSpeedOverride(channelMoveSpeed);
-        // 1b2. 动画强制 Run 档位:管道内速度 4 会被 PlayerAnimation 分档成 Walk(0.5),
-        //      要求显示 Run(1f)——SetForcedSpeedParam 覆盖速度分档,退出时恢复 null
-        player.Animation?.SetForcedSpeedParam(1f);
 
         // 1c. 进管道立即加载对侧地区(ShowArea 提前):对侧 trigger 也随地区激活,
         //     玩家到达后原场景 HideArea 时,对侧 trigger 始终是活的——回来能再次触发。
@@ -202,6 +198,9 @@ public class AreaChannelTrigger : MonoBehaviour
             // 方向固定算一次:进入循环前确定朝哪走,循环内不再 Sign 翻转(接近目标时 x 微过冲会导致
             // Sign 正负交替 → 速度抖动 + walk/run 动画乱切)
             float dir = Mathf.Sign(target.x - player.transform.position.x);
+            // 朝向同步:玩家面朝可能与移动方向相反(面朝右进右侧管道 = 往左走),
+            // 不翻转朝向会倒着走。UpdateFacing 改 transform.localScale.x,子物体(剑)自动跟随
+            player.UpdateFacing(dir);
             // 只比 x 轴:水平移动,忽略 y 波动(重力落地/弹跳)导致的 2D 距离抖动
             // 超时兜底:物理阻挡(目标在墙内/被 collider 卡住)时 5 秒强制结束,防死循环
             float elapsed = 0f;
@@ -229,7 +228,6 @@ public class AreaChannelTrigger : MonoBehaviour
         // 4. 恢复 orthoSize 4 + 恢复速度/输入
         StartZoom(DefaultOrthoSize);
         player.SetMoveSpeedOverride(null); // 恢复原速
-        player.Animation?.SetForcedSpeedParam(null); // 恢复动画正常速度分档
         player.InputEnabled = true;
         _isMoving = false;
         _moveRoutine = null;
