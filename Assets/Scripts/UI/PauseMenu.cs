@@ -8,7 +8,7 @@ using UnityEngine.UI;
 /// 行为：
 ///   - 继续游戏 → PanelManager.CloseTopPanel()
 ///   - 保存/读取/设置 → 菜单靠左滑出（SlideToLeft）+ 打开对应二级面板（二级面板在右侧）
-///   - 返回主菜单 → 置灰（interactable=false，功能后续）
+///   - 返回主菜单 → SceneTransition.ToTitle()（淡出 → 切 TitleScene → 淡入）
 /// 动效：
 ///   - SlideToLeft()：anchoredPosition 居中→leftPosition（绝对坐标，菜单左移后同屏可见，alpha 不变）
 ///   - SlideToCenter()：anchoredPosition leftPosition→居中（返回默认位置，alpha 不变）
@@ -32,7 +32,7 @@ public class PauseMenu : MonoBehaviour, IPanel
     [SerializeField] private Button btnLoad;
     [Tooltip("设置 → 靠左滑出 + 打开设置面板")]
     [SerializeField] private Button btnSettings;
-    [Tooltip("返回主菜单 — 置灰占位，待办2 完成后启用")]
+    [Tooltip("返回主菜单 → SceneTransition.ToTitle() 回主菜单场景")]
     [SerializeField] private Button btnQuit;
 
     [Header("二级面板")]
@@ -83,8 +83,7 @@ public class PauseMenu : MonoBehaviour, IPanel
         // 菜单打开 → 显示全屏背景（关闭时 OnDisable 隐藏）
         if (background != null) background.SetActive(true);
 
-        // 返回主菜单：功能未实现，置灰（设置已实现，保持可用）
-        if (btnQuit != null) btnQuit.interactable = false;
+        // 返回主菜单已接线（SceneTransition.ToTitle），不再置灰
 
         if (_pushedLeft)
         {
@@ -152,9 +151,15 @@ public class PauseMenu : MonoBehaviour, IPanel
             PanelManager.Instance?.OpenPanel(settingsPanel);
     }
 
-    /// <summary>返回主菜单按钮 — 置灰，依赖待办2</summary>
+    /// <summary>返回主菜单按钮 — 淡出 → 切 TitleScene → 淡入；切场景前 PanelManager 面板栈/暂停态随场景销毁自动清，无需手动 CloseAllPanels</summary>
     private void OnQuitClicked()
     {
+        if (SceneTransition.Instance == null)
+        {
+            Debug.LogWarning("[PauseMenu] SceneTransition.Instance 为 null，无法返回主菜单（场景中缺少 TransitionCanvas）");
+            return;
+        }
+        SceneTransition.Instance.ToTitle();
     }
 
     /// <summary>菜单靠左滑出：居中 → leftPosition（alpha 保持不变，菜单同屏可见）</summary>

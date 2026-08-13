@@ -18,8 +18,8 @@ public class GameSettingsData
 /// 音频管理器（轻量框架）— 单例，管理主音量/BGM/SFX 三路 AudioSource 组。
 /// - masterSources / bgmSources / sfxSources：Inspector 可拖可留空（空数组不报错，遍历 null 安全）
 /// - SetVolumes(master,bgm,sfx)：遍历各数组应用 volume
+/// - Awake 单例防重 + DontDestroyOnLoad 常驻跨场景（TitleScene 常驻、SampleScene 的重复实例自动销毁）
 /// - Awake 从 PlayerPrefs("GameSettings") 读初始值应用（跨场景生效）
-/// 挂载点由场景侧决定（推荐常驻物体）；场景中已有 AudioSource 拖入对应数组即可生效。
 /// </summary>
 public class AudioManager : MonoBehaviour
 {
@@ -54,6 +54,7 @@ public class AudioManager : MonoBehaviour
             return;
         }
         _instance = this;
+        DontDestroyOnLoad(gameObject); // 常驻跨场景：双场景各挂一份时，后加载的重复实例在上方已销毁
 
         GameSettingsData data = LoadSettings();
         SetVolumes(data.master, data.bgm, data.sfx);

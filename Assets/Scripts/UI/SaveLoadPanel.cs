@@ -56,6 +56,10 @@ public class SaveLoadPanel : MonoBehaviour, IPanel, ISlideClose
     [Tooltip("Player 上的 SaveSystem（常驻 Player GameObject）")]
     [SerializeField] private SaveSystem saveSystem;
 
+    [Header("外部读档回调")]
+    [Tooltip("非空时 Load 确认走此回调（主菜单 TitleScene 用，由 MainMenu 设标记+切场景）；留空 = 原行为（游戏内直接 LoadGame）")]
+    public UnityEngine.Events.UnityEvent<int> onLoadRequested;
+
     /// <summary>确认区当前等待的操作类型</summary>
     private enum PendingAction
     {
@@ -273,7 +277,13 @@ public class SaveLoadPanel : MonoBehaviour, IPanel, ISlideClose
                 RefreshSlots();
                 break;
             case PendingAction.Load:
-                if (saveSystem.LoadGame(slot))
+                if (onLoadRequested != null)
+                {
+                    // 外部读档回调（主菜单 TitleScene 用）：由回调方（MainMenu）设标记 + 切场景，
+                    // 面板随场景销毁，无需手动关闭（TitleScene 里直接 LoadGame 会因场景未加载空引用）
+                    onLoadRequested.Invoke(slot);
+                }
+                else if (saveSystem.LoadGame(slot))
                     PanelManager.Instance?.CloseAllPanels(); // 读档成功 → 关闭全部面板恢复游戏
                 else
                     RefreshSlots();
@@ -292,7 +302,16 @@ public class SaveLoadPanel : MonoBehaviour, IPanel, ISlideClose
 
     private void OnQuitClicked()
     {
-        PanelManager.Instance?.CloseTopPanel();
+        // 游戏内（SampleScene）：PanelManager 在 → 走栈管理 CloseTopPanel（PanelManager 检测 ISlideClose 走左滑关闭动效）
+        // 主菜单（TitleScene）：无 PanelManager → 自己走 SlideClose 动画（播完再 SetActive(false)，与游戏内动效一致）
+        if (PanelManager.Instance != null)
+        {
+            PanelManager.Instance.CloseTopPanel();
+        }
+        else
+        {
+            SlideClose(() => gameObject.SetActive(false));
+        }
     }
 
     private void ShowConfirm(string text)

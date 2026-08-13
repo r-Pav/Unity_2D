@@ -43,6 +43,10 @@ public class PlayerHealth : MonoBehaviour, ICombatant
     [Tooltip("受击特效偏移（相对角色 pivot）")]
     [SerializeField] private Vector2 hitVFXOffset = Vector2.zero;
 
+    [Header("复活点")]
+    [Tooltip("死亡复活传送点（场景里 DefaultSpawnPoint 空物体，与 SceneBootstrap 新游戏出生点共用）；留空 = 原地复活（保持原行为）")]
+    [SerializeField] private Transform defaultSpawnPoint;
+
     // ============================================================
     // 运行时状态
     // ============================================================
@@ -110,6 +114,10 @@ public class PlayerHealth : MonoBehaviour, ICombatant
     /// <summary>玩家复活（由 DeathPanel 按钮调用），清除死亡标记、切回 FSM Idle 并回满血</summary>
     public void Revive()
     {
+        // [开屏P3] 死亡复活回出生点（重生惩罚）：defaultSpawnPoint 留空 = 原地复活（保持原行为零回归）
+        if (defaultSpawnPoint != null)
+            transform.position = defaultSpawnPoint.position;
+
         _isDead = false;
         if (Anim != null)
             Anim.SetBool(AnimParams.IsDead, false);
