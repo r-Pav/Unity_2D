@@ -365,11 +365,10 @@ public class WeaponThrow : MonoBehaviour
             // prefab 根物体若是 inactive 状态,Instantiate 出来也是 inactive,Play 不生效 → 强制激活
             vfx.SetActive(true);
 
-            // Instantiate 复制禁用状态 → 所有粒子系统强制启用并播放
+            // Instantiate 复制禁用状态 → 所有粒子系统强制播放(团结引擎 ParticleSystem 无 enabled 属性,Play 即可)
             var particleSystems = vfx.GetComponentsInChildren<ParticleSystem>(true);
             foreach (var ps in particleSystems)
             {
-                ps.enabled = true;
                 ps.Play();
             }
         }
