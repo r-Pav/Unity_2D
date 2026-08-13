@@ -57,6 +57,10 @@ public class WeaponThrow : MonoBehaviour
     [Tooltip("投掷 clone 的模板。拖尾等视觉设置直接在这个物体上配,投掷时克隆它。留空 = 用自身")]
     [SerializeField] private GameObject weaponTemplate;
 
+    [Header("攻击特效")]
+    [Tooltip("投掷时跟随剑飞行的粒子特效 prefab(拖入你自己的粒子效果)。生成时实例化为 clone 子物体,自动跟随剑运动,剑销毁时一起销毁。粒子 Simulation Space 建议设 World(粒子留在世界空间形成轨迹);设 Local 则粒子粘在剑上随剑平移")]
+    [SerializeField] private GameObject particleVFXPrefab;
+
     [Header("三连击配置(每击独立,各自的时间/路径/姿态)")]
     [SerializeField] private WeaponAttackConfig attack1 = new WeaponAttackConfig();
     [SerializeField] private WeaponAttackConfig attack2 = new WeaponAttackConfig();
@@ -347,6 +351,28 @@ public class WeaponThrow : MonoBehaviour
         // 关键:模板在玩家身上是缩小状态(w1 的 scale=0.04),投掷必须恢复标准大小,
         // 否则 clone 继承 0.04 → 剑和拖尾都小到看不见(之前 new GameObject 方案 scale 默认 1 才正常)
         proj.transform.localScale = Vector3.one;
+
+        // 攻击特效:粒子 prefab 实例化为 clone 子物体,物理跟随剑运动。
+        // 生命周期自动对齐——clone 销毁(SetActive(false)+Destroy)时子物体一起销毁,零残留
+        if (particleVFXPrefab != null)
+        {
+            GameObject vfx = Instantiate(particleVFXPrefab, proj.transform);
+            vfx.name = "AttackVFX";
+            vfx.transform.localPosition = Vector3.zero;
+            vfx.transform.localRotation = Quaternion.identity;
+            vfx.transform.localScale = Vector3.one;   // 防模板 scale 继承(子物体独立重置)
+
+            // prefab 根物体若是 inactive 状态,Instantiate 出来也是 inactive,Play 不生效 → 强制激活
+            vfx.SetActive(true);
+
+            // Instantiate 复制禁用状态 → 所有粒子系统强制启用并播放
+            var particleSystems = vfx.GetComponentsInChildren<ParticleSystem>(true);
+            foreach (var ps in particleSystems)
+            {
+                ps.enabled = true;
+                ps.Play();
+            }
+        }
 
         // 依据世界翻转方向决定旋转(父级 flip 后仍是朝右)
         float face = Mathf.Sign(transform.lossyScale.x);
