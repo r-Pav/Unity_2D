@@ -80,6 +80,7 @@ public class AreaChannelTrigger : MonoBehaviour
         if (_movingPlayer != null)
         {
             _movingPlayer.SetMoveSpeedOverride(null);
+            _movingPlayer.Animation?.SetForcedSpeedParam(null); // 恢复动画正常速度分档
             _movingPlayer.InputEnabled = true;
             _movingPlayer.SetVelocityPublic(x: 0f);
             _movingPlayer = null;
@@ -147,9 +148,41 @@ public class AreaChannelTrigger : MonoBehaviour
         //    FSM 不再跑 → 不再写 velocity,协程独享控制权。无需 player.enabled=false。
         player.InputEnabled = false;
 
+        // 1a. 强制归位玩家状态:跳跃/攻击/受击等非 walk 状态进管道时,
+        //     InputEnabled=false 只短路 Update,FSM 状态与 Animator 参数残留
+        //     (卡在跳跃帧滑行过管道)。必须主动复位:
+        //     - FSM 切回 Idle(ChangeState 立即执行,不依赖被冻结的 Update)
+        //     - 清全部动画 Bool(IsJumping/IsFalling/IsAttacking/IsAirAttacking/IsHurt/IsAirHurt/IsDashing)
+        //     - anim.Play 强制直切,绕过渡竞争(坑39:代码切状态时动画过渡竞争)
+        //     - 恢复被空中攻击改过的 gravityScale
+        var anim = player.Animator;
+        if (anim != null)
+        {
+            anim.SetBool(AnimParams.IsJumping, false);
+            anim.SetBool(AnimParams.IsFalling, false);
+            anim.SetBool(AnimParams.IsAttacking, false);
+            anim.SetBool(AnimParams.IsAirAttacking, false);
+            anim.SetBool(AnimParams.IsHurt, false);
+            anim.SetBool(AnimParams.IsAirHurt, false);
+            anim.SetBool(AnimParams.IsDashing, false);
+            anim.Play("Idle", 0, 0f); // 强制直切待机,绕过渡竞争
+        }
+        if (player.PlayerFsm != null && player.IdleState != null)
+            player.PlayerFsm.ChangeState(player.IdleState);
+        // 恢复重力:正常重力恒为 1(空中攻击瞬改 0.3 后自行恢复,贴墙状态无重力残留),
+        // 直接设 1 兜底,防进管道瞬间被残留的低重力带飞
+        if (player.Rb != null) player.Rb.gravityScale = 1f;
+        // 重置跳跃次数:强制 ChangeState(Idle) 绕过了跳跃状态的落地分支,
+        // jumpsLeft 残留为 0 → 出管道后跳不了。必须手动补 ResetJumps(落地副作用)
+        var jumpComp = player.GetComponent<PlayerJump>();
+        if (jumpComp != null) jumpComp.ResetJumps();
+
         // 1b. 降低速度到 4:SetMoveSpeedOverride 限速(玩家自身移动逻辑读 MoveSpeed 时生效,
         //     兜底防任何路径用原速);协程驱动也用同一速度
         player.SetMoveSpeedOverride(channelMoveSpeed);
+        // 1b2. 动画强制 Run 档位:管道内速度 4 会被 PlayerAnimation 分档成 Walk(0.5),
+        //      要求显示 Run(1f)——SetForcedSpeedParam 覆盖速度分档,退出时恢复 null
+        player.Animation?.SetForcedSpeedParam(1f);
 
         // 1c. 进管道立即加载对侧地区(ShowArea 提前):对侧 trigger 也随地区激活,
         //     玩家到达后原场景 HideArea 时,对侧 trigger 始终是活的——回来能再次触发。
@@ -196,6 +229,7 @@ public class AreaChannelTrigger : MonoBehaviour
         // 4. 恢复 orthoSize 4 + 恢复速度/输入
         StartZoom(DefaultOrthoSize);
         player.SetMoveSpeedOverride(null); // 恢复原速
+        player.Animation?.SetForcedSpeedParam(null); // 恢复动画正常速度分档
         player.InputEnabled = true;
         _isMoving = false;
         _moveRoutine = null;

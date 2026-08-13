@@ -9,8 +9,18 @@ public class PlayerAnimation : MonoBehaviour
     [Tooltip("速度达到此值切换为 RunJump")]
     [SerializeField] private float runJumpSpeedThreshold = 8f;
 
-    [Tooltip("低于此速度视为静止(Idle),防微小速度抖动")]
+    [Tooltip("Idle 判定死区(速度小于此值视为静止)")]
     [SerializeField] private float idleDeadZone = 0.1f;
+
+    /// <summary>管道内强制动画档位覆盖(非 null 时忽略速度分档,直接用它):管道自动移动速度 4 会被
+    /// 分档成 Walk,但要求显示 Run 动画——AreaChannelTrigger 进管道时设 1f(Run),退出时设 null</summary>
+    private float? _forcedSpeedParam;
+
+    /// <summary>设置管道内强制动画档位(null = 恢复正常速度分档)。AreaChannelTrigger 调用。</summary>
+    public void SetForcedSpeedParam(float? speedParam)
+    {
+        _forcedSpeedParam = speedParam;
+    }
 
     private Animator _animator;
     private Rigidbody2D _rb;
@@ -35,7 +45,11 @@ public class PlayerAnimation : MonoBehaviour
         // 移速动画分档(硬分档,无中间混合):0=Idle / <run=Walk / <runJump=Run / 其余=RunJump
         float v = Mathf.Abs(_rb.velocity.x);
         float speedParam;
-        if (v <= idleDeadZone)
+        if (_forcedSpeedParam.HasValue)
+        {
+            speedParam = _forcedSpeedParam.Value; // 管道内强制档位(如 1f=Run)优先于速度分档
+        }
+        else if (v <= idleDeadZone)
             speedParam = 0f;                                  // Idle
         else if (v < runSpeedThreshold)
             speedParam = 0.5f;                                // Walk(BlendTree 0.5)

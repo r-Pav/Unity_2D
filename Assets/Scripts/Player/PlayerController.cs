@@ -85,6 +85,18 @@ public class PlayerController : PlayerCharacterBase
     public PlayerJumpState JumpState { get; private set; }
     public PlayerFallState FallState { get; private set; }
 
+    /// <summary>玩家动画组件(懒查找,PlayerAnimation 挂在子物体;管道强制动画档位用)</summary>
+    public PlayerAnimation Animation
+    {
+        get
+        {
+            if (_animation == null)
+                _animation = GetComponentInChildren<PlayerAnimation>();
+            return _animation;
+        }
+    }
+    private PlayerAnimation _animation;
+
     /// <summary>贴墙状态(挂入 PlayerFsm;PlayerJump 翻顶/状态切换时调用)</summary>
     public WallClingState WallClingState { get; private set; }
 
