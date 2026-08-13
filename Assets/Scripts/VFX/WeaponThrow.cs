@@ -41,6 +41,12 @@ public class WeaponAttackConfig
 
     [Tooltip("该击武器命中敌人时的击退向量(x=水平,按朝向自动镜像;y=垂直击飞)。与 PlayerCombat 基础击退(第三段)向量相加。(0,0) = 该击不附加击退")]
     public Vector2 knockbackForce = Vector2.zero;
+
+    [Tooltip("该击投掷时额外跟随剑飞行的粒子特效 prefab(叠加在武器子级默认特效之上)。留空 = 该击只有默认特效")]
+    public GameObject attackVFX;
+
+    [Tooltip("该击特效的显示时长(秒)。>0 时启用:到点停止粒子发射,已发射粒子按自身 Lifetime 自然消亡(循环粒子也能淡出),随后自动销毁。0 = 不启用,走 VFXAutoDestruct 默认逻辑(粒子时长/1.1s)")]
+    public float vfxDisplayDuration = 0f;
 }
 
 /// <summary>
@@ -56,10 +62,6 @@ public class WeaponThrow : MonoBehaviour
     [Header("投掷模板")]
     [Tooltip("投掷 clone 的模板。拖尾等视觉设置直接在这个物体上配,投掷时克隆它。留空 = 用自身")]
     [SerializeField] private GameObject weaponTemplate;
-
-    [Header("攻击特效")]
-    [Tooltip("投掷时跟随剑飞行的粒子特效 prefab(拖入你自己的粒子效果)。生成时实例化为 clone 子物体,自动跟随剑运动,剑销毁时一起销毁。粒子 Simulation Space 建议设 World(粒子留在世界空间形成轨迹);设 Local 则粒子粘在剑上随剑平移")]
-    [SerializeField] private GameObject particleVFXPrefab;
 
     [Header("三连击配置(每击独立,各自的时间/路径/姿态)")]
     [SerializeField] private WeaponAttackConfig attack1 = new WeaponAttackConfig();
@@ -352,24 +354,43 @@ public class WeaponThrow : MonoBehaviour
         // 否则 clone 继承 0.04 → 剑和拖尾都小到看不见(之前 new GameObject 方案 scale 默认 1 才正常)
         proj.transform.localScale = Vector3.one;
 
-        // 攻击特效:粒子 prefab 实例化为 clone 子物体,物理跟随剑运动。
-        // 生命周期自动对齐——clone 销毁(SetActive(false)+Destroy)时子物体一起销毁,零残留
-        if (particleVFXPrefab != null)
+        // 该击独立特效:直接实例化到 PlayerVFX 容器(不挂 clone 子级),用跟随组件每帧同步位置。
+        // 播放生命周期独立——剑销毁后跟随停止,粒子按自身 Lifetime 播完,由 VFXAutoDestruct 自动销毁。
+        // 与武器子级默认特效(模板继承,PlayOnAwake 自动播)叠加。
+        if (config.attackVFX != null)
         {
-            GameObject vfx = Instantiate(particleVFXPrefab, proj.transform);
-            vfx.name = "AttackVFX";
-            vfx.transform.localPosition = Vector3.zero;
-            vfx.transform.localRotation = Quaternion.identity;
-            vfx.transform.localScale = Vector3.one;   // 防模板 scale 继承(子物体独立重置)
-
-            // prefab 根物体若是 inactive 状态,Instantiate 出来也是 inactive,Play 不生效 → 强制激活
-            vfx.SetActive(true);
-
-            // Instantiate 复制禁用状态 → 所有粒子系统强制播放(团结引擎 ParticleSystem 无 enabled 属性,Play 即可)
-            var particleSystems = vfx.GetComponentsInChildren<ParticleSystem>(true);
-            foreach (var ps in particleSystems)
+            GameObject vfx = VFXSpawner.SpawnOnPlayer(config.attackVFX, proj.transform.position);
+            if (vfx != null)
             {
-                ps.Play();
+                vfx.name = "AttackVFX";
+
+                // prefab 根物体若是 inactive 状态,Instantiate 出来也是 inactive,Play 不生效 → 强制激活
+                vfx.SetActive(true);
+
+                // Instantiate 复制禁用状态 → 所有粒子系统强制播放(团结引擎 ParticleSystem 无 enabled 属性,Play 即可)
+                var particleSystems = vfx.GetComponentsInChildren<ParticleSystem>(true);
+                foreach (var ps in particleSystems)
+                {
+                    ps.Play();
+                }
+
+                // 跟随剑运动:每帧把特效位置同步到剑当前位置(武器位移驱动特效位置);
+                // 剑销毁后 _target == null,同步自动停止,特效原地残留至粒子播完
+                var follower = vfx.GetComponent<VFXFollowTarget>();
+                if (follower == null) follower = vfx.AddComponent<VFXFollowTarget>();
+                follower.Init(proj.transform, Vector3.zero, followRotation: true);
+
+                // 显示时长控制:vfxDisplayDuration > 0 时用 VFXTimedFade 定时淡出,
+                // 并移除 VFXSpawner 自动挂的 VFXAutoDestruct(否则它会按粒子时长/1.1s 提前销毁,冲突)
+                if (config.vfxDisplayDuration > 0f)
+                {
+                    var autoDestruct = vfx.GetComponent<VFXAutoDestruct>();
+                    if (autoDestruct != null) Destroy(autoDestruct);
+
+                    var timedFade = vfx.GetComponent<VFXTimedFade>();
+                    if (timedFade == null) timedFade = vfx.AddComponent<VFXTimedFade>();
+                    timedFade.Init(config.vfxDisplayDuration);
+                }
             }
         }
 
