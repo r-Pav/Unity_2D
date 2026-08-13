@@ -104,9 +104,21 @@ public class SaveSystem : MonoBehaviour
         Transform playerT = PlayerController.Instance != null ? PlayerController.Instance.transform : null;
         if (playerT != null)
         {
-            data.posX = playerT.position.x;
-            data.posY = playerT.position.y;
-            data.posZ = playerT.position.z;
+            // 管道移动中:存对侧出口位置(管道外落点),不存管道内当前位置——
+            // 否则管道内 ESC 存档后读档会卡在管道中间(移动协程已结束,玩家被困)
+            Vector3? pending = AreaChannelTrigger.PendingSavePosition;
+            if (pending.HasValue)
+            {
+                data.posX = pending.Value.x;
+                data.posY = pending.Value.y;
+                data.posZ = pending.Value.z;
+            }
+            else
+            {
+                data.posX = playerT.position.x;
+                data.posY = playerT.position.y;
+                data.posZ = playerT.position.z;
+            }
         }
 
         CollectSkillPoints(data);
@@ -183,6 +195,10 @@ public class SaveSystem : MonoBehaviour
         // [Phase5] 恢复属性分配点和背包数据
         RestoreAttributePoints(data);
         LoadInventory(slot);
+
+        // 管道移动中读档:先取消移动协程——否则恢复位置后协程继续推玩家 → 自动 walk 被接管。
+        // 必须在恢复位置前调用(移动协程挂 VCam,菜单暂停只是 timeScale=0 空转,协程还活着)
+        AreaChannelTrigger.CancelMove();
 
         // 恢复位置：延迟一帧等地区显隐稳定后再设置，防止与地区显隐冲突
         StartCoroutine(RestorePositionNextFrame(data));

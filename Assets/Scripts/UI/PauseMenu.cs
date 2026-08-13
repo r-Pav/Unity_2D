@@ -7,8 +7,8 @@ using UnityEngine.UI;
 /// 按钮 OnEnable/OnDisable 成对绑定（抄 DeathPanel 模式）。
 /// 行为：
 ///   - 继续游戏 → PanelManager.CloseTopPanel()
-///   - 保存/读取 → 菜单靠左滑出（SlideToLeft）+ 打开对应二级面板（二级面板在右侧）
-///   - 设置/返回主菜单 → 置灰（interactable=false，功能后续）
+///   - 保存/读取/设置 → 菜单靠左滑出（SlideToLeft）+ 打开对应二级面板（二级面板在右侧）
+///   - 返回主菜单 → 置灰（interactable=false，功能后续）
 /// 动效：
 ///   - SlideToLeft()：anchoredPosition 居中→leftPosition（绝对坐标，菜单左移后同屏可见，alpha 不变）
 ///   - SlideToCenter()：anchoredPosition leftPosition→居中（返回默认位置，alpha 不变）
@@ -30,7 +30,7 @@ public class PauseMenu : MonoBehaviour, IPanel
     [SerializeField] private Button btnSave;
     [Tooltip("读取 → 靠左滑出 + 打开读取面板")]
     [SerializeField] private Button btnLoad;
-    [Tooltip("设置 — 置灰占位，功能后续")]
+    [Tooltip("设置 → 靠左滑出 + 打开设置面板")]
     [SerializeField] private Button btnSettings;
     [Tooltip("返回主菜单 — 置灰占位，待办2 完成后启用")]
     [SerializeField] private Button btnQuit;
@@ -40,6 +40,8 @@ public class PauseMenu : MonoBehaviour, IPanel
     [SerializeField] private GameObject savePanel;
     [Tooltip("读取面板（LoadPanel）— 打开用")]
     [SerializeField] private GameObject loadPanel;
+    [Tooltip("设置面板（SettingsPanel）— 打开用")]
+    [SerializeField] private GameObject settingsPanel;
 
     [Header("背景")]
     [Tooltip("菜单全屏背景（Panels 下独立对象，Image 半透明，Raycast Target 取消勾选）：开菜单显示、关菜单隐藏")]
@@ -81,8 +83,7 @@ public class PauseMenu : MonoBehaviour, IPanel
         // 菜单打开 → 显示全屏背景（关闭时 OnDisable 隐藏）
         if (background != null) background.SetActive(true);
 
-        // 设置 / 返回主菜单：功能未实现，置灰
-        if (btnSettings != null) btnSettings.interactable = false;
+        // 返回主菜单：功能未实现，置灰（设置已实现，保持可用）
         if (btnQuit != null) btnQuit.interactable = false;
 
         if (_pushedLeft)
@@ -137,9 +138,18 @@ public class PauseMenu : MonoBehaviour, IPanel
             PanelManager.Instance?.OpenPanel(loadPanel);
     }
 
-    /// <summary>设置按钮 — 置灰，功能后续实现</summary>
+    /// <summary>设置按钮 — 先关另一二级面板（save/load）→ 菜单靠左滑出 → 打开设置面板</summary>
     private void OnSettingsClicked()
     {
+        // 切换二级面板前先关掉另一个（Save/Load）：避免 OpenPanel 的 FullScreen 互斥替换把它塞进 history，
+        // 导致关闭当前面板时误恢复旧的（切走 = 放弃旧的，只回菜单）
+        if (savePanel != null && savePanel.activeInHierarchy)
+            PanelManager.Instance?.ClosePanel(savePanel);
+        if (loadPanel != null && loadPanel.activeInHierarchy)
+            PanelManager.Instance?.ClosePanel(loadPanel);
+        SlideToLeft();
+        if (settingsPanel != null)
+            PanelManager.Instance?.OpenPanel(settingsPanel);
     }
 
     /// <summary>返回主菜单按钮 — 置灰，依赖待办2</summary>

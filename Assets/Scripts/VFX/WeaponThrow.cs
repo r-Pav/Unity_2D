@@ -375,7 +375,7 @@ public class WeaponThrow : MonoBehaviour
 
         // 溶解方向:固定 1 = 上→下(剑从顶部开始往下消退)
         // 竖直方向不受左右翻转影响,无需按 face 区分
-        float dissolveDir = 1f;
+        float dissolveDir = 0f;
 
         WeaponProjectile comp = proj.AddComponent<WeaponProjectile>();
         comp.Init(
