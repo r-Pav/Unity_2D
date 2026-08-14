@@ -30,20 +30,21 @@ public class AreaChannelTrigger : MonoBehaviour
     [SerializeField] private float channelLength = 5f;
 
     [Header("相机缩放")]
-    [Tooltip("管道内拉近的 orthoSize(管道外正常 4)")]
+    [Tooltip("管道内拉近的 orthoSize(管道外正常 orthoSize,见下方)")]
     [SerializeField] private float orthoZoomIn = 3f;
 
     [Tooltip("缩放速度")]
     [SerializeField] private float zoomSpeed = 3f;
 
-    /// <summary>管道外正常 orthoSize（相机简化方案固定 4）</summary>
-    private const float DefaultOrthoSize = 4f;
-
-    /// <summary>自动移动中标志（防重入：移动期间重复 OnTriggerEnter 忽略）</summary>
-    private bool _isMoving;
+    /// <summary>管道结束时恢复的 orthoSize:启动时从 VCam 读取(用户设置值,如 6),
+    /// 不再硬编码 4——过完管道恢复用户自己的设置,而不是强制 4</summary>
+    private float _defaultOrthoSize;
 
     /// <summary>管道移动协程句柄（VCam 上运行；读档取消用）</summary>
     private Coroutine _moveRoutine;
+
+    /// <summary>自动移动中标志（防重入：移动期间重复 OnTriggerEnter 忽略）</summary>
+    private bool _isMoving;
 
     /// <summary>管道移动中的玩家引用（读档取消时恢复输入用）</summary>
     private PlayerController _movingPlayer;
@@ -142,6 +143,12 @@ public class AreaChannelTrigger : MonoBehaviour
     {
         _isMoving = true;
 
+        // 0. 记录管道外正常 orthoSize(用户设置值,如 6)——结束时恢复它,不硬编码 4
+        if (_vcam == null)
+            _vcam = FindObjectOfType<CinemachineVirtualCamera>();
+        if (_vcam != null)
+            _defaultOrthoSize = _vcam.m_Lens.OrthographicSize;
+
         // 1. 禁用输入(ESC 除外——ESC 由 PanelManager 独立监听,不受 InputEnabled 影响):
         //    PlayerController.OnUpdate 第一行 `if (!InputEnabled) return;` 直接短路,
         //    FSM 不再跑 → 不再写 velocity,协程独享控制权。无需 player.enabled=false。
@@ -222,11 +229,12 @@ public class AreaChannelTrigger : MonoBehaviour
             _pendingSavePosition = null; // 移动结束清空
         }
 
-        // 3. 到达后关闭来源地区(原场景)
+        // 3. 到达后关闭来源地区(原场景):其背景淡出后 SetActive(false)。
+        //    目标背景已在进管道 ShowArea 时随地区激活(淡入),位置由 ParallaxLayer 锚定修复保证
         zm?.HideArea(sourceArea);
 
-        // 4. 恢复 orthoSize 4 + 恢复速度/输入
-        StartZoom(DefaultOrthoSize);
+        // 4. 恢复 orthoSize(进入前的用户设置值) + 恢复速度/输入
+        StartZoom(_defaultOrthoSize);
         player.SetMoveSpeedOverride(null); // 恢复原速
         player.InputEnabled = true;
         _isMoving = false;

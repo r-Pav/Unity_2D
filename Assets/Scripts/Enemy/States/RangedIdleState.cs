@@ -1,7 +1,9 @@
 using UnityEngine;
 
 /// <summary>
-/// 远程敌人待机状态 — 短时静止循环，发现玩家转追击（远程无巡逻）。
+/// 远程敌人待机状态 — 短时静止后转巡逻；发现玩家分流：
+///   攻击框内（近战/远程）→ 攻击入口（RangedAttackState 判框选动画）
+///   框外 → 加速移动（RangedRushState）
 /// </summary>
 public class RangedIdleState : EntityState
 {
@@ -24,11 +26,29 @@ public class RangedIdleState : EntityState
     public override void OnUpdate()
     {
         var me = (EnemyRangedController)owner;
-        timer -= Time.deltaTime;
-        if (timer <= 0f)
-            me.Fsm.ChangeState(new RangedIdleState(owner, stateMachine, anim));  // 原地循环，无 Patrol
-        else if (me.CanSeePlayer())
-            me.Fsm.ChangeState(me.CreateChaseState());
+
+        if (me.CanSeePlayer())
+        {
+            // 攻击框内（且冷却就绪）→ 攻击入口；框外 → 加速移动
+            if (me.PlayerInAnyAttackRect())
+            {
+                if (me.attackCooldownTimer <= 0f)
+                    me.Fsm.ChangeState(me.CreateChaseState());
+            }
+            else
+            {
+                me.Fsm.ChangeState(new RangedRushState(owner, stateMachine, anim));
+            }
+        }
+        else if (timer <= 0f)
+        {
+            // 待机超时 → 巡逻（不再原地循环）
+            me.Fsm.ChangeState(new RangedPatrolState(owner, stateMachine, anim));
+        }
+        else
+        {
+            timer -= Time.deltaTime;
+        }
     }
 
     public override void OnExit() { }

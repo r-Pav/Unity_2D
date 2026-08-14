@@ -78,6 +78,12 @@ public class MeleeAttackState : EntityState, IEnemyAttackState
         attackModule?.PerformAttack(me);
     }
 
+    /// <summary>蓄力帧：近战无蓄力，接口兼容空实现（远程 attack2 专用）</summary>
+    public void OnCharge() { }
+
+    /// <summary>发射帧：近战无发射，接口兼容空实现（远程 attack2 专用）</summary>
+    public void OnFire() { }
+
     /// <summary>攻击动画结束：回 Idle 核心入口（timer→Patrol / CanSeePlayer→Chase），不在攻击状态堆逻辑链</summary>
     public void OnAnimEnd()
     {

@@ -1,8 +1,11 @@
 using UnityEngine;
 
 /// <summary>
-/// 远程敌人控制器 — 继承 EnemyControllerBase，3 状态 FSM（Idle → Chase → Attack，无 Patrol）。
-/// 通过三级距离策略保持与玩家的射击距离，在 retreatWidth/Height~attackWidth/Height 之间远程射击。
+/// 远程敌人控制器 — 继承 EnemyControllerBase，5 状态 FSM（Idle → Patrol → Rush → Attack 判框双攻击）。
+/// 巡逻(patrolRange 来回) + 加速移动(Rush, SetMoveSpeedOverride) + 判框攻击：
+///   attack1 近战（attackWidth/Height 框，EnemyMeleeAttack）
+///   attack2 远程（rangedAttackWidth/Height 框，EnemyRangedAttack 蓄力+发射）
+/// 不再使用后退/追击逻辑（retreat 矩形已删除）。
 /// </summary>
 public class EnemyRangedController : EnemyControllerBase
 {
@@ -10,38 +13,38 @@ public class EnemyRangedController : EnemyControllerBase
     // 配置参数
     // ============================================================
 
-    [Header("后退策略 — 矩形")]
-    [Tooltip("后退矩形半宽（X 轴，低于此距离后退；0 = 未设置）")]
-    [SerializeField] private float retreatWidth = 0f;
-    [Tooltip("后退矩形半高（Y 轴，低于此距离后退；0 = 未设置）")]
-    [SerializeField] private float retreatHeight = 0f;
-    [Tooltip("恢复追击矩形半宽（X 轴，迟滞区间上限；0 = 未设置）")]
-    [SerializeField] private float retreatRecoverWidth = 0f;
-    [Tooltip("恢复追击矩形半高（Y 轴，迟滞区间上限；0 = 未设置）")]
-    [SerializeField] private float retreatRecoverHeight = 0f;
+    [Header("巡逻")]
+    [Tooltip("巡逻范围（左右各多少单位；0 = 未设置，用 SO 对应 Lv 档 / 内置 3f 兜底）")]
+    [SerializeField] private float patrolRange = 0f;
+    public float PatrolRange => patrolRange;
 
-    /// <summary>retreat 内置默认（Inspector 与 SO 均未设置时兜底）</summary>
-    private const float DefaultRetreatWidth = 3f;
-    private const float DefaultRetreatHeight = 3f;
-    private const float DefaultRetreatRecoverWidth = 10f;
-    private const float DefaultRetreatRecoverHeight = 6f;
+    /// <summary>巡逻范围内置默认（Inspector 与 SO 均未设置时兜底）</summary>
+    private const float DefaultPatrolRange = 3f;
 
-    /// <summary>暴露后退矩形半宽给攻击组件（EnemyRangedAttack）读取</summary>
-    public float RetreatWidth => retreatWidth;
-    /// <summary>暴露后退矩形半高给攻击组件（EnemyRangedAttack）读取</summary>
-    public float RetreatHeight => retreatHeight;
-    /// <summary>暴露恢复追击矩形半宽给状态类（RangedChaseState）读取</summary>
-    public float RetreatRecoverWidth => retreatRecoverWidth;
-    /// <summary>暴露恢复追击矩形半高给状态类（RangedChaseState）读取</summary>
-    public float RetreatRecoverHeight => retreatRecoverHeight;
+    [Header("远程攻击框 — 矩形（attack2；attack1 近战框用基类 attackWidth/Height）")]
+    [Tooltip("远程攻击矩形半宽（X 轴；0 = 未设置，用 SO 对应 Lv 档 / 内置 8f 兜底）")]
+    [SerializeField] private float rangedAttackWidth = 0f;
+    [Tooltip("远程攻击矩形半高（Y 轴；0 = 未设置，用 SO 对应 Lv 档 / 内置 5f 兜底）")]
+    [SerializeField] private float rangedAttackHeight = 0f;
+
+    /// <summary>远程框内置默认（Inspector 与 SO 均未设置时兜底）</summary>
+    private const float DefaultRangedAttackWidth = 8f;
+    private const float DefaultRangedAttackHeight = 5f;
+
+    /// <summary>暴露远程攻击矩形半宽给状态类（RangedAttackState 判框 attack2）</summary>
+    public float RangedAttackWidth => rangedAttackWidth;
+    /// <summary>暴露远程攻击矩形半高给状态类（RangedAttackState 判框 attack2）</summary>
+    public float RangedAttackHeight => rangedAttackHeight;
 
     // ============================================================
     // 抽象方法实现
     // ============================================================
 
     protected override IState GetInitialState() => new RangedIdleState(this, Fsm, Animator);
-    public override IState CreateChaseState() => new RangedChaseState(this, Fsm, Animator);
-    public override IState CreateFallbackState() => new RangedIdleState(this, Fsm, Animator);
+    /// <summary>攻击入口 — 返回 RangedAttackState（OnEnter 判框：近战框→attack1 / 远程框→attack2 / 框外→Rush）</summary>
+    public override IState CreateChaseState() => new RangedAttackState(this, Fsm, Animator);
+    /// <summary>晕眩/丢失仇恨后的后备状态 — 回巡逻</summary>
+    public override IState CreateFallbackState() => new RangedPatrolState(this, Fsm, Animator);
 
     // ============================================================
     // 生命周期
@@ -49,12 +52,10 @@ public class EnemyRangedController : EnemyControllerBase
 
     protected new void Start()
     {
-        // [Lv 收敛] retreat 矩形：Inspector(>0) → SO 对应 Lv 档 → 内置默认（0 = 未设置）
-        retreatWidth = Resolve(retreatWidth, LvStats?.retreatWidth ?? 0f, DefaultRetreatWidth);
-        retreatHeight = Resolve(retreatHeight, LvStats?.retreatHeight ?? 0f, DefaultRetreatHeight);
-        retreatRecoverWidth = Resolve(retreatRecoverWidth, LvStats?.retreatRecoverWidth ?? 0f, DefaultRetreatRecoverWidth);
-        retreatRecoverHeight = Resolve(retreatRecoverHeight, LvStats?.retreatRecoverHeight ?? 0f, DefaultRetreatRecoverHeight);
-        // 顺序坑 B：attackWidth/attackHeight 不再在此硬编码 10/6 — 改由基类 Awake 解析提供（远程资产填 10/6）
+        // [Lv 收敛] 取值链：Inspector(>0) → SO 对应 Lv 档(>0) → 内置默认（0 = 未设置）
+        patrolRange = Resolve(patrolRange, LvStats?.patrolRange ?? 0f, DefaultPatrolRange);
+        rangedAttackWidth = Resolve(rangedAttackWidth, LvStats?.rangedAttackWidth ?? 0f, DefaultRangedAttackWidth);
+        rangedAttackHeight = Resolve(rangedAttackHeight, LvStats?.rangedAttackHeight ?? 0f, DefaultRangedAttackHeight);
 
         stunState = new EnemyStunState(this, Fsm);
         SetStunState(stunState);
@@ -62,32 +63,20 @@ public class EnemyRangedController : EnemyControllerBase
     }
 
     // ============================================================
-    // 覆盖：基类攻击条件 + 不在后退矩形区内
+    // 辅助：玩家位置判定（供状态类判框）
     // ============================================================
 
-    public override bool CanAttack()
-    {
-        if (!base.CanAttack()) return false;
-        if (player == null) return false;
-
-        float deltaX = player.position.x - transform.position.x;
-        float deltaY = player.position.y - transform.position.y;
-        // 玩家不在后退矩形内（X 或 Y 超出后退半边界）才能攻击
-        return Mathf.Abs(deltaX) >= retreatWidth * 0.5f || Mathf.Abs(deltaY) >= retreatHeight * 0.5f;
-    }
-
-    // ============================================================
-    // 辅助：检查玩家是否在指定矩形内
-    // ============================================================
-
-    /// <summary>玩家是否在指定矩形内（供状态类 RangedChaseState 调用）</summary>
-    public bool InRect(float w, float h)
+    /// <summary>玩家是否在远程攻击矩形内（attack2 远程框；与近战 attackWidth/Height 不混淆）</summary>
+    public bool InRangedRect()
     {
         if (player == null) return false;
         float dx = Mathf.Abs(player.position.x - transform.position.x);
         float dy = Mathf.Abs(player.position.y - transform.position.y);
-        return dx <= w * 0.5f && dy <= h * 0.5f;
+        return dx <= rangedAttackWidth * 0.5f && dy <= rangedAttackHeight * 0.5f;
     }
+
+    /// <summary>玩家是否在任一攻击框内（近战 attackWidth/Height 或远程 rangedAttackWidth/Height）</summary>
+    public bool PlayerInAnyAttackRect() => PlayerInAttackRange() || InRangedRect();
 
     // ============================================================
     // Gizmos
@@ -98,18 +87,11 @@ public class EnemyRangedController : EnemyControllerBase
     {
         base.OnDrawGizmosSelected();
 
+        // 远程攻击矩形（青色线框）— 与基类近战矩形（红）区分
         Vector3 pos = transform.position;
-        float hw, hh;
-
-        // 后退矩形（蓝色线框）
-        hw = retreatWidth * 0.5f;
-        hh = retreatHeight * 0.5f;
-        DrawWireRect(pos, hw, hh, new Color(0f, 0.5f, 1f, 0.4f));
-
-        // 恢复追击矩形（绿色线框，迟滞区间上限）
-        hw = retreatRecoverWidth * 0.5f;
-        hh = retreatRecoverHeight * 0.5f;
-        DrawWireRect(pos, hw, hh, new Color(0f, 1f, 0f, 0.3f));
+        float hw = rangedAttackWidth * 0.5f;
+        float hh = rangedAttackHeight * 0.5f;
+        DrawWireRect(pos, hw, hh, new Color(0f, 1f, 1f, 0.4f));
     }
 
     private static void DrawWireRect(Vector3 center, float halfW, float halfH, Color color)

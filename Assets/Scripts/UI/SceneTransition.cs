@@ -28,7 +28,7 @@ public class SceneTransition : MonoBehaviour
                 _instance = FindObjectOfType<SceneTransition>();
             return _instance;
         }
-    }
+    } 
 
     [Header("过渡幕布")]
     [Tooltip("全屏黑 Image（拉伸覆盖全屏），用于 raycast 阻断输入")]

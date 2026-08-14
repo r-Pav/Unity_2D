@@ -81,6 +81,20 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     [Tooltip("远程攻击击退力度（近战击退由 PoiseComponent 控制；0 = 未设置）")]
     [SerializeField] protected float rangedKnockbackForce = 0f;
 
+    [Header("巡逻悬崖检测")]
+    [Tooltip("前方偏移（X 轴）：前方多远处探脚下地面（0.8 = 角色前方约一个身位）")]
+    [SerializeField] private float cliffCheckForward = 0.8f;
+    [Tooltip("下探距离（Y 轴）：从脚底向下探多深，探不到 = 悬崖/空洞")]
+    [SerializeField] private float cliffCheckDown = 0.8f;
+
+    [Header("移动范围")]
+    [Tooltip("活动范围半径（X 轴，以出生锚点为中心；0 = 不限制）")]
+    [SerializeField] protected float homeRange = 0f;
+    [Tooltip("出生锚点 X（活动范围中心；默认 = 编辑器摆放位置，可手动改）")]
+    [SerializeField] protected float homeX;
+    /// <summary>出生锚点是否已初始化（OnValidate/Awake 置位；置位后允许手动改 homeX 不被覆盖）</summary>
+    [SerializeField] private bool homeXInitialized;
+
     /// <summary>暴露攻击矩形半宽给攻击组件读取</summary>
     public float AttackWidth => attackWidth;
     /// <summary>暴露攻击矩形半高给攻击组件读取</summary>
@@ -159,6 +173,12 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     /// <summary>创建追击状态（子类返回各自的 ChaseState 实现）</summary>
     public abstract IState CreateChaseState();
 
+    /// <summary>
+    /// 创建攻击入口状态（受击/追击后按 player 所在框选攻击动画；默认返回 CreateChaseState()）。
+    /// 远程 override CreateChaseState() 返回 RangedAttackState（判框入口），无需再覆盖本方法。
+    /// </summary>
+    public virtual IState CreateAttackEntryState() => CreateChaseState();
+
     /// <summary>创建晕眩结束的后备状态（近战→Patrol，远程→Idle）</summary>
     public abstract IState CreateFallbackState();
 
@@ -185,6 +205,14 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     protected override void Awake()
     {
         base.Awake();
+
+        // [移动范围] 出生锚点兜底：OnValidate 未跑过（动态生成 / 运行时实例化）时同步为当前摆放位置。
+        // 已初始化（编辑器 OnValidate 同步过）则保留序列化值，允许手动改 homeX。
+        if (!homeXInitialized)
+        {
+            homeX = transform.position.x;
+            homeXInitialized = true;
+        }
 
         // [Lv 收敛] 按 level 取 SO 对应档（config 为空 → 全 null → 全走 Inspector/内置默认）
         lvStats = config != null ? config.GetLvStats(level) : null;
@@ -213,6 +241,24 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         passiveEquipManager = PassiveEquipManager.Instance;
         _poise = GetComponent<PoiseComponent>();
     }
+
+#if UNITY_EDITOR
+    /// <summary>
+    /// 编辑器专用：首次加载/摆放 enemy 时把出生锚点 homeX 同步为当前摆放位置并置位 homeXInitialized。
+    /// 只初始化一次——之后用户可手动改 homeX 覆盖（不会再被同步覆盖）。
+    /// Awake 兜底覆盖动态生成 / 运行时实例化（OnValidate 未跑）的情况。
+    /// </summary>
+    protected override void OnValidate()
+    {
+        base.OnValidate();  // 基类：自动补齐 rb/col
+
+        if (!homeXInitialized)
+        {
+            homeX = transform.position.x;
+            homeXInitialized = true;
+        }
+    }
+#endif
 
     protected virtual void OnEnable()
     {
@@ -278,6 +324,17 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
     protected override void OnFixedUpdate()
     {
+        // [移动范围] 数学拦截：已在边界(|x-homeX| >= homeRange)且仍朝边界外走 → 停。
+        // 朝范围中心方向（返回）不拦；homeRange=0 不限制。
+        // 状态无关：Patrol/Chase/Rush 统一遵守，防止敌人跨区/进管道。fsm 状态不动，
+        // 追击时停在边界面向玩家，玩家离开检测范围自然回巡逻。
+        if (homeRange > 0f
+            && Mathf.Abs(transform.position.x - homeX) >= homeRange
+            && Mathf.Sign(moveInput) == Mathf.Sign(transform.position.x - homeX))
+        {
+            moveInput = 0f;
+        }
+
         // FSM 状态已经设好 moveInput，这里统一执行物理移动
         if (Mathf.Abs(moveInput) > 0.01f)
         {
@@ -469,6 +526,12 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     /// <summary>攻击动画结束事件 — 转发给当前攻击状态</summary>
     public virtual void OnAttackAnimationEnd() => (fsm.CurrentState as IEnemyAttackState)?.OnAnimEnd();
 
+    /// <summary>远程攻击蓄力事件（attack2 蓄力帧）— 转发给当前攻击状态</summary>
+    public virtual void OnRangedCharge() => (fsm.CurrentState as IEnemyAttackState)?.OnCharge();
+
+    /// <summary>远程攻击发射事件（attack2 发射帧）— 转发给当前攻击状态</summary>
+    public virtual void OnRangedFire() => (fsm.CurrentState as IEnemyAttackState)?.OnFire();
+
     /// <summary>
     /// 死亡播放入口 — 置死亡标记 + 切死亡状态（旧状态 OnExit 自动清 IsAttacking）+ 启动超时兜底。
     /// 原 Die() 的结算内容（VFX/掉落/事件/Destroy）全部移到 OnDeathAnimationEnd()，由 Death 动画末帧事件触发。
@@ -617,17 +680,16 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         }
         else
         {
-            // ── 远程路径：保持原有逻辑不变（rangedKnockbackForce 击退 + 立即追击）──
+            // ── 远程路径：rangedKnockbackForce 击退 + 进入攻击入口状态 ──
+            //    攻击入口由子类 CreateAttackEntryState() 决定（远程 = RangedAttackState 判框：
+            //    player 在攻击框内 → 按框播对应攻击动画；框外 → 加速移动 Rush）
             Vector2 hitDir = ((Vector2)transform.position - info.sourcePosition).normalized;
             Vector2 knockDir = hitDir;
             knockDir.y = 0f;
             if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
             rb.AddForce(knockDir * rangedKnockbackForce, ForceMode2D.Impulse);
 
-            // 朝攻击源方向追击（Move 内部会乘以 moveSpeed，这里只设方向 ±1）
-            float dir = (info.sourcePosition.x > transform.position.x) ? 1f : -1f;
-            moveInput = dir;
-            fsm.ChangeState(CreateChaseState());
+            fsm.ChangeState(CreateAttackEntryState());
         }
     }
 
@@ -778,6 +840,21 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         return player.position.x > transform.position.x ? 1f : -1f;
     }
 
+    /// <summary>
+    /// 巡逻悬崖检测 — 判断移动前方脚下是否还有地面（从脚底向下的探射线）。
+    /// 前方无地面（悬崖/空洞）返回 false，巡逻状态应转向，防止敌人走下悬崖。
+    /// 脚底优先用碰撞体底部 bounds.min.y（更贴合 pivot 偏移），无碰撞体时回退 transform 下方 0.5f。
+    /// </summary>
+    /// <param name="dir">巡逻方向（1=右, -1=左）</param>
+    /// <returns>true = 前方脚下有地面（可继续走）</returns>
+    public bool HasGroundAhead(int dir)
+    {
+        float footY = col != null ? col.bounds.min.y : transform.position.y - 0.5f;
+        Vector2 origin = new Vector2(transform.position.x + dir * cliffCheckForward, footY);
+        RaycastHit2D hit = Physics2D.Raycast(origin, Vector2.down, cliffCheckDown, groundLayer);
+        return hit.collider != null;
+    }
+
     /// <summary>是否可以对玩家发起攻击（综合所有条件）。子类可覆盖以添加额外条件（如远程后退区）。</summary>
     public virtual bool CanAttack()
     {
@@ -816,6 +893,25 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         // 攻击矩形（红色半透明填充 + 线框）
         DrawRectGizmo(pos, attackWidth, attackHeight,
             new Color(1f, 0f, 0f, 0.08f), new Color(1f, 0f, 0f, 0.5f));
+
+        // 巡逻悬崖检测射线（橙色；仅辅助调试 Inspector 参数）
+        float footY = col != null ? col.bounds.min.y : pos.y - 0.5f;
+        Vector2 cliffOrigin = new Vector2(pos.x + Facing * cliffCheckForward, footY);
+        Gizmos.color = new Color(1f, 0.6f, 0f, 0.9f);
+        Gizmos.DrawLine(cliffOrigin, cliffOrigin + Vector2.down * cliffCheckDown);
+        Gizmos.DrawSphere(cliffOrigin, 0.05f);
+
+        // 移动范围边界（绿色竖线；以出生锚点 homeX 为中心 ± homeRange，与近战 patrolRange 蓝色竖线区分）
+        // homeX 已由 OnValidate 同步为摆放位置（可手动改），编辑/运行态一致
+        if (homeRange > 0f)
+        {
+            float h = col != null ? col.bounds.size.y : 2f;
+            Gizmos.color = new Color(0f, 1f, 0f, 0.7f);
+            Vector3 left = new Vector3(homeX - homeRange, footY, 0f);
+            Vector3 right = new Vector3(homeX + homeRange, footY, 0f);
+            Gizmos.DrawLine(left, left + Vector3.up * h);
+            Gizmos.DrawLine(right, right + Vector3.up * h);
+        }
     }
 
     /// <summary>绘制矩形 Gizmo：半透明填充 Cube + 四条边线框</summary>

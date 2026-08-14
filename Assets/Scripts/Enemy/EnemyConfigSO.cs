@@ -56,17 +56,11 @@ public class EnemyLvStats
     // 远程专属（EnemyRangedController / EnemyRangedAttack）
     // ============================================================
 
-    [Tooltip("后退矩形半宽（X 轴，低于此距离后退）")]
-    public float retreatWidth = 3f;
+    [Tooltip("远程攻击矩形半宽（X 轴；attack2 远程框，与近战 attackWidth/Height 区分）")]
+    public float rangedAttackWidth = 8f;
 
-    [Tooltip("后退矩形半高（Y 轴，低于此距离后退）")]
-    public float retreatHeight = 3f;
-
-    [Tooltip("恢复追击矩形半宽（X 轴，迟滞区间上限）")]
-    public float retreatRecoverWidth = 10f;
-
-    [Tooltip("恢复追击矩形半高（Y 轴，迟滞区间上限）")]
-    public float retreatRecoverHeight = 6f;
+    [Tooltip("远程攻击矩形半高（Y 轴；attack2 远程框，与近战 attackWidth/Height 区分）")]
+    public float rangedAttackHeight = 5f;
 
     [Tooltip("远程伤害基础值（运行时走管线后为管线输入 baseValue）")]
     public float rangedDamage = 1f;

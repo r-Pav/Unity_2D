@@ -1,55 +1,151 @@
 using UnityEngine;
 
 /// <summary>
-/// 远程敌人攻击状态 — 0.5s 攻击窗口，0.3s 时执行远程攻击，结束转追击/待机。
+/// 远程敌人攻击状态 — 双攻击入口（由 Attack1/Attack2 动画事件驱动，IEnemyAttackState）：
+///   OnEnter 判框：player 在近战框(attackWidth/Height)内 → attack1(IsAttack1)
+///                 否则在远程框(rangedAttackWidth/Height)内 → attack2(IsAttack2)
+///                 框外 → 直接切 RangedRushState（不播动画）
+///   OnHitFrame：attack1 → EnemyMeleeAttack.PerformAttack（近战机制照搬）；attack2 → 空
+///   OnCharge / OnFire：attack2 → EnemyRangedAttack.OnCharge / OnFire（蓄力/发射粒子）
+///   OnAnimEnd：回 RangedPatrolState（核心入口判断）
+/// 超时兜底照 MeleeAttackState：采样 Attack clip 时长 + 0.2s，事件链路断时强制退出防卡死。
 /// </summary>
-public class RangedAttackState : EntityState
+public class RangedAttackState : EntityState, IEnemyAttackState
 {
-    private IEnemyAttack attackModule;
-    private float timer;
-    private bool attacked;
+    private EnemyMeleeAttack meleeAttack;   // attack1 近战（挂在敌人本体）
+    private EnemyRangedAttack rangedAttack; // attack2 远程（挂在敌人本体）
+    private bool isAttack1;                 // true = attack1 近战；false = attack2 远程
+
+    // 攻击超时兜底计时（Attack clip 时长 + 0.2s，OnUpdate 递减；clip 采样失败回退 1.0s）
+    private float attackTimeout;
+    private bool timeoutInitialized;
 
     public RangedAttackState(CharacterBase owner, StateMachine stateMachine, Animator anim = null)
-        : base(owner, stateMachine, anim)
+        : base(owner, stateMachine, anim, new[] { AnimParams.IsAttacking })
     {
     }
 
     public override void OnEnter()
     {
+        base.OnEnter(); // IsAttacking=true（busy 聚合 → 动画器 Entry 路由进 Attack1/Attack2）
+
         var me = (EnemyRangedController)owner;
-        timer = 0.5f;
-        attacked = false;
         me.moveInput = 0f;
         me.OnEnterCombatState();
-        me.GetComponent<Rigidbody2D>().velocity = new Vector2(0f, me.GetComponent<Rigidbody2D>().velocity.y);
+        if (me.Rb != null)
+            me.Rb.velocity = new Vector2(0f, me.Rb.velocity.y);
         me.ApplyStateColor(new Color(1.0f, 0.7f, 0.0f));
-        attackModule = me.GetComponent<IEnemyAttack>();
+
+        // 缓存攻击组件（GetComponent 仅在进入状态时查一次，不每帧查）
+        meleeAttack = me.GetComponent<EnemyMeleeAttack>();
+        rangedAttack = me.GetComponent<EnemyRangedAttack>();
+
+        // 进入攻击状态立即面向玩家：防止从巡逻背对状态进攻击时全程背对
+        // （attack2 无命中帧转朝向，若不加此行远程框攻击会全程背对玩家）
+        me.UpdateFacing(me.DirectionToPlayer());
+
+        // 判框选攻击
+        if (me.PlayerInAttackRange())
+        {
+            isAttack1 = true;
+            SetAttackBools(true);  // 近战框 → attack1
+        }
+        else if (me.InRangedRect())
+        {
+            isAttack1 = false;
+            SetAttackBools(false); // 远程框 → attack2
+        }
+        else
+        {
+            // 框外：不播攻击动画，直接进入加速移动状态（OnExit 自动清 IsAttacking/攻击参数）
+            stateMachine.ChangeState(new RangedRushState(owner, stateMachine, anim));
+            return;
+        }
+
+        // 攻击超时兜底：初始 1.0s，采样到 Attack clip 后按 clip 时长 + 0.2s 修正
+        attackTimeout = 1.0f;
+        timeoutInitialized = false;
+    }
+
+    /// <summary>设置攻击路由参数（IsAttack1/IsAttack2 互斥）</summary>
+    private void SetAttackBools(bool attack1)
+    {
+        if (anim == null) return;
+        anim.SetBool(AnimParams.IsAttack1, attack1);
+        anim.SetBool(AnimParams.IsAttack2, !attack1);
     }
 
     public override void OnUpdate()
     {
         var me = (EnemyRangedController)owner;
-        timer -= Time.deltaTime;
 
-        if (!attacked && timer <= 0.3f)
+        // 首次进入攻击子机后采样 Attack clip 时长初始化兜底计时（attack1/attack2 通用）
+        if (!timeoutInitialized && anim != null)
         {
-            attacked = true;
-            // Debug.Log($"[{me.name}] 执行远程攻击");
-            attackModule?.PerformAttack(me);
+            var clips = anim.GetCurrentAnimatorClipInfo(0);
+            if (clips.Length > 0 && clips[0].clip != null &&
+                clips[0].clip.name.IndexOf("Attack", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                attackTimeout = clips[0].clip.length + 0.2f;
+                timeoutInitialized = true;
+            }
         }
 
-        if (timer <= 0f)
+        // 超时兜底：动画事件链断裂时强制退出攻击状态，防卡死
+        attackTimeout -= Time.deltaTime;
+        if (attackTimeout <= 0f)
         {
-            if (me.CanSeePlayer())
-                me.Fsm.ChangeState(me.CreateChaseState());
-            else
-                me.Fsm.ChangeState(new RangedIdleState(owner, stateMachine, anim));
+            Debug.LogWarning("[Enemy] RangedAttackState 超时兜底退出(动画事件可能丢失)");
+            stateMachine.ChangeState(new RangedPatrolState(owner, stateMachine, anim));
         }
     }
 
     public override void OnExit()
     {
+        base.OnExit(); // IsAttacking=false
+
+        // 清攻击路由参数（防残留导致 Entry 误路由）
+        if (anim != null)
+        {
+            anim.SetBool(AnimParams.IsAttack1, false);
+            anim.SetBool(AnimParams.IsAttack2, false);
+        }
+
         var me = (EnemyRangedController)owner;
         me.attackCooldownTimer = me.AttackCooldownDuration;
+    }
+
+    // ── IEnemyAttackState（Attack1/Attack2 动画事件驱动）──
+
+    /// <summary>命中帧：attack1 → 朝向玩家 + 近战攻击；attack2 远程无命中帧（发射在 OnFire）</summary>
+    public void OnHitFrame()
+    {
+        if (!isAttack1) return;
+        var me = (EnemyRangedController)owner;
+        me.UpdateFacing(me.DirectionToPlayer());
+        if (meleeAttack != null)
+            meleeAttack.PerformAttack(me);
+    }
+
+    /// <summary>蓄力帧：attack2 → 远程蓄力粒子（attack1 近战无蓄力）</summary>
+    public void OnCharge()
+    {
+        if (isAttack1) return;
+        if (rangedAttack != null)
+            rangedAttack.OnCharge();
+    }
+
+    /// <summary>发射帧：attack2 → 远程发射子弹 + 粒子（attack1 近战无发射）</summary>
+    public void OnFire()
+    {
+        if (isAttack1) return;
+        if (rangedAttack != null)
+            rangedAttack.OnFire();
+    }
+
+    /// <summary>攻击动画结束：回巡逻核心入口（CanSeePlayer → 攻击/加速；否则继续巡逻）</summary>
+    public void OnAnimEnd()
+    {
+        stateMachine.ChangeState(new RangedPatrolState(owner, stateMachine, anim));
     }
 }
