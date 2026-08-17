@@ -74,10 +74,11 @@ public class PlayerGroundPound : MonoBehaviour
 
     private void Start()
     {
-        // [TEMP] 验证 Cinemachine Impulse 链路：VCam 上是否有 ImpulseListener
+        // 自动补齐 Cinemachine Impulse 监听端：VCam 缺 ImpulseListener 时运行时挂载
+        // （团结引擎组件菜单本地化搜不到，编辑器手加不便；运行时补不影响场景序列化）
         var vcam = FindObjectOfType<CinemachineVirtualCamera>();
-        var listener = vcam != null ? vcam.GetComponent<CinemachineImpulseListener>() : null;
-        Debug.Log($"[GroundPound][TEMP] vcam={(vcam != null)} listener={(listener != null)} channelMask={(listener != null ? listener.m_ChannelMask : -999)} gain={(listener != null ? listener.m_Gain : -999f)}");
+        if (vcam != null && vcam.GetComponent<CinemachineImpulseListener>() == null)
+            vcam.gameObject.AddComponent<CinemachineImpulseListener>();
     }
 
     /// <summary>每帧递减冷却(PlayerController.UpdateCooldowns 调用)</summary>
@@ -121,12 +122,8 @@ public class PlayerGroundPound : MonoBehaviour
         hitEnemies.Clear();
 
         // ── 相机震动（Cinemachine Impulse；CameraFollow 已禁用，其 Shake 保留作兜底）──
-        Debug.Log($"[GroundPound][TEMP] OnLand: impulseSource={(impulseSource != null)} gain={(impulseSource != null ? impulseSource.m_ImpulseDefinition.m_AmplitudeGain : 0f)}");
         if (impulseSource != null)
-        {
             impulseSource.GenerateImpulse(new Vector3(0f, -shakeMagnitude, 0f));
-            Debug.Log("[GroundPound][TEMP] GenerateImpulse called");
-        }
         else if (cachedCam != null)
             cachedCam.Shake(shakeDuration, shakeMagnitude);
 
