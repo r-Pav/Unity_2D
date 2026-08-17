@@ -1,3 +1,4 @@
+using Cinemachine;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -8,11 +9,17 @@ using UnityEngine.UI;
 public class PlayerHitFeedback : MonoBehaviour
 {
     [SerializeField] private Image damageOverlay;   // Canvas 全屏红色 Image（Inspector 拖入）
-    private CameraFollow cachedCam;                  // 缓存的相机引用
+    [SerializeField] private float shakeMagnitude = 0.15f;   // 受击震屏幅度（可单独调）
+    private CameraFollow cachedCam;                  // 缓存的相机引用（兜底）
+    private CinemachineImpulseSource impulseSource;  // 相机震动源（独立于下坠攻击）
 
     private void Awake()
     {
         cachedCam = CameraFollow.Instance;
+        // 相机震动走 Cinemachine Impulse（CameraFollow 已禁用）；组件自动挂载，幅度独立
+        impulseSource = GetComponent<CinemachineImpulseSource>();
+        if (impulseSource == null)
+            impulseSource = gameObject.AddComponent<CinemachineImpulseSource>();
     }
 
     /// <summary>受击时调用：闪红 0.15s（alpha 0.3→0）+ 震屏</summary>
@@ -22,8 +29,11 @@ public class PlayerHitFeedback : MonoBehaviour
         if (damageOverlay != null)
             StartCoroutine(FlashRoutine());
 
-        // 震屏
-        cachedCam?.Shake(0.1f, 0.15f);
+        // 震屏（Cinemachine Impulse；CameraFollow 兜底）
+        if (impulseSource != null)
+            impulseSource.GenerateImpulse(new Vector3(0f, -shakeMagnitude, 0f));
+        else if (cachedCam != null)
+            cachedCam.Shake(0.1f, 0.15f);
     }
 
     private System.Collections.IEnumerator FlashRoutine()

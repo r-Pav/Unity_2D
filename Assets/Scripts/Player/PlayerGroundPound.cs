@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Cinemachine;
 using UnityEngine;
 
 /// <summary>
@@ -45,6 +46,7 @@ public class PlayerGroundPound : MonoBehaviour
     private float cooldownTimer;
     private PlayerController owner;
     private CameraFollow cachedCam;
+    private CinemachineImpulseSource impulseSource;
     private float heightDebugTimer;
     private HashSet<Collider2D> hitEnemies = new HashSet<Collider2D>();
 
@@ -56,6 +58,10 @@ public class PlayerGroundPound : MonoBehaviour
     {
         owner = GetComponent<PlayerController>();
         cachedCam = CameraFollow.Instance;
+        // 相机震动走 Cinemachine Impulse（CameraFollow 已禁用）；组件自动挂载，幅度由 GenerateImpulse 传参控制
+        impulseSource = GetComponent<CinemachineImpulseSource>();
+        if (impulseSource == null)
+            impulseSource = gameObject.AddComponent<CinemachineImpulseSource>();
     }
 
     // ============================================================
@@ -102,9 +108,11 @@ public class PlayerGroundPound : MonoBehaviour
     {
         hitEnemies.Clear();
 
-        // ── 相机震动（直接调用，保留现有逻辑）──
-        if (cachedCam == null) cachedCam = CameraFollow.Instance;
-        if (cachedCam != null) cachedCam.Shake(shakeDuration, shakeMagnitude);
+        // ── 相机震动（Cinemachine Impulse；CameraFollow 已禁用，其 Shake 保留作兜底）──
+        if (impulseSource != null)
+            impulseSource.GenerateImpulse(new Vector3(0f, -shakeMagnitude, 0f));
+        else if (cachedCam != null)
+            cachedCam.Shake(shakeDuration, shakeMagnitude);
 
         // ── 缩放脉冲 ──
         StopAllCoroutines();
