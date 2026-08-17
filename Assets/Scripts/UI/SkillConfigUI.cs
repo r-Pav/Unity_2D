@@ -46,8 +46,11 @@ public class SkillConfigUI : MonoBehaviour
     [Header("页面跳转")]
     [Tooltip("跳转技能树按钮：点击打开技能树（SkillTreePanel，FullScreen 替换合并页）")]
     [SerializeField] private Button toSkillTreeBtn;
+    [Tooltip("跳转被动按钮：点击打开被动页（PassivePanel）")]
+    [SerializeField] private Button toPassiveBtn;
     [SerializeField] private PanelManager panelManager;
     [SerializeField] private GameObject skillTreePanel;
+    [SerializeField] private GameObject passivePanel;
 
     // ============================================================
     // 运行时引用
@@ -81,6 +84,7 @@ public class SkillConfigUI : MonoBehaviour
         // 跳转技能树：FullScreen 替换合并页（SkillPanel 进 history，ESC 可恢复）
         if (panelManager == null) panelManager = PanelManager.Instance;
         toSkillTreeBtn?.onClick.AddListener(() => panelManager?.OpenPanel(skillTreePanel));
+        toPassiveBtn?.onClick.AddListener(() => panelManager?.OpenPanel(passivePanel));
     }
 
     private void OnEnable()

@@ -50,6 +50,14 @@ public class LineSelectDialog : MonoBehaviour, IPanel
             PositionBelow(lastAnchorButton);
     }
 
+    private void OnDisable()
+    {
+        // blocker 是 Canvas 下的独立节点，不随本面板 SetActive 联动，必须手动关，
+        // 否则残留的全屏透明层会拦截后续点击（点击外部关闭时而有效时而无）。
+        if (blocker != null)
+            blocker.SetActive(false);
+    }
+
     /// <summary>在指定按钮下方弹出选择列表</summary>
     /// <param name="anchorButton">触发按钮（用于定位）</param>
     /// <param name="layer">层级（仅用于标题显示）</param>

@@ -31,8 +31,11 @@ public class SkillTreeUI : MonoBehaviour, IPanel
     [SerializeField] private Button dialog_CloseBtn;
 
     [Header("页面跳转")]
+    [Tooltip("返回合成按钮：点击打开合并页（SkillPages）")]
     [SerializeField] private Button toCraftBtn;
     [SerializeField] private Button toPassiveBtn;
+    [SerializeField] private PanelManager panelManager;
+    [SerializeField] private GameObject skillPages;
 
     private void Awake()
     {
@@ -45,8 +48,16 @@ public class SkillTreeUI : MonoBehaviour, IPanel
         BindNodeButtons();
         if (branchChoiceDialog != null) branchChoiceDialog.Hide();
 
-        // 跳转按钮：OnClick 由 saika 在 Inspector 手动连线（技能树/被动的显隐由外部管理）。
-        // toCraftBtn?.onClick.AddListener(...); toPassiveBtn?.onClick.AddListener(...);
+        // 返回合成：先关当前页（不入 history），再开合并页（根层，ESC 直接关）
+        if (panelManager == null) panelManager = PanelManager.Instance;
+        toCraftBtn?.onClick.AddListener(() =>
+        {
+            if (panelManager != null)
+            {
+                panelManager.ClosePanel(gameObject);
+                panelManager.OpenPanel(skillPages);
+            }
+        });
     }
 
     private void OnEnable()
@@ -62,6 +73,11 @@ public class SkillTreeUI : MonoBehaviour, IPanel
         EventBus.Unsubscribe<SkillLevelChangedEvent>(OnSkillLevelChanged);
         EventBus.Unsubscribe<BranchChosenEvent>(OnBranchChosen);
         EventBus.Unsubscribe<PlayerSkillPointsChangedEvent>(OnSkillPointsChanged);
+
+        // 技能树关闭时，若分支弹窗还开着，直接隐藏（不走 ClosePanel/FadeOut：
+        // OnDisable 链路启动协程会报 Canvas inactive，导致弹窗残留）
+        if (branchChoiceDialog != null && branchChoiceDialog.gameObject.activeSelf)
+            branchChoiceDialog.gameObject.SetActive(false);
     }
 
     private void BindNodeButtons()

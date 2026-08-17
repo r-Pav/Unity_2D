@@ -7,8 +7,13 @@ using UnityEngine.UI;
 /// Binds the five-layer passive equipment panel to PassiveEquipManager.
 /// Flat arrays use layer * 3 + slot indexing as documented by the UI layout.
 /// </summary>
-public class PassiveUI : MonoBehaviour
+public class PassiveUI : MonoBehaviour, IPanel
 {
+    PanelType IPanel.PanelType => PanelType.FullScreen;
+    bool IPanel.PauseGame => true;
+    bool IPanel.LockInput => true;
+    bool IPanel.ShowCursor => true;
+
     private static readonly string[] LineNames =
     {
         "HP恢复", "伤害+攻速", "移速+闪避", "减伤+控制", "法力+CD"
@@ -30,6 +35,12 @@ public class PassiveUI : MonoBehaviour
     [Tooltip("槽位未装备被动时显示的占位图（Inspector 拖入），空则不显示")]
     [SerializeField] private Sprite emptySlotSprite;
 
+    [Header("页面跳转")]
+    [Tooltip("返回合成按钮：点击打开合并页（SkillPages）")]
+    [SerializeField] private Button toCraftBtn;
+    [SerializeField] private PanelManager panelManager;
+    [SerializeField] private GameObject skillPages;
+
     private int selectedLayer = -1;
     private int selectedSlot = -1;
 
@@ -38,6 +49,17 @@ public class PassiveUI : MonoBehaviour
         BindSlotButtons();
         if (lineSelectDialog != null)
             lineSelectDialog.Hide();
+
+        // 返回合成：先关当前页（不入 history），再开合并页（根层，ESC 直接关）
+        if (panelManager == null) panelManager = PanelManager.Instance;
+        toCraftBtn?.onClick.AddListener(() =>
+        {
+            if (panelManager != null)
+            {
+                panelManager.ClosePanel(gameObject);
+                panelManager.OpenPanel(skillPages);
+            }
+        });
     }
 
     private void OnEnable()
@@ -56,6 +78,11 @@ public class PassiveUI : MonoBehaviour
             passiveEquipManager.SetUIPauseOverride(false);
         EventBus.Unsubscribe<PassiveSlotsChangedEvent>(OnPassiveSlotsChanged);
         EventBus.Unsubscribe<ChapterChangedEvent>(OnChapterChanged);
+
+        // 被动页关闭时，若行选择小面板还开着，直接隐藏（不走 ClosePanel/FadeOut：
+        // OnDisable 链路启动协程会报 Canvas inactive，导致弹窗残留）
+        if (lineSelectDialog != null && lineSelectDialog.gameObject.activeSelf)
+            lineSelectDialog.gameObject.SetActive(false);
     }
 
     private void BindSlotButtons()
