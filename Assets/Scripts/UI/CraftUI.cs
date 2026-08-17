@@ -3,13 +3,8 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>Coordinates material selection, recipe preview, and craft confirmation.</summary>
-public class CraftUI : MonoBehaviour, IPanel
+public class CraftUI : MonoBehaviour
 {
-    PanelType IPanel.PanelType => PanelType.FullScreen;
-    bool IPanel.PauseGame => true;
-    bool IPanel.LockInput => true;
-    bool IPanel.ShowCursor => true;
-
     [SerializeField] private CombinationCraftSystem craftSystem;
     private SkillPool skillPool;
     [SerializeField] private Button slotLeft;

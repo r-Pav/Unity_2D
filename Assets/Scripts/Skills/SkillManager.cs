@@ -238,7 +238,9 @@ public class SkillManager : MonoBehaviour
         if (cooldownTimers[index] > 0f) return;
 
         // [P3] 对 ActiveSkillData 使用分支等级对应的基础值
-        float baseManaCost = data.manaCost;
+        // [MP-REMOVED 2026-08-17] 删除 MP 判定:不再检查/扣蓝,CD 为唯一限制。
+        // 字段/UI/资产数据全部保留,防止后续恢复 MP。
+        // float baseManaCost = data.manaCost;          // 恢复时取消注释
         float baseCooldown = data.cooldown;
         if (data is ActiveSkillData activeData)
         {
@@ -246,19 +248,16 @@ public class SkillManager : MonoBehaviour
             var branchData = activeData.GetBranchData(level);
             if (branchData != null)
             {
-                baseManaCost = branchData.manaCost;
+                // baseManaCost = branchData.manaCost;  // 恢复时取消注释
                 baseCooldown = branchData.cooldown;
             }
         }
 
-        // [P3] 法力消耗受 StatModifierManager 修饰
-        float effectiveManaCost = GetEffectiveManaCost(baseManaCost);
-
-        // 法力检查
-        if (!HasMana(effectiveManaCost)) return;
-
-        // 消耗法力
-        SpendMana(effectiveManaCost);
+        // [MP-REMOVED] 不再查询 ManaCostMultiplier / 检查 HasMana / 扣除 SpendMana。
+        // 恢复 MP 时取消注释下面 3 行:
+        // float effectiveManaCost = GetEffectiveManaCost(baseManaCost);
+        // if (!HasMana(effectiveManaCost)) return;
+        // SpendMana(effectiveManaCost);
 
         // [P3] 冷却时间受 StatModifierManager 修饰
         cooldownTimers[index] = GetEffectiveCooldown(baseCooldown);

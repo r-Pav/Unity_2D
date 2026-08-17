@@ -8,14 +8,10 @@ using System.Collections.Generic;
 /// 左栏：SkillPool 中所有已拥有技能（滚动列表），支持拖拽到右栏装备。
 /// 右栏：4 个 HUD 槽位，支持拖拽装备/交换/卸载。
 ///
-/// 实现 IPanel 接口，由 PanelManager 自动发现并注册。
+/// 页面显隐由父级 SkillPanelController 统一管理（本类不再实现 IPanel）。
 /// </summary>
-public class SkillConfigUI : MonoBehaviour, IPanel
+public class SkillConfigUI : MonoBehaviour
 {
-    PanelType IPanel.PanelType => PanelType.FullScreen;
-    bool IPanel.PauseGame => true;
-    bool IPanel.LockInput => true;
-    bool IPanel.ShowCursor => true;
 
     // ============================================================
     // Inspector 绑定 — 左栏
@@ -48,10 +44,9 @@ public class SkillConfigUI : MonoBehaviour, IPanel
     // ============================================================
 
     [Header("页面跳转")]
-    [SerializeField] private Button toCraftBtn;
+    [Tooltip("跳转技能树按钮：点击打开技能树（SkillTreePanel，FullScreen 替换合并页）")]
     [SerializeField] private Button toSkillTreeBtn;
     [SerializeField] private PanelManager panelManager;
-    [SerializeField] private GameObject craftPanel;
     [SerializeField] private GameObject skillTreePanel;
 
     // ============================================================
@@ -83,9 +78,8 @@ public class SkillConfigUI : MonoBehaviour, IPanel
             }
         }
 
-        // 页面跳转按钮（不变）
+        // 跳转技能树：FullScreen 替换合并页（SkillPanel 进 history，ESC 可恢复）
         if (panelManager == null) panelManager = PanelManager.Instance;
-        toCraftBtn?.onClick.AddListener(() => panelManager?.OpenPanel(craftPanel));
         toSkillTreeBtn?.onClick.AddListener(() => panelManager?.OpenPanel(skillTreePanel));
     }
 

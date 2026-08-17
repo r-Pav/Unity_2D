@@ -33,9 +33,6 @@ public class SkillTreeUI : MonoBehaviour, IPanel
     [Header("页面跳转")]
     [SerializeField] private Button toCraftBtn;
     [SerializeField] private Button toPassiveBtn;
-    [SerializeField] private PanelManager panelManager;
-    [SerializeField] private GameObject craftPanel;
-    [SerializeField] private GameObject passivePanel;
 
     private void Awake()
     {
@@ -48,9 +45,8 @@ public class SkillTreeUI : MonoBehaviour, IPanel
         BindNodeButtons();
         if (branchChoiceDialog != null) branchChoiceDialog.Hide();
 
-        if (panelManager == null) panelManager = PanelManager.Instance;
-        toCraftBtn?.onClick.AddListener(() => panelManager?.OpenPanel(craftPanel));
-        toPassiveBtn?.onClick.AddListener(() => panelManager?.OpenPanel(passivePanel));
+        // 跳转按钮：OnClick 由 saika 在 Inspector 手动连线（技能树/被动的显隐由外部管理）。
+        // toCraftBtn?.onClick.AddListener(...); toPassiveBtn?.onClick.AddListener(...);
     }
 
     private void OnEnable()

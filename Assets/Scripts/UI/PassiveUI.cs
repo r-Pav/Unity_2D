@@ -7,13 +7,8 @@ using UnityEngine.UI;
 /// Binds the five-layer passive equipment panel to PassiveEquipManager.
 /// Flat arrays use layer * 3 + slot indexing as documented by the UI layout.
 /// </summary>
-public class PassiveUI : MonoBehaviour, IPanel
+public class PassiveUI : MonoBehaviour
 {
-    PanelType IPanel.PanelType => PanelType.FullScreen;
-    bool IPanel.PauseGame => true;
-    bool IPanel.LockInput => true;
-    bool IPanel.ShowCursor => true;
-
     private static readonly string[] LineNames =
     {
         "HP恢复", "伤害+攻速", "移速+闪避", "减伤+控制", "法力+CD"
