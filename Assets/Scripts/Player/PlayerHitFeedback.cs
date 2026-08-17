@@ -10,6 +10,8 @@ public class PlayerHitFeedback : MonoBehaviour
 {
     [SerializeField] private Image damageOverlay;   // Canvas 全屏红色 Image（Inspector 拖入）
     [SerializeField] private float shakeMagnitude = 0.15f;   // 受击震屏幅度（可单独调）
+    [Tooltip("Impulse 幅度增益（Cinemachine 抖动强度，测试可调大）")]
+    [SerializeField] private float shakeAmplitudeGain = 5f;
     private CameraFollow cachedCam;                  // 缓存的相机引用（兜底）
     private CinemachineImpulseSource impulseSource;  // 相机震动源（独立于下坠攻击）
 
@@ -20,6 +22,8 @@ public class PlayerHitFeedback : MonoBehaviour
         impulseSource = GetComponent<CinemachineImpulseSource>();
         if (impulseSource == null)
             impulseSource = gameObject.AddComponent<CinemachineImpulseSource>();
+        if (impulseSource != null)
+            impulseSource.m_ImpulseDefinition.m_AmplitudeGain = shakeAmplitudeGain;
     }
 
     /// <summary>受击时调用：闪红 0.15s（alpha 0.3→0）+ 震屏</summary>

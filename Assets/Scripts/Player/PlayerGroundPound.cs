@@ -38,6 +38,8 @@ public class PlayerGroundPound : MonoBehaviour
     [Header("落地震动")]
     [SerializeField] private float shakeDuration = 0.2f;
     [SerializeField] private float shakeMagnitude = 0.3f;
+    [Tooltip("Impulse 幅度增益（Cinemachine 抖动强度，测试可调大）")]
+    [SerializeField] private float shakeAmplitudeGain = 5f;
 
     // ============================================================
     // 运行时状态
@@ -62,11 +64,21 @@ public class PlayerGroundPound : MonoBehaviour
         impulseSource = GetComponent<CinemachineImpulseSource>();
         if (impulseSource == null)
             impulseSource = gameObject.AddComponent<CinemachineImpulseSource>();
+        if (impulseSource != null)
+            impulseSource.m_ImpulseDefinition.m_AmplitudeGain = shakeAmplitudeGain;
     }
 
     // ============================================================
     // 执行器接口(PlayerGroundPoundState / PlayerController 调用)
     // ============================================================
+
+    private void Start()
+    {
+        // [TEMP] 验证 Cinemachine Impulse 链路：VCam 上是否有 ImpulseListener
+        var vcam = FindObjectOfType<CinemachineVirtualCamera>();
+        var listener = vcam != null ? vcam.GetComponent<CinemachineImpulseListener>() : null;
+        Debug.Log($"[GroundPound][TEMP] vcam={(vcam != null)} listener={(listener != null)} channelMask={(listener != null ? listener.m_ChannelMask : -999)} gain={(listener != null ? listener.m_Gain : -999f)}");
+    }
 
     /// <summary>每帧递减冷却(PlayerController.UpdateCooldowns 调用)</summary>
     public void UpdateTimers()
@@ -109,8 +121,12 @@ public class PlayerGroundPound : MonoBehaviour
         hitEnemies.Clear();
 
         // ── 相机震动（Cinemachine Impulse；CameraFollow 已禁用，其 Shake 保留作兜底）──
+        Debug.Log($"[GroundPound][TEMP] OnLand: impulseSource={(impulseSource != null)} gain={(impulseSource != null ? impulseSource.m_ImpulseDefinition.m_AmplitudeGain : 0f)}");
         if (impulseSource != null)
+        {
             impulseSource.GenerateImpulse(new Vector3(0f, -shakeMagnitude, 0f));
+            Debug.Log("[GroundPound][TEMP] GenerateImpulse called");
+        }
         else if (cachedCam != null)
             cachedCam.Shake(shakeDuration, shakeMagnitude);
 
