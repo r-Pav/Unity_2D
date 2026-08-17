@@ -51,14 +51,11 @@ public class PlayerJumpState : EntityState
         }
 
         // 二段跳:上升期再按空格 → 消耗次数并重新施加跳跃力(状态不变,OnEnter 不会触发;
-        // 力由 PlayerJump.TryJump 执行器内部施加,此处只需保持状态)
+        // 力由 PlayerJump.TryJump 执行器内部施加,此处只需保持状态;墙顶优先翻顶)
         if (Input.GetKeyDown(KeyCode.Space))
         {
-            if (pc.NearWallTop() && pc.CanVault())
-            {
-                pc.WallClingState?.TriggerVault();
+            if (pc.TryVault())
                 return;
-            }
             if (jump.TryJump(pc))
                 return;
         }

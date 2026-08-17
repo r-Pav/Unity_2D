@@ -43,14 +43,11 @@ public class PlayerIdleState : EntityState
 
         float h = Input.GetAxisRaw("Horizontal");
 
-        // 空格 → Jump(墙顶优先翻顶)
+        // 空格 → Jump(墙顶优先翻顶:TryVault 成功即传送完成,不再进跳跃)
         if (Input.GetKeyDown(KeyCode.Space))
         {
-            if (pc.NearWallTop() && pc.CanVault())
-            {
-                pc.WallClingState?.TriggerVault();
+            if (pc.TryVault())
                 return;
-            }
             if (jump.TryJump(pc))
             {
                 stateMachine.ChangeState(pc.JumpState);

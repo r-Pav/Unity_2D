@@ -122,11 +122,18 @@ public class PlayerController : PlayerCharacterBase
     public bool IsDead => PlayerFsm != null && PlayerFsm.CurrentState is PlayerDeadState;
 
     /// <summary>
-    /// 翻顶/墙跳后短暂冻结输入的计时器（由 WallClingState 设置:墙跳 0.1s / 翻顶 0.15s）。
+    /// 翻顶/墙跳后短暂冻结输入的计时器（由 WallClingState/PlayerCharacterBase.TryVault 设置:墙跳 0.1s / 翻顶 0.15s）。
     /// P3a 曾计划删除并改 PlayerFreezeState,P3b 核对后保留:它由墙状态类按需写入、UpdateCooldowns 递减、
     /// IsActionLocked/DetectWallCling 读取,作为墙跳/翻顶后的输入冻结间隙仍被正常使用 → 保留并持续维护。
+    /// 2026-08-14:基类 PlayerCharacterBase 增加虚属性,翻顶统一入口 TryVault 直接写入,此处改为 override。
     /// </summary>
-    public float FreezeTimer { get; set; }
+    // 手动属性(不用自动属性):团结引擎会把自动属性 backing field <FreezeTimer>k__BackingField 纳入序列化检查,
+    // 与基类曾定义的同名自动属性冲突(报 "serialized multiple times");手动 backing field 名不同,彻底规避。
+    private float _freezeTimer;
+    public float FreezeTimer { get => _freezeTimer; set => _freezeTimer = value; }
+
+    /// <summary>翻顶执行后冻结输入(由 PlayerCharacterBase.OnVaultExecuted 钩子回调)</summary>
+    protected override void OnVaultExecuted() => FreezeTimer = VaultFreezeTime;
 
     /// <summary>Whether gameplay input should be processed.</summary>
     public bool InputEnabled { get; set; } = true;

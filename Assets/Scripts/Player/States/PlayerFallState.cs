@@ -55,11 +55,8 @@ public class PlayerFallState : EntityState
         // 二段跳:空中按空格(墙顶优先翻顶)
         if (Input.GetKeyDown(KeyCode.Space))
         {
-            if (pc.NearWallTop() && pc.CanVault())
-            {
-                pc.WallClingState?.TriggerVault();
+            if (pc.TryVault())
                 return;
-            }
             if (jump.TryJump(pc))
             {
                 stateMachine.ChangeState(pc.JumpState);

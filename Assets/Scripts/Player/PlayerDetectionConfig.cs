@@ -64,6 +64,26 @@ public class PlayerDetectionConfig : MonoBehaviour
     [SerializeField] private float wallCheckVerticalHeight = 1.5f;
 
     // ============================================================
+    // 翻顶检测(框 + 射线) — 2026-08-14 新增,替代旧 NearWallTop/CanVault 逻辑
+    // ============================================================
+
+    [Header("翻顶检测(框+射线)")]
+    [Tooltip("检测框尺寸(宽 = 落点宽度,高 = 触发窗口)")]
+    [SerializeField] private Vector2 vaultBoxSize = new Vector2(0.6f, 0.8f);
+
+    [Tooltip("框中心相对玩家的前方偏移(调到墙顶中间附近)")]
+    [SerializeField] private float vaultBoxForwardOffset = 0.4f;
+
+    [Tooltip("从框底向下找墙的射线长度")]
+    [SerializeField] private float vaultRayDistance = 1.5f;
+
+    [Tooltip("墙顶距框底的最大允许距离(超过不触发,防倒吸)")]
+    [SerializeField] private float vaultMaxTopDistance = 0.8f;
+
+    [Tooltip("传送后落地冻结时长")]
+    [SerializeField] private float vaultFreezeTime = 0.15f;
+
+    // ============================================================
     // 公开访问器
     // ============================================================
 
@@ -78,6 +98,13 @@ public class PlayerDetectionConfig : MonoBehaviour
     public float VaultForwardOffset => vaultForwardOffset;
     public float WallCheckVerticalOffsetX => wallCheckVerticalOffsetX;
     public float WallCheckVerticalHeight => wallCheckVerticalHeight;
+
+    // ---- 翻顶检测(框+射线) ----
+    public Vector2 VaultBoxSize => vaultBoxSize;
+    public float VaultBoxForwardOffset => vaultBoxForwardOffset;
+    public float VaultRayDistance => vaultRayDistance;
+    public float VaultMaxTopDistance => vaultMaxTopDistance;
+    public float VaultFreezeTime => vaultFreezeTime;
 
     // ============================================================
     // Gizmos
@@ -123,12 +150,6 @@ public class PlayerDetectionConfig : MonoBehaviour
                           + Vector2.up * (col.bounds.extents.y + wallClimbCheckOffset);
         Gizmos.color = Color.magenta;
         Gizmos.DrawRay(topOrigin, Vector2.right * facing * wallCheckDistance);
-
-        Vector3 vaultTarget = (Vector3)((Vector2)transform.position
-                            + Vector2.up * vaultUpOffset
-                            + Vector2.right * facing * vaultForwardOffset);
-        Gizmos.color = Color.cyan;
-        Gizmos.DrawWireCube(vaultTarget, Vector3.one * 0.3f);
     }
 #endif
 }

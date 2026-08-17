@@ -44,12 +44,10 @@ public class PlayerJump : MonoBehaviour
 
         if (jumpBreaksAttack)
         {
-            // 墙顶优先翻顶:翻顶同样打断攻击,但不进入跳跃状态(TriggerVault 已切换状态)
-            if (owner.NearWallTop() && owner.CanVault())
-            {
-                owner.WallClingState?.TriggerVault();
+            // 墙顶优先翻顶:TryVault(框+射线)成功 → 翻顶同样打断攻击(传送完成,状态由攻击自然收尾);
+            // 不进入跳跃状态(去重标记已置位,状态切换交给调用方)
+            if (owner.TryVault())
                 return;
-            }
             // 跳跃打断攻击(力由 TryJump 施加;攻击状态由 ChangeState 自动退出并清理)
             if (TryJump(owner))
                 owner.PlayerFsm.ChangeState(owner.JumpState);
@@ -62,7 +60,7 @@ public class PlayerJump : MonoBehaviour
     }
 
     /// <summary>跳跃缓冲递减:>0 时尝试补跳。返回 true 表示已跳起(调用方切换 JumpState);
-    /// 翻顶时返回 false(TriggerVault 已切换状态,不再需要 JumpState)。</summary>
+    /// 翻顶时返回 false(TryVault 已传送完成,不再需要 JumpState)。</summary>
     public bool UpdateJumpBuffer(PlayerController owner)
     {
         if (jumpBufferTimer <= 0f) return false;
@@ -70,10 +68,9 @@ public class PlayerJump : MonoBehaviour
         if (jumpBufferTimer <= 0f) return false;
 
         // 墙顶优先翻顶
-        if (owner.NearWallTop() && owner.CanVault())
+        if (owner.TryVault())
         {
             jumpBufferTimer = 0f;
-            owner.WallClingState?.TriggerVault();
             return false;
         }
 
@@ -89,12 +86,9 @@ public class PlayerJump : MonoBehaviour
     /// 由 FSM 状态类(Idle/Move/Jump/Fall)在输入或缓冲命中时调用。</summary>
     public bool TryJump(PlayerController owner)
     {
-        // 空中/贴墙接近墙顶:优先翻顶(蹬墙跳飞行中接近对面墙顶可直接翻上去)
-        if (owner.NearWallTop() && owner.CanVault())
-        {
-            owner.WallClingState?.TriggerVault();
+        // 空中/贴墙接近墙顶:优先翻顶(框+射线统一判定;翻顶后 return true,调用方不再进跳跃)
+        if (owner.TryVault())
             return true;
-        }
         if (jumpsLeft > 0)
         {
             jumpsLeft--;

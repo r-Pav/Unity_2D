@@ -17,8 +17,7 @@ public class WallClingState : EntityState
     private float _grabTimer;
     private const float GrabHoldTime = 0.15f;
 
-    // ---- 翻顶去重 ----
-    private bool _vaultTriggered;
+    // ---- 翻顶去重:2026-08-14 移至 PlayerCharacterBase(_vaultTriggered),此处不再持有 ----
 
     // ---- 墙面间隙控制 ----
     private const float WallGap = 0.02f;
@@ -38,7 +37,7 @@ public class WallClingState : EntityState
     {
         player.SetVelocityPublic(x: 0f, y: 0f);
         _kickCooldown = 0f;
-        _vaultTriggered = false;
+        player.ResetVaultFlag();   // 防翻顶触发后卡住不复位(去重标记在 PlayerCharacterBase,进贴墙即复位)
         IsWallKicking = false;
         _grabTimer = GrabHoldTime;   // 抓墙缓冲:先停住,给反应时间
 
@@ -60,10 +59,12 @@ public class WallClingState : EntityState
 
         if (Input.GetKeyDown(KeyCode.Space) && _kickCooldown <= 0f)
         {
-            // 墙顶优先翻顶:接近墙顶(提前量)+ 落点无障碍 → 翻顶;否则蹬墙跳
-            if (player.NearWallTop() && player.CanVault())
+            // 墙顶优先翻顶:TryVault(框+射线)成功 → 翻顶成功,传送完成;
+            // 状态切换由调用方判断(贴墙调用方切 FallState 自然落地);失败 → 蹬墙跳
+            if (player.TryVault())
             {
-                CheckVault();
+                var pc = player as PlayerController;
+                stateMachine.ChangeState(pc != null ? pc.FallState : null);
                 return;
             }
             WallKick();
@@ -158,51 +159,13 @@ public class WallClingState : EntityState
         stateMachine.ChangeState(pc.FallState);
     }
 
+    /// <summary>攀爬 W 每帧尝试翻顶:TryVault(框+射线),失败静默(继续爬)</summary>
     private void CheckVault()
     {
-        if (player.NearWallTop() && player.CanVault() && !_vaultTriggered)
+        if (player.TryVault())
         {
-            _vaultTriggered = true;
-            TriggerVault();
+            var pc = player as PlayerController;
+            stateMachine.ChangeState(pc != null ? pc.FallState : null);
         }
-    }
-
-    /// <summary>翻顶(贴墙/空中共用;PlayerJump 空中接近墙顶时也会调用)</summary>
-    public void TriggerVault()
-    {
-        var pc = player as PlayerController;
-        if (pc == null) return;
-
-        int dir = player.WallDirection != 0 ? player.WallDirection : player.FacingDir;
-        if (dir == 0) return;
-
-        // 落点 = 当前墙顶正上方:贴着墙面向下找墙顶,玩家 x 保持(墙顶范围内),直接站上墙顶。
-        // 之前用固定偏移(玩家.y + VaultUpOffset,墙外 VaultForwardOffset)会瞬移到空中再下落,
-        // 偏移不足时落回墙边("传上去又回到墙上")。
-        var col = player.Col;
-        float halfH = col != null ? col.bounds.extents.y : 0.5f;
-        float wallTopY = player.transform.position.y + player.VaultUpOffset;   // fallback:找不到墙顶用原逻辑
-        float targetX = player.transform.position.x;                            // fallback:原 x
-        float wallFaceX = 0f;
-        if (col != null)
-        {
-            Vector2 origin = (Vector2)player.transform.position
-                           + Vector2.right * dir * (col.bounds.extents.x + 0.05f)
-                           + Vector2.up * (col.bounds.extents.y + player.VaultUpOffset);
-            RaycastHit2D hit = Physics2D.Raycast(origin, Vector2.down, player.VaultUpOffset + 2f, player.WallLayer);
-            if (hit && hit.point.y > player.transform.position.y)
-            {
-                wallTopY = hit.point.y;
-                // 落点 x = 墙表面(玩家贴的面)向墙内偏移:玩家重心压进墙顶接触面内,站得住。
-                // 之前用玩家.x(重心在墙顶左侧外)或 hit.point.x(重心在墙顶右侧外)都会滑落回墙边;
-                // 0.2 比 0.1 更靠墙顶中间(不贴边),若墙顶更宽可继续调大
-                wallFaceX = player.transform.position.x + dir * (col.bounds.extents.x + 0.02f);
-                targetX = wallFaceX + dir * 0.2f;
-            }
-        }
-
-        rb.position = new Vector2(targetX, wallTopY + halfH + 0.05f);
-        pc.FreezeTimer = 0.15f;
-        stateMachine.ChangeState(pc.FallState);
     }
 }
