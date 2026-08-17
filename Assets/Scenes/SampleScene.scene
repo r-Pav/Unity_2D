@@ -10177,6 +10177,7 @@ GameObject:
   serializedVersion: 7
   m_Component:
   - component: {fileID: 291518149}
+  - component: {fileID: 1079613509}
   m_Layer: 0
   m_HasEditorInfo: 1
   m_Name: SkillPages
@@ -34216,7 +34217,6 @@ GameObject:
   serializedVersion: 7
   m_Component:
   - component: {fileID: 1079613508}
-  - component: {fileID: 1079613509}
   m_Layer: 0
   m_HasEditorInfo: 1
   m_Name: SkillPanel
@@ -34258,13 +34258,12 @@ MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1079613507}
+  m_GameObject: {fileID: 291518148}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 87898b190393787449af731135962d5e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  skillPages: {fileID: 291518148}
   bg: {fileID: 1799015781}
 --- !u!1 &1079802881
 GameObject:
@@ -62908,13 +62907,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a4dfcbffd3d71254aba9390e51ef012f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  panel1: {fileID: 1079613507}
+  panel1: {fileID: 291518148}
   key1: 112
   panel2: {fileID: 1425156908}
   key2: 99
   panel3: {fileID: 0}
   key3: 0
-  panel4: {fileID: 1079613507}
+  panel4: {fileID: 291518148}
   key4: 0
 --- !u!114 &1922467151
 MonoBehaviour:
