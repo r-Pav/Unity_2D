@@ -105,10 +105,19 @@ public class CraftUI : MonoBehaviour
 
         if (levelIndicator != null)
         {
-            levelIndicator.text = hasMaterial[0] && hasMaterial[1]
-                ? $"材料等级: Lv{Mathf.Min(selectedMaterials[0].level, selectedMaterials[1].level)}"
-                : string.Empty;
-            levelIndicator.color = valid || string.IsNullOrEmpty(failReason) ? Color.white : UIConstants.ConflictRed;
+            // 校验失败 → 显示原因（如"已有技能，不可重复合成"）
+            if (hasMaterial[0] && hasMaterial[1] && !string.IsNullOrEmpty(failReason))
+            {
+                levelIndicator.text = failReason;
+                levelIndicator.color = UIConstants.ConflictRed;
+            }
+            else
+            {
+                levelIndicator.text = hasMaterial[0] && hasMaterial[1]
+                    ? $"材料等级: Lv{Mathf.Min(selectedMaterials[0].level, selectedMaterials[1].level)}"
+                    : string.Empty;
+                levelIndicator.color = valid || string.IsNullOrEmpty(failReason) ? Color.white : UIConstants.ConflictRed;
+            }
         }
 
         SetPreview(valid);

@@ -95,6 +95,8 @@ public class CombinationCraftSystem : MonoBehaviour
             foreach (var entry in owned)
             {
                 if (entry.skillData == null) continue;
+                // 组合技能（合成产物）不可再作合成材料
+                if (entry.skillData is CombinationSkillData) continue;
                 if (entry.skillData.type != SkillType.Active &&
                     entry.skillData.type != SkillType.Toggle)
                     continue;
@@ -182,7 +184,28 @@ public class CombinationCraftSystem : MonoBehaviour
             return false;
         }
 
+        // 已拥有该配方产出 → 禁止重复合成
+        if (HasOwnedCombo(result))
+        {
+            failReason = "已有技能，不可重复合成";
+            result = null;
+            return false;
+        }
+
         return true;
+    }
+
+    /// <summary>技能池是否已拥有指定组合技能（按 SO 引用或 skillName 匹配）</summary>
+    private bool HasOwnedCombo(CombinationSkillData combo)
+    {
+        if (skillPool == null || combo == null) return false;
+        var owned = skillPool.GetOwnedSkills();
+        foreach (var entry in owned)
+        {
+            if (entry.skillData != null && entry.skillData == combo) return true;
+            if (!string.IsNullOrEmpty(entry.id) && entry.id == combo.skillName) return true;
+        }
+        return false;
     }
 
     /// <summary>
