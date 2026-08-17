@@ -38,8 +38,6 @@ public class PlayerGroundPound : MonoBehaviour
     [Header("落地震动")]
     [SerializeField] private float shakeDuration = 0.2f;
     [SerializeField] private float shakeMagnitude = 0.3f;
-    [Tooltip("Impulse 幅度增益（Cinemachine 抖动强度，测试可调大）")]
-    [SerializeField] private float shakeAmplitudeGain = 5f;
 
     // ============================================================
     // 运行时状态
@@ -48,7 +46,7 @@ public class PlayerGroundPound : MonoBehaviour
     private float cooldownTimer;
     private PlayerController owner;
     private CameraFollow cachedCam;
-    private CinemachineImpulseSource impulseSource;
+    private CameraShakeExtension shakeExtension;
     private float heightDebugTimer;
     private HashSet<Collider2D> hitEnemies = new HashSet<Collider2D>();
 
@@ -60,12 +58,6 @@ public class PlayerGroundPound : MonoBehaviour
     {
         owner = GetComponent<PlayerController>();
         cachedCam = CameraFollow.Instance;
-        // 相机震动走 Cinemachine Impulse（CameraFollow 已禁用）；组件自动挂载，幅度由 GenerateImpulse 传参控制
-        impulseSource = GetComponent<CinemachineImpulseSource>();
-        if (impulseSource == null)
-            impulseSource = gameObject.AddComponent<CinemachineImpulseSource>();
-        if (impulseSource != null)
-            impulseSource.m_ImpulseDefinition.m_AmplitudeGain = shakeAmplitudeGain;
     }
 
     // ============================================================
@@ -74,11 +66,15 @@ public class PlayerGroundPound : MonoBehaviour
 
     private void Start()
     {
-        // 自动补齐 Cinemachine Impulse 监听端：VCam 缺 ImpulseListener 时运行时挂载
-        // （团结引擎组件菜单本地化搜不到，编辑器手加不便；运行时补不影响场景序列化）
+        // 相机震动走自定义 CameraShakeExtension（Cinemachine Impulse 在团结引擎链路不可靠，弃用）
+        // 运行时自动挂到 VCam，不依赖编辑器操作，不影响场景序列化
         var vcam = FindObjectOfType<CinemachineVirtualCamera>();
-        if (vcam != null && vcam.GetComponent<CinemachineImpulseListener>() == null)
-            vcam.gameObject.AddComponent<CinemachineImpulseListener>();
+        if (vcam != null)
+        {
+            shakeExtension = vcam.GetComponent<CameraShakeExtension>();
+            if (shakeExtension == null)
+                shakeExtension = vcam.gameObject.AddComponent<CameraShakeExtension>();
+        }
     }
 
     /// <summary>每帧递减冷却(PlayerController.UpdateCooldowns 调用)</summary>
@@ -121,9 +117,9 @@ public class PlayerGroundPound : MonoBehaviour
     {
         hitEnemies.Clear();
 
-        // ── 相机震动（Cinemachine Impulse；CameraFollow 已禁用，其 Shake 保留作兜底）──
-        if (impulseSource != null)
-            impulseSource.GenerateImpulse(new Vector3(0f, -shakeMagnitude, 0f));
+        // ── 相机震动（自定义 CameraShakeExtension；CameraFollow 已禁用，其 Shake 保留作兜底）──
+        if (shakeExtension != null)
+            shakeExtension.Shake(shakeDuration, shakeMagnitude);
         else if (cachedCam != null)
             cachedCam.Shake(shakeDuration, shakeMagnitude);
 
