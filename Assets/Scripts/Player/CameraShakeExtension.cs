@@ -35,7 +35,8 @@ public class CameraShakeExtension : CinemachineExtension
             Random.Range(-1f, 1f),
             0f) * shakeMagnitude;
 
-        timer -= Time.deltaTime;
+        // 用真实时间：全局卡肉 timeScale=0 期间震屏照常播放，不被定格
+        timer -= Time.unscaledDeltaTime;
         if (timer < 0f) timer = 0f;
     }
 }

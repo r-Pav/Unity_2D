@@ -27,7 +27,7 @@ public class MeleeAttackState : EntityState, IEnemyAttackState
         me.OnEnterCombatState();
         if (me.Rb != null)
             me.Rb.velocity = new Vector2(0f, me.Rb.velocity.y);
-        me.ApplyStateColor(new Color(1.0f, 0.7f, 0.0f));
+        // me.ApplyStateColor(new Color(1.0f, 0.7f, 0.0f));  // [状态色已移除]
         attackModule = me.GetComponent<IEnemyAttack>();
 
         // 攻击超时兜底：初始 1.0s，采样到 Attack clip 后按 clip 时长 + 0.2s 修正
@@ -78,10 +78,16 @@ public class MeleeAttackState : EntityState, IEnemyAttackState
         attackModule?.PerformAttack(me);
     }
 
-    /// <summary>蓄力帧：近战无蓄力，接口兼容空实现（远程 attack2 专用）</summary>
+    /// <summary>
+    /// 蓄力帧：近战暂不启用蓄力，接口兼容空实现（远程 attack2 专用）。
+    /// [预留] 后续近战需要蓄力时在此调 me.BeginChargeFlash()，发射/命中处调 me.EndChargeFlash()。
+    /// </summary>
     public void OnCharge() { }
 
-    /// <summary>发射帧：近战无发射，接口兼容空实现（远程 attack2 专用）</summary>
+    /// <summary>
+    /// 发射帧：近战暂不启用，接口兼容空实现（远程 attack2 专用）。
+    /// [预留] 与 OnCharge 配对：蓄力闪烁结束点。
+    /// </summary>
     public void OnFire() { }
 
     /// <summary>攻击动画结束：回 Idle 核心入口（timer→Patrol / CanSeePlayer→Chase），不在攻击状态堆逻辑链</summary>

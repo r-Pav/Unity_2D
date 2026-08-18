@@ -48,6 +48,20 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     [SerializeField] protected Color hitColor = Color.white;  // 白色闪白更明显
     [SerializeField] protected float hitFlashDuration = 0.1f;
 
+    [Header("蓄力反馈")]
+    [Tooltip("蓄力色 — 蓄力帧(OnCharge)开始闪烁、发射帧(OnFire)结束；灭相位恢复原始材质色")]
+    [SerializeField] protected Color chargeColor = new Color(1f, 0.3f, 0f);
+    [Tooltip("蓄力闪烁起始频率（每秒亮灭次数），随蓄力时间加速")]
+    [SerializeField] protected float chargeFlashBaseFreq = 4f;
+    [Tooltip("蓄力闪烁频率加速度（每秒增加的频率），蓄力越长闪得越快")]
+    [SerializeField] protected float chargeFlashAccel = 6f;
+    [Tooltip("蓄力闪烁频率上限（防长蓄力闪成震动）")]
+    [SerializeField] protected float chargeFlashMaxFreq = 20f;
+
+    // [预留] Boss 蓄力色独立配置：未来在 BossControllerBase 新增独立字段（与普通 enemy 分开设置），
+    //       在 BossSkillSlots 各 Execute* 协程 windupTime 前摇段调 BeginChargeFlash()、判定帧调 EndChargeFlash()，
+    //       Interrupt() 里兜底 EndChargeFlash()（协程被 Stop 后体内清理不会执行）。当前 Boss 不启用。
+
     [Header("VFX")]
     [Tooltip("受击 VFX 预制体 — 受伤时 Instantiate")]
     [SerializeField] protected GameObject hitVFXPrefab;
@@ -124,6 +138,9 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     /// <summary>公开死亡状态（供外部组件读取）</summary>
     public bool IsDead => isDead;
 
+    /// <summary>是否为 Boss（BossControllerBase 重写为 true；普通怪默认 false）</summary>
+    public virtual bool IsBoss => false;
+
     /// <summary>当前血量（供 HealthBar 等读取）</summary>
     public float CurrentHealth => currentHealth;
     /// <summary>最大血量</summary>
@@ -132,6 +149,9 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     private Renderer[] renderers;
     private Color stateColor;         // 当前状态色，hit 恢复时用此值
     private float hitFlashTimer;
+    private bool isChargeFlashing;       // 蓄力闪烁中（BeginChargeFlash 置位，EndChargeFlash 复位）
+    private float chargeFlashStartTime;  // 蓄力闪烁开始时间（Time.time），驱动频率加速
+    private float hitKnockbackWindow;    // 受击击退滑行窗口（>0 时 OnFixedUpdate 不 Move(0)，保留击退速度滑行；对齐 stun 豁免）
 
     // ── FSM ──
     protected StateMachine fsm;
@@ -162,6 +182,52 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
     protected EnemyStunState stunState;
     private float stunCooldownTimer;
+
+    // ── 命中本地冻结（独立卡帧）──
+    /// <summary>本地冻结剩余时长（秒；>0 = 冻结中）。用 deltaTime 倒数 → 全局卡肉(timeScale=0)期间不倒数，天然叠加</summary>
+    private float _localFreezeRemaining;
+    /// <summary>冻结前暂存的速度（解除时恢复，保证击退速度不在冻结期间衰减）</summary>
+    private Vector2 _localFreezeSavedVelocity;
+
+    /// <summary>是否正在本地冻结中</summary>
+    public bool IsLocallyFrozen => _localFreezeRemaining > 0f;
+
+    /// <summary>
+    /// 命中本地冻结 — 只冻结本敌人自身：FSM 停更新、移动停止、动画停播。
+    /// duration ≤ 0 忽略；冻结中再次调用取更长的剩余时长；已死亡忽略（死亡动画正常播放）。
+    /// 敌人体感总冻结 = 全局卡肉时长（timeScale=0 使 deltaTime 停走）+ 本时长。
+    /// </summary>
+    public void ApplyLocalFreeze(float duration)
+    {
+        if (isDead || duration <= 0f) return;
+        if (_localFreezeRemaining > 0f)
+        {
+            if (duration > _localFreezeRemaining) _localFreezeRemaining = duration;
+            return;
+        }
+        _localFreezeRemaining = duration;
+        if (_animator != null) _animator.speed = 0f;
+        if (rb != null)
+        {
+            _localFreezeSavedVelocity = rb.velocity;
+            rb.velocity = Vector2.zero;
+        }
+    }
+
+    /// <summary>解除本地冻结：恢复动画速度与暂存的击退速度</summary>
+    private void EndLocalFreeze()
+    {
+        if (_animator != null) _animator.speed = 1f;
+        if (rb != null) rb.velocity = _localFreezeSavedVelocity;
+        _localFreezeSavedVelocity = Vector2.zero;
+    }
+
+    /// <summary>强制解除本地冻结 — 子类覆写 Die() 等场景调用，保证死亡动画/结算不被冻结卡住</summary>
+    protected void ForceEndLocalFreeze()
+    {
+        _localFreezeRemaining = 0f;
+        EndLocalFreeze();
+    }
 
     // ============================================================
     // 抽象方法 — 子类必须实现
@@ -272,6 +338,13 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         EventBus.Unsubscribe<GroundPoundEvent>(OnGroundPound);
         EventBus.Unsubscribe<StatModifiersChangedEvent>(OnStatModifiersChanged);
         OnExitCombatState();  // 场景卸载/对象池回收时确保退出战斗计数
+
+        // 本地冻结清理：禁用/回收时强制解除，防止 animator.speed=0 残留
+        if (_localFreezeRemaining > 0f)
+        {
+            _localFreezeRemaining = 0f;
+            EndLocalFreeze();
+        }
     }
 
     protected void Start()
@@ -283,12 +356,31 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     {
         base.Update();
 
+        // 命中本地冻结计时（deltaTime 倒数：全局卡肉 timeScale=0 期间不倒数 → 与全局冻结时长叠加）
+        if (_localFreezeRemaining > 0f)
+        {
+            _localFreezeRemaining -= Time.deltaTime;
+            if (_localFreezeRemaining <= 0f)
+            {
+                _localFreezeRemaining = 0f;
+                EndLocalFreeze();
+            }
+        }
+
         if (hitFlashTimer > 0f)
         {
             hitFlashTimer -= Time.deltaTime;
             if (hitFlashTimer <= 0f)
                 RestoreColors();
         }
+
+        // 受击击退滑行窗口递减（归零后 OnFixedUpdate 恢复 Move(0) 正常停住）
+        if (hitKnockbackWindow > 0f)
+            hitKnockbackWindow -= Time.deltaTime;
+
+        // 蓄力闪烁驱动：受击闪白期间(hitFlashTimer>0)让位，闪白优先
+        if (isChargeFlashing && hitFlashTimer <= 0f)
+            UpdateChargeFlash();
 
         if (attackCooldownTimer > 0f)
             attackCooldownTimer -= Time.deltaTime;
@@ -319,11 +411,15 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     protected override void OnUpdate()
     {
         if (isDead) return;
+        if (_localFreezeRemaining > 0f) return;   // 本地冻结：FSM 停更，AI/攻击全部暂停
         fsm?.Update();
     }
 
     protected override void OnFixedUpdate()
     {
+        // 命中本地冻结：跳过全部移动 — moveInput 残留旧值，不拦会继续 Move() 滑步
+        if (_localFreezeRemaining > 0f) return;
+
         // [移动范围] 数学拦截：已在边界(|x-homeX| >= homeRange)且仍朝边界外走 → 停。
         // 朝范围中心方向（返回）不拦；homeRange=0 不限制。
         // 状态无关：Patrol/Chase/Rush 统一遵守，防止敌人跨区/进管道。fsm 状态不动，
@@ -341,9 +437,9 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
             Move(moveInput);
             UpdateFacing(moveInput);
         }
-        else if (fsm?.CurrentState != stunState)
+        else if (fsm?.CurrentState != stunState && hitKnockbackWindow <= 0f)
         {
-            // 硬直中不零速，让击退自然衰减
+            // 硬直中/击退滑行窗口内不零速，让击退自然衰减
             Move(0f);
         }
     }
@@ -540,6 +636,14 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     {
         if (isDead) return;
         isDead = true;
+        EndChargeFlash();  // 蓄力中死亡：结束蓄力闪烁（幂等）
+
+        // 本地冻结中死亡 → 立即解除（死亡动画必须正常播放，死亡结算依赖动画末帧事件）
+        if (_localFreezeRemaining > 0f)
+        {
+            _localFreezeRemaining = 0f;
+            EndLocalFreeze();
+        }
 
         // 死亡停住：清移动输入 + 水平速度（移动中被杀时 moveInput 残留 → 死亡动画期间会继续滑动）
         moveInput = 0f;
@@ -652,11 +756,12 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     /// <summary>减伤 — 敌人无减伤</summary>
     public float ApplyReduction(float amount) => amount;
 
-    /// <summary>施加击退（CombatResolver 在霸体判定通过后调用；方向/力度/上挑由攻击方构造进 Knockback）</summary>
+    /// <summary>施加击退（CombatResolver 在霸体判定通过后调用；方向/力度由攻击方构造进 Knockback）</summary>
     public virtual void ApplyKnockback(Knockback knockback)
     {
         if (rb == null || knockback.force <= 0f) return;
         Vector2 knockDir = knockback.direction;
+        knockDir.y = 0f;  // 对齐 PlayerHealth/Boss：敌人击退水平化，不上挑
         if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
         rb.AddForce(knockDir * knockback.force, ForceMode2D.Impulse);
     }
@@ -680,14 +785,22 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         }
         else
         {
-            // ── 远程路径：rangedKnockbackForce 击退 + 进入攻击入口状态 ──
-            //    攻击入口由子类 CreateAttackEntryState() 决定（远程 = RangedAttackState 判框：
-            //    player 在攻击框内 → 按框播对应攻击动画；框外 → 加速移动 Rush）
-            Vector2 hitDir = ((Vector2)transform.position - info.sourcePosition).normalized;
-            Vector2 knockDir = hitDir;
-            knockDir.y = 0f;
-            if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
-            rb.AddForce(knockDir * rangedKnockbackForce, ForceMode2D.Impulse);
+            // ── 远程路径：进入攻击入口状态 ──
+            //    击退统一由 CombatResolver.ApplyKnockback 施加（方向/力度由攻击方构造进 Knockback，
+            //    与近战 enemy 一致）；仅当攻击无击退配置（force<=0，如子弹/普通攻击段）时用
+            //    rangedKnockbackForce 兜底，防止与 ApplyKnockback 双重叠加导致方向/力度混乱（P4b 后遗留）。
+            if (info.knockback.force <= 0f)
+            {
+                Vector2 hitDir = ((Vector2)transform.position - info.sourcePosition).normalized;
+                Vector2 knockDir = hitDir;
+                knockDir.y = 0f;
+                if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
+                rb.AddForce(knockDir * rangedKnockbackForce, ForceMode2D.Impulse);
+            }
+
+            // 受击击退滑行窗口：攻击入口状态不再清速度，窗口内 OnFixedUpdate 不 Move(0)，
+            // 让击退速度自然衰减（对齐近战 stun 路径的保留击退行为，否则远程 enemy 击退被吞）
+            hitKnockbackWindow = 0.2f;
 
             fsm.ChangeState(CreateAttackEntryState());
         }
@@ -740,8 +853,39 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
     private void FlashHit()
     {
+        EndChargeFlash();  // 受击 = 中断蓄力闪烁（防止闪白结束后残留旧蓄力闪烁）
         hitFlashTimer = hitFlashDuration;
         foreach (Renderer r in renderers) r.material.color = hitColor;
+    }
+
+    /// <summary>蓄力闪烁开始（蓄力帧 OnCharge 调用；幂等，重复调用只重置开始时间）</summary>
+    public void BeginChargeFlash()
+    {
+        isChargeFlashing = true;
+        chargeFlashStartTime = Time.time;
+    }
+
+    /// <summary>
+    /// 蓄力闪烁结束（发射帧 OnFire / 攻击状态 OnExit / 受击 / 死亡 调用；幂等）。
+    /// 恢复原始材质色（状态色已注释后 stateColor = Awake 初始材质色）。
+    /// </summary>
+    public void EndChargeFlash()
+    {
+        if (!isChargeFlashing) return;
+        isChargeFlashing = false;
+        RestoreColors();
+    }
+
+    /// <summary>每帧闪烁：频率随蓄力时长线性加速（方波），灭相位=原始材质色</summary>
+    private void UpdateChargeFlash()
+    {
+        float t = Time.time - chargeFlashStartTime;
+        float freq = Mathf.Min(chargeFlashBaseFreq + chargeFlashAccel * t, chargeFlashMaxFreq);
+        bool on = Mathf.Sin(t * freq * Mathf.PI) >= 0f;
+        Color c = on ? chargeColor : stateColor;
+        foreach (Renderer r in renderers)
+            if (r != null)
+                r.material.color = c;
     }
 
     /// <summary>设置所有渲染器为当前状态色</summary>

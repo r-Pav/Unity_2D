@@ -14,7 +14,7 @@ public class BossIdleState : EntityState
     {
         var boss = (FirstBoss)owner;
         boss.moveInput = 0f;
-        boss.ApplyStateColor(new Color(0.5f, 0.5f, 0.5f));
+        // boss.ApplyStateColor(new Color(0.5f, 0.5f, 0.5f));  // [状态色已移除]
     }
 
     public override void OnUpdate()

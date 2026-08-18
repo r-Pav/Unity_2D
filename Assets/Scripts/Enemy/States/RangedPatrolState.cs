@@ -25,7 +25,7 @@ public class RangedPatrolState : EntityState
         changeDirTimer = Random.Range(2f, 4f);
         pauseTimer = 0f;
         me.OnExitCombatState();
-        me.ApplyStateColor(new Color(0.2f, 0.4f, 1.0f)); // 蓝色
+        // me.ApplyStateColor(new Color(0.2f, 0.4f, 1.0f)); // 蓝色 [状态色已移除]
     }
 
     public override void OnUpdate()

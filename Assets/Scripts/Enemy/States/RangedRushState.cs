@@ -28,7 +28,7 @@ public class RangedRushState : EntityState
         var me = (EnemyRangedController)owner;
         timer = 0f;
         me.OnEnterCombatState();
-        me.ApplyStateColor(new Color(1.0f, 0.6f, 0.0f)); // 橙色（加速）
+        // me.ApplyStateColor(new Color(1.0f, 0.6f, 0.0f)); // 橙色（加速）[状态色已移除]
 
         // 加速移动：临时覆盖移速（OnExit 恢复），禁止直接改 baseMoveSpeed
         me.SetMoveSpeedOverride(me.CurrentMoveSpeed * rushMultiplier);

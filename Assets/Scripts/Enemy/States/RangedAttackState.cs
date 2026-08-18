@@ -32,9 +32,9 @@ public class RangedAttackState : EntityState, IEnemyAttackState
         var me = (EnemyRangedController)owner;
         me.moveInput = 0f;
         me.OnEnterCombatState();
-        if (me.Rb != null)
-            me.Rb.velocity = new Vector2(0f, me.Rb.velocity.y);
-        me.ApplyStateColor(new Color(1.0f, 0.7f, 0.0f));
+        // 不再清水平速度：受击进入时由 OnHitBy 设置击退滑行窗口保留击退速度（近战 stun 路径同样保留），
+        // 普通从 Chase/Rush 进入时由 OnFixedUpdate 的 Move(0) 兜底停住（仅晚一帧，可接受）
+        // me.ApplyStateColor(new Color(1.0f, 0.7f, 0.0f));  // [状态色已移除]
 
         // 缓存攻击组件（GetComponent 仅在进入状态时查一次，不每帧查）
         meleeAttack = me.GetComponent<EnemyMeleeAttack>();
@@ -79,6 +79,11 @@ public class RangedAttackState : EntityState, IEnemyAttackState
     {
         var me = (EnemyRangedController)owner;
 
+        // attack2 蓄力/发射期间持续面向玩家：OnEnter 只转了一次朝向，player 绕后时
+        // 子弹方向在 OnFire 重算朝玩家，模型却还固定朝原方向（反向飞行的视觉 bug）
+        if (!isAttack1)
+            me.UpdateFacing(me.DirectionToPlayer());
+
         // 首次进入攻击子机后采样 Attack clip 时长初始化兜底计时（attack1/attack2 通用）
         if (!timeoutInitialized && anim != null)
         {
@@ -112,6 +117,7 @@ public class RangedAttackState : EntityState, IEnemyAttackState
         }
 
         var me = (EnemyRangedController)owner;
+        me.EndChargeFlash();  // 兜底：蓄力中被打断/超时退出/死亡时结束蓄力闪烁（fire 正常路径已结束，幂等）
         me.attackCooldownTimer = me.AttackCooldownDuration;
     }
 
@@ -131,6 +137,8 @@ public class RangedAttackState : EntityState, IEnemyAttackState
     public void OnCharge()
     {
         if (isAttack1) return;
+        var me = (EnemyRangedController)owner;
+        me.BeginChargeFlash();  // 蓄力帧开始蓄力色闪烁（灭相位=原始材质色，频率随蓄力加速）
         if (rangedAttack != null)
             rangedAttack.OnCharge();
     }
@@ -139,6 +147,8 @@ public class RangedAttackState : EntityState, IEnemyAttackState
     public void OnFire()
     {
         if (isAttack1) return;
+        var me = (EnemyRangedController)owner;
+        me.EndChargeFlash();  // 发射帧结束蓄力闪烁
         if (rangedAttack != null)
             rangedAttack.OnFire();
     }

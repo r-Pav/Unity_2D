@@ -14,7 +14,7 @@ public class BossChaseState : EntityState
     {
         var boss = (FirstBoss)owner;
         boss.OnEnterCombatState();
-        boss.ApplyStateColor(new Color(0.8f, 0.2f, 0.2f));
+        // boss.ApplyStateColor(new Color(0.8f, 0.2f, 0.2f));  // [状态色已移除]
         boss.moveInput = boss.DirectionToPlayer();
     }
 

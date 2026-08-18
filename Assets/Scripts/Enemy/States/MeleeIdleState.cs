@@ -18,7 +18,7 @@ public class MeleeIdleState : EntityState
         timer = Random.Range(1f, 2.5f);
         me.moveInput = 0f;
         me.OnExitCombatState();
-        me.ApplyStateColor(new Color(0.6f, 0.6f, 0.6f));
+        // me.ApplyStateColor(new Color(0.6f, 0.6f, 0.6f));  // [状态色已移除]
     }
 
     public override void OnUpdate()

@@ -21073,6 +21073,10 @@ MonoBehaviour:
   maxHealth: 20
   hitColor: {r: 1, g: 1, b: 1, a: 1}
   hitFlashDuration: 0.1
+  chargeColor: {r: 1, g: 0.3, b: 0, a: 1}
+  chargeFlashBaseFreq: 4
+  chargeFlashAccel: 6
+  chargeFlashMaxFreq: 20
   hitVFXPrefab: {fileID: 5392022945574161087, guid: e8f48248225df154585da36eafed2bf4, type: 3}
   directionalHitVFXPrefab: {fileID: 0}
   deathVFXPrefab: {fileID: 0}
@@ -46591,7 +46595,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cf4e720b8ba997846a4d855adf17122d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  attackDamage: 5
+  attackDamage: 2
   enemyLayer:
     serializedVersion: 2
     m_Bits: 128
@@ -46606,7 +46610,13 @@ MonoBehaviour:
   meleeKnockbackForce: 4
   meleeKnockbackUpForce: 3
   swordKnockbackForce: 8
-  meleeHitStopDuration: 0.1
+  meleeHitStopDuration: 0.07
+  enemyLocalHitStopDuration: 0
+  bossLocalHitStopDuration: 0
+  enemyHitShakeDuration: 0.2
+  enemyHitShakeMagnitude: 0.1
+  bossHitShakeDuration: 0
+  bossHitShakeMagnitude: 0
   parryMaxWindow: 0.2
   blockDamageReduction: 0.5
   projectileLayer:
@@ -46675,7 +46685,6 @@ MonoBehaviour:
     m_Bits: 128
   shakeDuration: 0.2
   shakeMagnitude: 0.3
-  shakeAmplitudeGain: 5
 --- !u!114 &1427529646
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -72026,6 +72035,10 @@ MonoBehaviour:
   maxHealth: 10
   hitColor: {r: 0.8018868, g: 0.056737266, b: 0.056737266, a: 1}
   hitFlashDuration: 0.1
+  chargeColor: {r: 1, g: 0.3, b: 0, a: 1}
+  chargeFlashBaseFreq: 4
+  chargeFlashAccel: 6
+  chargeFlashMaxFreq: 20
   hitVFXPrefab: {fileID: 5392022945574161087, guid: e8f48248225df154585da36eafed2bf4, type: 3}
   directionalHitVFXPrefab: {fileID: 0}
   deathVFXPrefab: {fileID: 0}
@@ -72363,7 +72376,7 @@ Transform:
   m_GameObject: {fileID: 6098408828387911830}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 22.97, y: -10.7, z: -0.022004815}
+  m_LocalPosition: {x: 13.32, y: 0.11, z: -0.022004815}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -73685,9 +73698,13 @@ MonoBehaviour:
   groundCheckColor: {r: 0, g: 1, b: 0, a: 1}
   config: {fileID: 11400000, guid: 1f53c3acc62abae489469e670692b89b, type: 2}
   level: 1
-  maxHealth: 20
+  maxHealth: 100
   hitColor: {r: 1, g: 1, b: 1, a: 1}
   hitFlashDuration: 0.1
+  chargeColor: {r: 1, g: 0.3, b: 0, a: 1}
+  chargeFlashBaseFreq: 4
+  chargeFlashAccel: 6
+  chargeFlashMaxFreq: 20
   hitVFXPrefab: {fileID: 5392022945574161087, guid: e8f48248225df154585da36eafed2bf4, type: 3}
   directionalHitVFXPrefab: {fileID: 0}
   deathVFXPrefab: {fileID: 0}
@@ -73700,8 +73717,8 @@ MonoBehaviour:
   rangedKnockbackForce: 5
   cliffCheckForward: 1
   cliffCheckDown: 0.5
-  homeRange: 5.86
-  homeX: 30.109999
+  homeRange: 14.4
+  homeX: 19.5
   homeXInitialized: 1
   moveInput: 0
   attackCooldownTimer: 0
@@ -76175,9 +76192,13 @@ MonoBehaviour:
   groundCheckColor: {r: 1, g: 0.36153615, b: 0, a: 1}
   config: {fileID: 11400000, guid: 3a31f91ef5df44d4fbabc92ab9d33e5f, type: 2}
   level: 1
-  maxHealth: 9
-  hitColor: {r: 0.6792453, g: 0.31719473, b: 0.31719473, a: 1}
+  maxHealth: 50
+  hitColor: {r: 0.8301887, g: 0.23104309, b: 0.23104309, a: 1}
   hitFlashDuration: 0.1
+  chargeColor: {r: 0, g: 0.8575506, b: 1, a: 1}
+  chargeFlashBaseFreq: 4
+  chargeFlashAccel: 6
+  chargeFlashMaxFreq: 20
   hitVFXPrefab: {fileID: 5392022945574161087, guid: e8f48248225df154585da36eafed2bf4, type: 3}
   directionalHitVFXPrefab: {fileID: 0}
   deathVFXPrefab: {fileID: 0}

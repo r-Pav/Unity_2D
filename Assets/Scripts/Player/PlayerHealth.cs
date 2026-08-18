@@ -349,6 +349,8 @@ public class PlayerHealth : MonoBehaviour, ICombatant
         if (knockDir.magnitude < 0.01f) knockDir = Vector2.right; // 默认向右
 
         Rigidbody2D rb = owner.GetRigidbody();
+        // 受击先停水平速度再施加击退：防"移动速度 + 击退力"叠加，导致保留受击动画还滑行一段
+        rb.velocity = new Vector2(0f, rb.velocity.y);
         rb.AddForce(knockDir * knockback.force, ForceMode2D.Impulse);
 
         // 击退期间 SetVelocity 自动跳过（硬直时长由 Knockback.duration 注入，行为与原 0.2s 一致）

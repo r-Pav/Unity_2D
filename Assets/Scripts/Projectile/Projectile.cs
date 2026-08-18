@@ -169,7 +169,9 @@ public abstract class Projectile : MonoBehaviour
             {
                 amount = damage,
                 source = source,
-                sourcePosition = (Vector2)transform.position,
+                // 击退源点用发射者位置：子弹近身/穿透时若用子弹自身位置，OnHitBy 远程路径
+                // （击退方向 = enemy - sourcePosition）会随相对位置翻转，导致击退方向不稳/反直觉
+                sourcePosition = source != null ? (Vector2)source.Transform.position : (Vector2)transform.position,
                 attackLabel = attackType,
                 knockback = Knockback.None
             });

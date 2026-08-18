@@ -143,6 +143,9 @@ public abstract class BossControllerBase : EnemyControllerBase
     public bool IsActivated => isActivated;
     public string BossName => bossName;
 
+    /// <summary>Boss 标记 — 命中本地冻结时读取 boss 专属卡帧时长</summary>
+    public override bool IsBoss => true;
+
     // ============================================================
     // 生命周期
     // ============================================================
@@ -390,6 +393,9 @@ public abstract class BossControllerBase : EnemyControllerBase
         if (isDead) return;
         isDead = true;
         OnExitCombatState();
+
+        // 本地冻结中死亡 → 立即解除（死亡动画/特效必须正常播放）
+        ForceEndLocalFreeze();
 
         // Boss 死亡 VFX — 多段粒子序列（由 Prefab 自身脚本控制）
         if (bossDeathVFXPrefab != null)

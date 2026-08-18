@@ -21,7 +21,7 @@ public class EnemyStunState : EntityState
     public override void OnEnter()
     {
         enemy.moveInput = 0f;
-        enemy.ApplyStateColor(new Color(1f, 0f, 1f)); // 品红色（硬直）
+        // enemy.ApplyStateColor(new Color(1f, 0f, 1f)); // 品红色（硬直）[状态色已移除]
         timer = 1f;
         enemy.attackCooldownTimer = 0f; // 中断攻击冷却
     }

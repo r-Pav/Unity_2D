@@ -65,6 +65,22 @@ public class PlayerCombat : MonoBehaviour
     [Tooltip("近战命中卡肉时长（秒）")]
     [SerializeField] private float meleeHitStopDuration = 0.08f;
 
+    [Tooltip("命中普通敌人时的独立卡帧时长（秒）— 只冻结被命中的敌人自身，在全局卡肉之后额外执行；0 = 关闭")]
+    [SerializeField] private float enemyLocalHitStopDuration = 0f;
+
+    [Tooltip("命中 Boss 时的独立卡帧时长（秒）— 只冻结被命中的 Boss 自身，在全局卡肉之后额外执行；0 = 关闭")]
+    [SerializeField] private float bossLocalHitStopDuration = 0f;
+
+    [Tooltip("命中普通敌人时的震屏时长（秒；0 = 不震）— 真实时间驱动，不受卡帧冻结影响")]
+    [SerializeField] private float enemyHitShakeDuration = 0f;
+    [Tooltip("命中普通敌人时的震屏幅度（0 = 不震；参考下坠攻击 0.3）")]
+    [SerializeField] private float enemyHitShakeMagnitude = 0f;
+
+    [Tooltip("命中 Boss 时的震屏时长（秒；0 = 不震）— 真实时间驱动，不受卡帧冻结影响")]
+    [SerializeField] private float bossHitShakeDuration = 0f;
+    [Tooltip("命中 Boss 时的震屏幅度（0 = 不震；参考下坠攻击 0.3）")]
+    [SerializeField] private float bossHitShakeMagnitude = 0f;
+
     [Header("格挡/弹反")]
     [Tooltip("弹反判定最大时长(秒) — 短按松手 ≤ 此值判定为弹反")]
     [SerializeField] private float parryMaxWindow = 0.2f;
@@ -277,12 +293,15 @@ public class PlayerCombat : MonoBehaviour
             if (c != null) swordHitSet.Add(c);
 
         bool hitAnything = false;
+        bool hitBoss = false;   // 本次挥砍是否命中 Boss（决定震屏参数档位）
 
         foreach (var col in hits)
         {
             var enemy = col.GetComponent<EnemyControllerBase>();
             if (enemy != null)
             {
+                if (enemy.IsBoss) hitBoss = true;
+
                 float dmg = RollCrit(damage);
                 bool isFinisher = comboIndex >= comboLimit;
 
@@ -324,6 +343,11 @@ public class PlayerCombat : MonoBehaviour
                 CombatResolver.Resolve(source, enemy, info);
                 hitAnything = true;
 
+                // 命中本地冻结（独立卡帧）：只冻被命中的这只敌人，普通怪/Boss 各自配置；0 = 关闭
+                float localFreeze = enemy.IsBoss ? bossLocalHitStopDuration : enemyLocalHitStopDuration;
+                if (localFreeze > 0f)
+                    enemy.ApplyLocalFreeze(localFreeze);
+
                 VFXSpawner.SpawnOnPlayer(slashVFXPrefab, col.transform.position);
             }
             else
@@ -338,7 +362,12 @@ public class PlayerCombat : MonoBehaviour
         }
 
         if (hitAnything)
-            HitStopController.Instance?.Trigger(meleeHitStopDuration);
+        {
+            // 命中震屏随卡帧同入口触发（真实时间驱动，卡帧冻结期间照常播放）；命中 Boss 用 Boss 档位
+            float shakeDur = hitBoss ? bossHitShakeDuration : enemyHitShakeDuration;
+            float shakeMag = hitBoss ? bossHitShakeMagnitude : enemyHitShakeMagnitude;
+            HitStopController.Instance?.Trigger(meleeHitStopDuration, shakeDur, shakeMag);
+        }
 
         rangeIndicator.Flash();
     }
@@ -390,12 +419,15 @@ public class PlayerCombat : MonoBehaviour
         Collider2D[] hits = MeleeHitDetector.Detect(rangeIndicator, enemyLayer);
 
         bool hitAnything = false;
+        bool hitBoss = false;   // 本次重击是否命中 Boss（决定震屏参数档位）
 
         foreach (var col in hits)
         {
             var enemy = col.GetComponent<EnemyControllerBase>();
             if (enemy != null)
             {
+                if (enemy.IsBoss) hitBoss = true;
+
                 float dmg = RollCrit(baseDamage);
                 hitAnything = true;
 
@@ -423,11 +455,21 @@ public class PlayerCombat : MonoBehaviour
                     }
                 };
                 CombatResolver.Resolve(source, enemy, info);
+
+                // 命中本地冻结（独立卡帧）：弹反重击路径与普通路径一致
+                float localFreeze = enemy.IsBoss ? bossLocalHitStopDuration : enemyLocalHitStopDuration;
+                if (localFreeze > 0f)
+                    enemy.ApplyLocalFreeze(localFreeze);
             }
         }
 
         if (hitAnything)
-            HitStopController.Instance?.Trigger(meleeHitStopDuration);
+        {
+            // 命中震屏随卡帧同入口触发；命中 Boss 用 Boss 档位
+            float shakeDur = hitBoss ? bossHitShakeDuration : enemyHitShakeDuration;
+            float shakeMag = hitBoss ? bossHitShakeMagnitude : enemyHitShakeMagnitude;
+            HitStopController.Instance?.Trigger(meleeHitStopDuration, shakeDur, shakeMag);
+        }
 
         rangeIndicator.Flash();
     }

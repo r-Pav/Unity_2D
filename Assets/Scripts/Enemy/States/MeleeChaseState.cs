@@ -17,7 +17,7 @@ public class MeleeChaseState : EntityState
         var me = (EnemyMeleeController)owner;
         losePlayerTimer = 3f;
         me.OnEnterCombatState();
-        me.ApplyStateColor(new Color(1.0f, 0.2f, 0.2f));
+        // me.ApplyStateColor(new Color(1.0f, 0.2f, 0.2f));  // [状态色已移除]
         me.moveInput = me.DirectionToPlayer();
     }
 
