@@ -18174,7 +18174,7 @@ Transform:
   m_GameObject: {fileID: 519420028}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 7.277788, y: -4.2258325, z: -9.878557}
+  m_LocalPosition: {x: 8.771121, y: -3.8658328, z: -9.878557}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -31183,8 +31183,8 @@ Transform:
   m_GameObject: {fileID: 945450416}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.527, y: 0.023, z: 0}
-  m_LocalScale: {x: 10.121023, y: 9.144748, z: 1}
+  m_LocalPosition: {x: 0.6486, y: 0.023, z: 0}
+  m_LocalScale: {x: 11.641201, y: 9.144748, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1427529636}
@@ -31493,37 +31493,37 @@ MonoBehaviour:
     stickToWall: 1
     stickHoldDuration: 0.3
     stickDepth: 0.2
-    knockbackForce: {x: 4, y: 0}
+    knockbackForce: {x: 15, y: 0}
     attackVFX: {fileID: 114774, guid: 4ce7097392940144386c93b851be8a4f, type: 3}
     vfxDisplayDuration: 1
   attack2:
     pathPoints:
-    - {x: 0.89, y: -1.17, z: 0}
-    - {x: 1.88, y: 0.09, z: 0}
+    - {x: 0.78, y: -1.68, z: 0}
+    - {x: 2.14, y: 0.33, z: 0}
     rotationZ: 142
     scaleMultiplier: 0.08
-    travelDuration: 0.2
+    travelDuration: 0.1
     easeOutPower: 4
     dissolveInDuration: 0.4
     stickToWall: 0
     stickHoldDuration: 0.6
     stickDepth: 0.2
-    knockbackForce: {x: 6, y: 8}
+    knockbackForce: {x: 10, y: 24}
     attackVFX: {fileID: 0}
     vfxDisplayDuration: 0
   attack3:
     pathPoints:
     - {x: 0.84, y: 0, z: 0}
-    - {x: 2.6, y: 0, z: 0}
+    - {x: 2.9, y: 0, z: 0}
     rotationZ: 90
     scaleMultiplier: 0.09
-    travelDuration: 0.2
+    travelDuration: 0.1
     easeOutPower: 4
     dissolveInDuration: 0.4
     stickToWall: 1
     stickHoldDuration: 0.6
     stickDepth: 0.2
-    knockbackForce: {x: 6, y: 0}
+    knockbackForce: {x: 24, y: 0}
     attackVFX: {fileID: 0}
     vfxDisplayDuration: 0
   airAttack:
@@ -42706,6 +42706,7 @@ GameObject:
   - component: {fileID: 1335034983}
   - component: {fileID: 1335034985}
   - component: {fileID: 1335034984}
+  - component: {fileID: 1335034986}
   m_Layer: 3
   m_HasEditorInfo: 1
   m_Name: Ground (1)
@@ -42830,6 +42831,25 @@ SpriteRenderer:
   m_WasSpriteAssigned: 1
   m_MaskInteraction: 0
   m_SpriteSortPoint: 0
+--- !u!251 &1335034986
+PlatformEffector2D:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1335034982}
+  m_Enabled: 0
+  m_UseColliderMask: 1
+  m_ColliderMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_RotationalOffset: 0
+  m_UseOneWay: 1
+  m_UseOneWayGrouping: 0
+  m_SurfaceArc: 180
+  m_UseSideFriction: 0
+  m_UseSideBounce: 0
+  m_SideArc: 1
 --- !u!1 &1335506525
 GameObject:
   m_ObjectHideFlags: 0
@@ -45875,7 +45895,7 @@ Transform:
   m_GameObject: {fileID: 1404874482}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 7.277788, y: -4.2258325, z: -9.878557}
+  m_LocalPosition: {x: 8.771121, y: -3.8658328, z: -9.878557}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -46607,10 +46627,7 @@ MonoBehaviour:
   slashVFXPrefab: {fileID: 0}
   meleeDamage: 1
   meleeAttackCooldown: 0.15
-  meleeKnockbackForce: 4
-  meleeKnockbackUpForce: 3
-  swordKnockbackForce: 8
-  meleeHitStopDuration: 0.07
+  meleeHitStopDuration: 0.09
   enemyLocalHitStopDuration: 0
   bossLocalHitStopDuration: 0
   enemyHitShakeDuration: 0.2
@@ -52214,17 +52231,17 @@ MonoBehaviour:
   m_YDamping: 3.5
   m_ZDamping: 1
   m_TargetMovementOnly: 1
-  m_ScreenX: 0.52
-  m_ScreenY: 0.59
+  m_ScreenX: 0.45
+  m_ScreenY: 0.62
   m_CameraDistance: 10
-  m_DeadZoneWidth: 0.12
-  m_DeadZoneHeight: 0.3
+  m_DeadZoneWidth: 0.05
+  m_DeadZoneHeight: 0.31
   m_DeadZoneDepth: 0
   m_UnlimitedSoftZone: 0
-  m_SoftZoneWidth: 0.26
-  m_SoftZoneHeight: 0.48
-  m_BiasX: -0.026
-  m_BiasY: 0.016
+  m_SoftZoneWidth: 0.21
+  m_SoftZoneHeight: 0.31
+  m_BiasX: -0.061
+  m_BiasY: 0
   m_CenterOnActivate: 1
   m_GroupFramingMode: 2
   m_AdjustmentMode: 0

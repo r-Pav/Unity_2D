@@ -53,15 +53,6 @@ public class PlayerCombat : MonoBehaviour
     [Tooltip("近战攻击冷却（秒）— 需短于 Attack1 动画时长，保证连击排队窗口存在")]
     [SerializeField] private float meleeAttackCooldown = 0.15f;
 
-    [Tooltip("近战击退力度（直接施加到敌人 Rigidbody2D）")]
-    [SerializeField] private float meleeKnockbackForce = 4f;
-
-    [Tooltip("近战击退上挑力度（Y 轴最小值，保证敌人浮空）")]
-    [SerializeField] private float meleeKnockbackUpForce = 0.3f;
-
-    [Tooltip("剑碰撞(clone)第三段击退力度 — 独立于方框,可单独调大")]
-    [SerializeField] private float swordKnockbackForce = 8f;
-
     [Tooltip("近战命中卡肉时长（秒）")]
     [SerializeField] private float meleeHitStopDuration = 0.08f;
 
@@ -120,6 +111,7 @@ public class PlayerCombat : MonoBehaviour
     private PlayerController _owner;
     private StatModifierManager statModManager;
     private WeaponThrow _weaponThrow;   // 武器投掷(挂在 Player 子物体武器上)
+    private bool _warnedMissingWeaponThrow;   // 击退源缺失警告只输出一次
 
     /// <summary>攻击时触发（供 PlayerController 订阅，用于战斗态锁定）</summary>
     public System.Action OnAttack;
@@ -287,11 +279,6 @@ public class PlayerCombat : MonoBehaviour
         Collider2D[] swordHits = GetSwordColliderHits(damageMask);
         Collider2D[] hits = MergeHits(boxHits, swordHits);
 
-        // 剑命中的 collider 集合(用于区分击退力度:剑第三段用 swordKnockbackForce)
-        var swordHitSet = new System.Collections.Generic.HashSet<Collider2D>();
-        foreach (var c in swordHits)
-            if (c != null) swordHitSet.Add(c);
-
         bool hitAnything = false;
         bool hitBoss = false;   // 本次挥砍是否命中 Boss（决定震屏参数档位）
 
@@ -305,20 +292,19 @@ public class PlayerCombat : MonoBehaviour
                 float dmg = RollCrit(damage);
                 bool isFinisher = comboIndex >= comboLimit;
 
-                // 基础击退:第三段才有,沿"远离 player"方向(剑命中用更大力度)
-                float baseForce = isFinisher ? (swordHitSet.Contains(col) ? swordKnockbackForce : meleeKnockbackForce) : 0f;
-
-                // 武器击退:每击独立配 (x, y) 向量,x 按朝向镜像,方向由武器决定(不依赖 player 位置)
-                Vector2 weaponForce = Vector2.zero;
+                // 击退唯一来源 = 武器每击配置(w1_transparent 下 WeaponThrow.knockbackForce)。
+                // 不区分段位:第一/二/三击、空中攻击都按各自配置的 (x, y) 向量击退,x 按朝向镜像。
+                Vector2 totalForce = Vector2.zero;
                 if (_weaponThrow != null)
-                    weaponForce = _weaponThrow.GetKnockbackBonus(comboIndex, isAirAttack);
-                if (weaponForce.x != 0f) weaponForce.x *= AttackDir;
-
-                // 实际击退 = 基础方向 × 基础力度 + 武器向量(向量相加)
-                Vector2 knockDir = ((Vector2)(enemy.transform.position - transform.position)).normalized;
-                if (knockDir.magnitude < 0.01f) knockDir = Vector2.right * AttackDir;
-                knockDir.y = Mathf.Max(knockDir.y, meleeKnockbackUpForce);
-                Vector2 totalForce = knockDir * baseForce + weaponForce;
+                {
+                    totalForce = _weaponThrow.GetKnockbackBonus(comboIndex, isAirAttack);
+                    if (totalForce.x != 0f) totalForce.x *= AttackDir;
+                }
+                else if (!_warnedMissingWeaponThrow)
+                {
+                    _warnedMissingWeaponThrow = true;
+                    Debug.LogWarning("[PlayerCombat] 未找到 WeaponThrow(应挂在 w1_transparent 上),击退失效。请检查 Player 子物体武器配置");
+                }
 
                 string atkType = isFinisher ? meleeFinisherAttackType : meleeAttackType;
 

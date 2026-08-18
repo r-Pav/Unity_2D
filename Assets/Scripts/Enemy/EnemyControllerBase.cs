@@ -756,12 +756,12 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     /// <summary>减伤 — 敌人无减伤</summary>
     public float ApplyReduction(float amount) => amount;
 
-    /// <summary>施加击退（CombatResolver 在霸体判定通过后调用；方向/力度由攻击方构造进 Knockback）</summary>
+    /// <summary>施加击退（CombatResolver 在霸体判定通过后调用；方向/力度由攻击方构造进 Knockback）
+    /// 2026-08-18：放开 y 水平化 — 敌人统一按攻击方构造的完整 x/y 向量击退（武器每击配置的 y 生效，可上挑/击飞）。</summary>
     public virtual void ApplyKnockback(Knockback knockback)
     {
         if (rb == null || knockback.force <= 0f) return;
         Vector2 knockDir = knockback.direction;
-        knockDir.y = 0f;  // 对齐 PlayerHealth/Boss：敌人击退水平化，不上挑
         if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
         rb.AddForce(knockDir * knockback.force, ForceMode2D.Impulse);
     }

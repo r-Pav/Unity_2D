@@ -102,7 +102,7 @@ AnimationClip:
   m_HasMotionFloatCurves: 0
   m_Events:
   - time: 0.5
-    functionName: OnRangedAttackEnd
+    functionName: OnRangedAttack1HitFrame
     data: 
     objectReferenceParameter: {fileID: 0}
     floatParameter: 0
