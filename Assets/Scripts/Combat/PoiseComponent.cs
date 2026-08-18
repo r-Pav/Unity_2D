@@ -23,10 +23,6 @@ public class PoiseComponent : MonoBehaviour
     [Tooltip("霸体激活后免疫击退的次数")]
     [SerializeField] private int poiseImmuneCount = 4;
 
-    [Header("近战击退")]
-    [Tooltip("近战攻击的击退力度（小于远程的 3f），霸体免疫中此值为 0")]
-    [SerializeField] private float meleeKnockbackForce = 1.5f;
-
     [Header("攻击类型识别")]
     [Tooltip("近战攻击标签白名单（如 Sword/Sword_Heavy），调用方传入的 attackLabel 命中此白名单时走霸体系统。数组最后一个元素为重击标签（如 Sword_Heavy），只有它计入霸体计数器")]
     [SerializeField] private string[] meleeAttackLabels = { "Sword", "Sword_Heavy" };
@@ -79,11 +75,10 @@ public class PoiseComponent : MonoBehaviour
 
     /// <summary>
     /// 处理一次近战命中。只有重击标签（meleeAttackLabels 最后一个元素）的命中才计入霸体计数器，
-    /// 普通近战不推进霸体。触发条件满足时激活霸体（后续命中免疫击退）。
-    /// 返回值已无调用方（击退决策已移交 CombatResolver：霸体激活期间免疫，非霸体按调用方 info.knockback 击退），
-    /// 保留返回/out 参数仅为接口兼容。
+    /// 普通近战不推进霸体。触发条件满足时激活霸体（后续命中免疫击退，由 CombatResolver 查 IsPoiseActive 生效）。
+    /// 击退施加已完全移交 CombatResolver（方向/力度由攻击方构造进 Knockback），本方法只管霸体状态。
     /// </summary>
-    public bool RegisterHit(string attackLabel, out float knockbackForce)
+    public void RegisterHit(string attackLabel)
     {
         // 只有重击才推进霸体计数器
         bool isHeavy = meleeAttackLabels.Length > 0
@@ -96,9 +91,7 @@ public class PoiseComponent : MonoBehaviour
         {
             isPoiseActive = true;
             remainingPoise = poiseImmuneCount;
-            // 触发霸体的这一击仍然施加击退
-            knockbackForce = meleeKnockbackForce;
-            return true;
+            return;
         }
 
         if (isPoiseActive)
@@ -111,21 +104,7 @@ public class PoiseComponent : MonoBehaviour
                 meleeHitCount = 0;
                 RollPoiseThreshold();
             }
-            // 霸体免疫中：不击退
-            knockbackForce = 0f;
-            return false;
         }
-
-        // 非重击：不击退
-        if (!isHeavy)
-        {
-            knockbackForce = 0f;
-            return false;
-        }
-
-        // 重击且未触发霸体：正常击退
-        knockbackForce = meleeKnockbackForce;
-        return true;
     }
 
     /// <summary>

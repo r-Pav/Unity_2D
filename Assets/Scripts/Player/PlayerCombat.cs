@@ -270,6 +270,9 @@ public class PlayerCombat : MonoBehaviour
             return;
         }
 
+        // 玩家自身攻击位移:每击独立配置(x 按朝向镜像,y 垂直),命中帧动画事件时施加一次(与击退同构)
+        ApplyAttackShift(comboIndex, isAirAttack);
+
         LayerMask damageMask = enemyLayer;
         if (projectileLayer != 0)
             damageMask = enemyLayer | projectileLayer;
@@ -356,6 +359,28 @@ public class PlayerCombat : MonoBehaviour
         }
 
         rangeIndicator.Flash();
+    }
+
+    /// <summary>
+    /// 玩家自身攻击位移 — 由命中帧动画事件触发(与击退同构)。
+    /// 每击独立配置(x 按朝向镜像,y 垂直),直接对玩家 Rigidbody 施加 Impulse。
+    /// 攻击状态 LocksInput=true 时 OnFixedUpdate 被 IsActionLocked 短路,位移速度不会被移动系统覆盖。
+    /// </summary>
+    private void ApplyAttackShift(int comboIndex, bool isAirAttack)
+    {
+        if (_weaponThrow == null) return;
+
+        Vector2 shift = _weaponThrow.GetAttackShift(comboIndex, isAirAttack);
+        if (shift.sqrMagnitude < 0.0001f) return;
+
+        if (shift.x != 0f) shift.x *= AttackDir;
+
+        Rigidbody2D playerRb = _owner != null ? _owner.Rb : GetComponent<Rigidbody2D>();
+        if (playerRb == null) return;
+
+        // 与击退施加方式一致:Impulse 直接改速度。位移前清水平速度,防与移动速度叠加导致前冲过头
+        playerRb.velocity = new Vector2(0f, playerRb.velocity.y);
+        playerRb.AddForce(shift, ForceMode2D.Impulse);
     }
 
     /// <summary>剑碰撞检测:用当前在飞 clone 的 BoxCollider2D 的 bounds 做 OverlapBox。

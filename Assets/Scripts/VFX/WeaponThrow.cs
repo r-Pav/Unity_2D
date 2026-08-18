@@ -42,6 +42,9 @@ public class WeaponAttackConfig
     [Tooltip("该击武器命中敌人时的击退向量(x=水平,按朝向自动镜像;y=垂直击飞)。与 PlayerCombat 基础击退(第三段)向量相加。(0,0) = 该击不附加击退")]
     public Vector2 knockbackForce = Vector2.zero;
 
+    [Tooltip("该击玩家自身攻击位移向量(x=水平前冲,按朝向自动镜像;y=垂直)。命中帧动画事件时施加,与击退同构。(0,0) = 该击无位移")]
+    public Vector2 attackShift = Vector2.zero;
+
     [Tooltip("该击投掷时额外跟随剑飞行的粒子特效 prefab(叠加在武器子级默认特效之上)。留空 = 该击只有默认特效")]
     public GameObject attackVFX;
 
@@ -115,6 +118,22 @@ public class WeaponThrow : MonoBehaviour
             case 1: return attack1 != null ? attack1.knockbackForce : Vector2.zero;
             case 2: return attack2 != null ? attack2.knockbackForce : Vector2.zero;
             case 3: return attack3 != null ? attack3.knockbackForce : Vector2.zero;
+            default: return Vector2.zero;
+        }
+    }
+
+    /// <summary>
+    /// 按当前攻击段取玩家自身攻击位移向量(每击独立配置,airAttack 走空中)。
+    /// PlayerCombat 命中帧调用,x 分量由调用方按朝向镜像。返回 (0,0) 表示该击无位移。
+    /// </summary>
+    public Vector2 GetAttackShift(int comboIndex, bool isAir)
+    {
+        if (isAir) return airAttack != null ? airAttack.attackShift : Vector2.zero;
+        switch (comboIndex)
+        {
+            case 1: return attack1 != null ? attack1.attackShift : Vector2.zero;
+            case 2: return attack2 != null ? attack2.attackShift : Vector2.zero;
+            case 3: return attack3 != null ? attack3.attackShift : Vector2.zero;
             default: return Vector2.zero;
         }
     }
