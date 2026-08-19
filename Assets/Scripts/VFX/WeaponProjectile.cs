@@ -22,6 +22,9 @@ public class WeaponProjectile : MonoBehaviour
     private float _stickDepth;   // 插入墙内深度(沿飞行方向后退距离)
     private LayerMask _wallLayer;
     private BoxCollider2D _col;  // clone 的碰撞体(插墙检测用,也是攻击范围延伸数据源)
+    private GameObject _landingVFX;  // 落地特效(飞完未插墙且下方是地面时生成)
+    private GameObject _stickVFX;    // 插墙特效(墙面命中点生成)
+    private LayerMask _groundLayer;  // 落地判定用地面层
 
     /// <summary>由 WeaponThrow 调用:传入路径/参数,随后自动飞行+溶解+自毁。
     /// SpriteRenderer / TrailRenderer 等视觉组件由模板继承,这里只换溶解材质。</summary>
@@ -36,6 +39,9 @@ public class WeaponProjectile : MonoBehaviour
         float stickHoldDuration,
         float stickDepth,
         LayerMask wallLayer,
+        LayerMask groundLayer,
+        GameObject landingVFX,
+        GameObject stickVFX,
         Transform followTarget)
     {
         _path = pathPoints;
@@ -46,6 +52,9 @@ public class WeaponProjectile : MonoBehaviour
         _stickHoldDuration = Mathf.Max(0f, stickHoldDuration);
         _stickDepth = stickDepth;
         _wallLayer = wallLayer;
+        _groundLayer = groundLayer;
+        _landingVFX = landingVFX;
+        _stickVFX = stickVFX;
         _origin = transform.position;
         _sr = GetComponent<SpriteRenderer>();
         _col = GetComponent<BoxCollider2D>();
@@ -132,6 +141,9 @@ public class WeaponProjectile : MonoBehaviour
                     float stopDist = Mathf.Max(0f, wallHit.distance - halfLen);
                     transform.position = prevPos + dir * stopDist;
 
+                    // 插墙特效:墙面命中点生成(未命中表现),挂 WorldVFX 容器,不跟随
+                    SpawnWorldVFX(_stickVFX, wallHit.point, dir);
+
                     yield return StartCoroutine(StickAndDissolve());
                     gameObject.SetActive(false);
                     Destroy(gameObject);
@@ -143,7 +155,16 @@ public class WeaponProjectile : MonoBehaviour
             yield return null;
         }
 
-        // 阶段 2:溶解消失 0 → 1,同时本体渐隐
+        // 阶段 2:落地判定(未插墙飞完)—— 向下射线查地面,命中且配了落地特效则生成(未命中表现)
+        if (_landingVFX != null && _groundLayer != 0)
+        {
+            Vector2 down = Vector2.down;
+            RaycastHit2D groundHit = Physics2D.Raycast(transform.position, down, 0.6f, _groundLayer);
+            if (groundHit.collider != null)
+                SpawnWorldVFX(_landingVFX, groundHit.point, down);
+        }
+
+        // 阶段 3:溶解消失 0 → 1,同时本体渐隐
         elapsed = 0f;
         while (elapsed < _dissolveDuration)
         {
@@ -164,6 +185,17 @@ public class WeaponProjectile : MonoBehaviour
         // 自毁:先停用整个物体(让编辑器 Inspector 停止访问 TrailRenderer),再销毁
         gameObject.SetActive(false);
         Destroy(gameObject);
+    }
+
+    /// <summary>生成世界 VFX(WorldVFX 容器,不跟随)。prefab 为空时静默跳过;rotationZ 按方向角度。</summary>
+    private void SpawnWorldVFX(GameObject prefab, Vector2 position, Vector2 direction)
+    {
+        if (prefab == null) return;
+
+        float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg;
+        GameObject instance = VFXSpawner.SpawnInWorld(prefab, position);
+        if (instance != null)
+            instance.transform.rotation = Quaternion.Euler(0f, 0f, angle);
     }
 
     /// <summary>插墙:固定在当前位置,停留 stickHoldDuration 秒,再原地溶解</summary>

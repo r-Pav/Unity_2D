@@ -31495,6 +31495,8 @@ MonoBehaviour:
     knockbackForce: {x: 15, y: 0}
     attackShift: {x: 4, y: 0}
     attackVFX: {fileID: 114774, guid: 4ce7097392940144386c93b851be8a4f, type: 3}
+    landingVFX: {fileID: 0}
+    stickVFX: {fileID: 0}
     vfxDisplayDuration: 1
   attack2:
     pathPoints:
@@ -31511,6 +31513,8 @@ MonoBehaviour:
     knockbackForce: {x: 10, y: 24}
     attackShift: {x: 3, y: 0}
     attackVFX: {fileID: 0}
+    landingVFX: {fileID: 0}
+    stickVFX: {fileID: 0}
     vfxDisplayDuration: 0
   attack3:
     pathPoints:
@@ -31527,6 +31531,8 @@ MonoBehaviour:
     knockbackForce: {x: 24, y: 0}
     attackShift: {x: -4, y: 0}
     attackVFX: {fileID: 0}
+    landingVFX: {fileID: 0}
+    stickVFX: {fileID: 0}
     vfxDisplayDuration: 0
   airAttack:
     pathPoints:
@@ -31544,12 +31550,17 @@ MonoBehaviour:
     knockbackForce: {x: 0, y: 0}
     attackShift: {x: 0, y: 0}
     attackVFX: {fileID: 0}
+    landingVFX: {fileID: 0}
+    stickVFX: {fileID: 0}
     vfxDisplayDuration: 0
   respawnDelay: 3
   respawnAppearDuration: 0.3
   dissolveOutDuration: 0.1
   dissolveMaterial: {fileID: 0}
   wallLayer:
+    serializedVersion: 2
+    m_Bits: 2056
+  groundLayer:
     serializedVersion: 2
     m_Bits: 2056
 --- !u!61 &952423020

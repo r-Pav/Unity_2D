@@ -48,6 +48,12 @@ public class WeaponAttackConfig
     [Tooltip("该击投掷时额外跟随剑飞行的粒子特效 prefab(叠加在武器子级默认特效之上)。留空 = 该击只有默认特效")]
     public GameObject attackVFX;
 
+    [Tooltip("剑飞完未插墙、且下方是地面时,落地点生成的粒子特效 prefab(留空 = 无落地效果)。未命中表现用")]
+    public GameObject landingVFX;
+
+    [Tooltip("插墙命中时墙面生成的特效 prefab(stickToWall=true 时生效,留空 = 无)。未命中表现用")]
+    public GameObject stickVFX;
+
     [Tooltip("该击特效的显示时长(秒)。>0 时启用:到点停止粒子发射,已发射粒子按自身 Lifetime 自然消亡(循环粒子也能淡出),随后自动销毁。0 = 不启用,走 VFXAutoDestruct 默认逻辑(粒子时长/1.1s)")]
     public float vfxDisplayDuration = 0f;
 }
@@ -90,6 +96,9 @@ public class WeaponThrow : MonoBehaviour
 
     [Tooltip("墙 Layer(插墙判定用,stickToWall=true 时生效)")]
     [SerializeField] private LayerMask wallLayer = 1 << 8;
+
+    [Tooltip("地面 Layer(剑飞完未插墙时向下射线查落地,命中才播 landingVFX;留空 = 不判定)")]
+    [SerializeField] private LayerMask groundLayer = 1 << 8;
 
     // ============================================================
     // 运行时状态
@@ -356,6 +365,11 @@ public class WeaponThrow : MonoBehaviour
         var projTrail = proj.GetComponentInChildren<TrailRenderer>();
         if (projTrail != null) projTrail.enabled = true;
 
+        // 模板子级粒子拖尾:clone 继承后强制播放(Instantiate 复制未播放状态,粒子不自动出)
+        var projParticles = proj.GetComponentsInChildren<ParticleSystem>(true);
+        foreach (var ps in projParticles)
+            ps.Play();
+
         // 攻击范围延伸:clone 上的 BoxCollider2D 强制启用(本体保持 disabled),
         // 并记录引用供 PlayerCombat 命中检测读取
         var projCol = proj.GetComponent<BoxCollider2D>();
@@ -454,6 +468,9 @@ public class WeaponThrow : MonoBehaviour
             stickHoldDuration: config.stickHoldDuration,
             stickDepth: config.stickDepth,
             wallLayer: wallLayer,
+            groundLayer: groundLayer,
+            landingVFX: config.landingVFX,
+            stickVFX: config.stickVFX,
             followTarget: transform);
 
         return proj;
