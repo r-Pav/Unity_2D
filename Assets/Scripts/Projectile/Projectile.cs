@@ -45,7 +45,7 @@ public abstract class Projectile : MonoBehaviour
     // 运行时状态
     // ============================================================
 
-    private Vector2 direction;          // 飞行方向（单位向量）
+    protected Vector2 direction;          // 飞行方向（单位向量；子类可转向，如分裂弹追踪）
     private float lifetimeTimer;        // 存活倒计时
     private CircleCollider2D col;         // 碰撞体引用
     protected SpriteRenderer spriteRenderer;  // 渲染器引用（子类可访问以设置 sorting layer）
@@ -108,7 +108,7 @@ public abstract class Projectile : MonoBehaviour
         spriteRenderer.color = sphereColor;
     }
 
-    private void Update()
+    protected virtual void Update()
     {
         // 移动
         transform.position += (Vector3)direction * speed * Time.deltaTime;
@@ -119,7 +119,7 @@ public abstract class Projectile : MonoBehaviour
             Expire();
     }
 
-    private void OnTriggerEnter2D(Collider2D other)
+    protected virtual void OnTriggerEnter2D(Collider2D other)
     {
         int otherLayer = 1 << other.gameObject.layer;
 
@@ -133,22 +133,35 @@ public abstract class Projectile : MonoBehaviour
         if ((hitLayers & otherLayer) == 0) return;
 
         // ④-⑥ 命中处理 + 回池（finally 保证即使伤害/事件异常也回池）
+        bool consumed = false;
         try
         {
-            TryDealDamage(other);
-
-            EventBus.Trigger(new ProjectileHitEvent(
-                target: other.gameObject,
-                damage: damage,
-                hitPoint: (Vector2)transform.position,
-                source: gameObject
-            ));
+            consumed = OnValidHit(other);
+            if (!consumed)
+            {
+                EventBus.Trigger(new ProjectileHitEvent(
+                    target: other.gameObject,
+                    damage: damage,
+                    hitPoint: (Vector2)transform.position,
+                    source: gameObject
+                ));
+            }
         }
         finally
         {
-            if (!piercing)
+            if (!consumed && !piercing)
                 ReturnToPool();
         }
+    }
+
+    /// <summary>
+    /// 命中有效目标后的处理 — 子类可重写（分裂弹：父弹分裂成子弹 / 子弹扩散期忽略）。
+    /// 返回 true = 已消费本次命中（不触发命中事件、不回池）；false = 走默认流程（伤害 + 事件 + 回池）。
+    /// </summary>
+    protected virtual bool OnValidHit(Collider2D other)
+    {
+        TryDealDamage(other);
+        return false;
     }
 
     /// <summary>是否属于发射源的自身图层</summary>
@@ -166,7 +179,7 @@ public abstract class Projectile : MonoBehaviour
     }
 
     /// <summary>尝试对命中目标造成伤害（玩家子弹打敌人，敌人子弹打玩家）— P1a:统一走 CombatResolver 结算</summary>
-    private void TryDealDamage(Collider2D other)
+    protected void TryDealDamage(Collider2D other)
     {
         // 玩家子弹打敌人（EnemyControllerBase 实现 ICombatant）
         if (other.TryGetComponent(out EnemyControllerBase enemy))

@@ -47,12 +47,14 @@ MonoBehaviour:
     description: "\u51B2\u523A\u7ED3\u675F\u540E\u5728\u539F\u5730\u7559\u4E0B\u5632\u8BBD\u5E7B\u8C61\uFF0C\u5438\u5F15\u5468\u56F4\u654C\u4EBA\u653B\u51FB\u5E7B\u8C61"
   lv2Right:
     behaviorId: 
-    branchName: E lv2 right
+    branchName: "\u653B\u51FB\u5E7B\u8C61"
     icon: {fileID: -5743514602376443267, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
-    damage: 0
+    damage: 15
     cooldown: 2
     manaCost: 6
-    description: "\u51B2\u523A\u9644\u5E26\u65E0\u654C\u5E27\uFF0C\u51B7\u5374\u65F6\u95F4\u7F29\u77ED"
+    range: 1.5
+    duration: 0
+    description: "\u51B2\u523A\u7ED3\u675F\u843D\u70B9\u751F\u6210\u653B\u51FB\u5E7B\u8C61\uFF0C\u81EA\u52A8\u4E09\u8FDE\u51FB\uFF08\u5E26\u5F53\u524D\u5143\u7D20\uFF09"
   lv3Left:
     behaviorId: 
     branchName: "\u5927\u8303\u56F4\u5632\u8BBD\u5E7B\u8C61"
@@ -65,9 +67,11 @@ MonoBehaviour:
     description: "\u5632\u8BBD\u8303\u56F4\u6269\u5927\uFF0C\u5E7B\u8C61\u6301\u7EED\u5BF9\u5468\u56F4\u654C\u4EBA\u9020\u6210\u5143\u7D20\u4F24\u5BB3\uFF08\u5E26\u5F53\u524D\u5143\u7D20\uFF09"
   lv3Right:
     behaviorId: 
-    branchName: "\u865A\u7A7A\u6B65\u4F10"
+    branchName: "\u6CBF\u9014\u653B\u51FB+\u8DDD\u79BB\u589E\u52A0"
     icon: {fileID: -675955477173538400, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
-    damage: 60
-    cooldown: 1.5
+    damage: 20
+    cooldown: 2.5
     manaCost: 10
-    description: "\u51B2\u523A\u6781\u77ED\u51B7\u5374\uFF0C\u4E0B\u4E00\u6B21\u653B\u51FB\u5FC5\u5B9A\u66B4\u51FB"
+    range: 1.5
+    duration: 0
+    description: "\u51B2\u523A\u8DEF\u5F84\u6BCF\u683C\u4E00\u6B21\u653B\u51FB\uFF0C\u51B2\u523A\u8DDD\u79BB\u589E\u52A0"

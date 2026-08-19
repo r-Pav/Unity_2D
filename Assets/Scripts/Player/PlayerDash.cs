@@ -37,6 +37,7 @@ public class PlayerDash : MonoBehaviour
     [System.NonSerialized] private bool extraChargeUnlocked;                 // 树 B lv1 已解锁标记(幂等,防 E 键重复激活 maxCharges 无限增长)
     [System.NonSerialized] private bool dashDamageEnabled;                   // 树 B lv1 解锁后冲刺带伤害
     [System.NonSerialized] private float dashDamage;                         // 冲刺伤害值(由 DashUpgradeExecutor 按 lv1Data.damage 注入;0 = 无伤害)
+    [System.NonSerialized] private float dashDistanceMultiplier = 1f;        // 冲刺距离修饰(阶段 6 lv3B-02 右分支"距离增加";运行时注入,默认 1 = 原距离)
 
     private void Awake()
     {
@@ -63,6 +64,9 @@ public class PlayerDash : MonoBehaviour
     /// <summary>冲刺伤害值(由执行器按分支数据注入)</summary>
     public float DashDamage => dashDamage;
 
+    /// <summary>冲刺距离修饰倍率(阶段 6 lv3B-02"距离增加";默认 1 = 原距离)</summary>
+    public float DashDistanceMultiplier => dashDistanceMultiplier;
+
     // ── 冲刺伤害检测参数(PlayerDashState 每帧 OverlapBox 读取)──
     public LayerMask DashHitLayers => dashHitLayers;
     public Vector2 DashHitBoxSize => dashHitBoxSize;
@@ -79,15 +83,17 @@ public class PlayerDash : MonoBehaviour
 
         Rigidbody2D rb = owner.GetRigidbody();
         rb.velocity = Vector2.zero;
-        rb.velocity = new Vector2(owner.GetFacing() * dashSpeed, 0);
+        // 冲刺距离修饰(阶段 6 lv3B-02):速度 × 倍率,dashDuration 不变 → 冲刺距离变长
+        rb.velocity = new Vector2(owner.GetFacing() * dashSpeed * dashDistanceMultiplier, 0);
     }
 
-    /// <summary>充能恢复(PlayerController.UpdateCooldowns 每帧调用):遍历所有恢复中的充能槽,恢复满则 charges++(上限 maxCharges)</summary>
+    /// <summary>充能恢复(PlayerController.UpdateCooldowns 每帧调用):遍历所有恢复中的充能槽,恢复满则 charges++(上限 maxCharges)。
+    /// 用 unscaledDeltaTime:卡帧(timeScale=0)期间充能照常恢复,卡帧只冻视觉不冻数值(2026-08-19 saika 确认)</summary>
     public void TickCooldown()
     {
         for (int i = chargeTimers.Count - 1; i >= 0; i--)
         {
-            chargeTimers[i] -= Time.deltaTime;
+            chargeTimers[i] -= Time.unscaledDeltaTime;
             if (chargeTimers[i] <= 0f)
             {
                 chargeTimers.RemoveAt(i);
@@ -115,5 +121,14 @@ public class PlayerDash : MonoBehaviour
     public void SetDashDamage(float damage)
     {
         dashDamage = damage;
+    }
+
+    /// <summary>
+    /// 设置冲刺距离修饰倍率(阶段 6 lv3B-02"距离增加";DashComboExecutor 注入,幂等)。
+    /// multiplier ≤ 0 视为恢复默认(1)。速度 × 倍率 → 冲刺距离变长。
+    /// </summary>
+    public void SetDashDistanceMultiplier(float multiplier)
+    {
+        dashDistanceMultiplier = multiplier > 0f ? multiplier : 1f;
     }
 }

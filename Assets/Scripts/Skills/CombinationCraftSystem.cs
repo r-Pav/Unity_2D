@@ -6,7 +6,7 @@ using System.Collections.Generic;
 /// 职责：材料池收集、配方校验、消耗产出、暴露数据接口供 UI 消费
 ///
 /// 合成流程：选 2 材料 → 校验配方 → 等级判定 → 消耗产出
-/// 材料池：主动技能（含分支）+ 武器技能；被动/组合技能不可用作材料
+/// 材料池：主动技能（含分支）；被动/组合/武器技能不可用作材料（B6,决策 D19）
 /// 等级判定：取两材料较低等级，匹配 3 个配方
 /// 消耗：永久消失，不可逆
 /// 产出：分配到空闲主动技能槽
@@ -26,7 +26,6 @@ public class CombinationCraftSystem : MonoBehaviour
 
     private SkillManager skillManager;
     private SkillPool skillPool;
-    private WeaponSkillLink weaponSkillLink;
     private PassiveEquipManager passiveEquipManager;
 
     // Debug 触发计数器（≤3 帧限制）
@@ -41,7 +40,6 @@ public class CombinationCraftSystem : MonoBehaviour
     {
         skillManager = GetComponent<SkillManager>();
         skillPool = GetComponent<SkillPool>();
-        weaponSkillLink = GetComponent<WeaponSkillLink>();
         passiveEquipManager = GetComponent<PassiveEquipManager>();
 
         // 加载所有组合技能配方
@@ -74,6 +72,8 @@ public class CombinationCraftSystem : MonoBehaviour
         public int slotIndex;
         /// <summary>原始 SkillData SO 引用</summary>
         public SkillData skillData;
+        /// <summary>分支（"Left"/"Right"，从 ActiveSkillData.chosenBranch 读取，B14；Lv1 或非树技能为空）</summary>
+        public string branch;
     }
 
     // ============================================================
@@ -82,6 +82,7 @@ public class CombinationCraftSystem : MonoBehaviour
 
     /// <summary>
     /// 获取所有可作合成材料的技能列表。每个技能树按已解锁等级展开多行（Lv1~当前等级）。
+    /// 武器技能不参与合成材料（B6,决策 D19：武器独立不参与合成）。
     /// </summary>
     /// <param name="excludeRootName">可选：排除指定技能树的所有等级（用于第二槽过滤）</param>
     public List<MaterialInfo> GetAvailableMaterials(string excludeRootName = null)
@@ -108,6 +109,12 @@ public class CombinationCraftSystem : MonoBehaviour
                 // 展开 Lv1 到当前等级，每级一行
                 for (int lv = 1; lv <= entry.level; lv++)
                 {
+                    // 分支：树技能 Lv2+ 才有分支（Lv1 未选分支；非树技能为空）。
+                    // B14：chosenBranch 是 SO 共享实例运行时字段，与槽位升级写入的同一实例，可直接读
+                    string branch = null;
+                    if (lv >= 2 && entry.skillData is ActiveSkillData tree)
+                        branch = tree.chosenBranch;
+
                     materials.Add(new MaterialInfo
                     {
                         skillName = rootName,
@@ -116,31 +123,14 @@ public class CombinationCraftSystem : MonoBehaviour
                         rootSkillName = rootName,
                         isWeaponSkill = false,
                         slotIndex = -1,
-                        skillData = entry.skillData
+                        skillData = entry.skillData,
+                        branch = branch
                     });
                 }
             }
         }
 
-        // 2. 武器技能（视为 Lv1，不展开）
-        if (weaponSkillLink != null && weaponSkillLink.HasWeaponSkill)
-        {
-            var wsData = weaponSkillLink.CurrentWeaponSkill;
-            if (wsData != null && (string.IsNullOrEmpty(excludeRootName) || wsData.skillName != excludeRootName))
-            {
-                materials.Add(new MaterialInfo
-                {
-                    skillName = wsData.skillName,
-                    skillId = wsData.skillName,
-                    level = 1,
-                    rootSkillName = wsData.skillName,
-                    isWeaponSkill = true,
-                    slotIndex = -1,
-                    skillData = wsData
-                });
-            }
-        }
-
+        // 2. 武器技能：不参与合成材料（B6,决策 D19;旧 3 组合配方的材料是 Q/E 主动树,不受影响）
         return materials;
     }
 
@@ -176,8 +166,8 @@ public class CombinationCraftSystem : MonoBehaviour
             return false;
         }
 
-        // 遍历所有组合技能配方，匹配材料（SO + 等级）
-        result = FindMatchingCombo(m1.skillData, m2.skillData, m1.level, m2.level);
+        // 遍历所有组合技能配方，匹配材料（SO + 等级 + 分支）
+        result = FindMatchingCombo(m1.skillData, m2.skillData, m1.level, m2.level, m1.branch, m2.branch);
         if (result == null)
         {
             failReason = $"技能组合 [{m1.skillName} + {m2.skillName}] 无可匹配配方";
@@ -209,29 +199,55 @@ public class CombinationCraftSystem : MonoBehaviour
     }
 
     /// <summary>
-    /// 在所有组合技能中查找匹配两个材料（SO + 等级）的配方。
-    /// 匹配规则：A+B 或 B+A，SO 引用相等且等级相等，配方材料必须非 null。
+    /// 在所有组合技能中查找匹配两个材料（SO + 等级 + 分支）的配方。
+    /// 匹配规则：A+B 或 B+A，SO 引用相等且等级相等，配方材料必须非 null；
+    /// 分支匹配（B14）：配方 materialBranchA/B 为空 = 不校验分支（旧配方兼容），非空 = 必须与材料分支相等。
+    /// 两轮匹配：先精确匹配「带分支配方」（材料带分支时优先命中，如 4 个 lv2 配方），
+    /// 再回退「无分支配方」（旧配方 Q+E Lv1/Lv2 兼容；解决同材料对同时存在分支配方与旧配方的歧义）。
     /// 返回 null 表示无匹配。
     /// </summary>
-    public CombinationSkillData FindMatchingCombo(SkillData skillA, SkillData skillB, int levelA, int levelB)
+    public CombinationSkillData FindMatchingCombo(SkillData skillA, SkillData skillB,
+        int levelA, int levelB, string branchA = null, string branchB = null)
     {
         if (skillA == null || skillB == null) return null;
 
+        return MatchPass(skillA, skillB, levelA, levelB, branchA, branchB, requireBranch: true)
+            ?? MatchPass(skillA, skillB, levelA, levelB, branchA, branchB, requireBranch: false);
+    }
+
+    /// <summary>单轮匹配：requireBranch=true 只查「至少一边带分支约束」的配方；false 只查「全无分支约束」的配方</summary>
+    private CombinationSkillData MatchPass(SkillData skillA, SkillData skillB,
+        int levelA, int levelB, string branchA, string branchB, bool requireBranch)
+    {
         foreach (var combo in allCombos)
         {
             if (combo == null) continue;
             if (combo.materialSkillA == null || combo.materialSkillB == null) continue;
 
+            bool hasBranchConstraint = !string.IsNullOrEmpty(combo.materialBranchA)
+                || !string.IsNullOrEmpty(combo.materialBranchB);
+            if (hasBranchConstraint != requireBranch) continue;
+
             if (combo.materialSkillA == skillA && combo.materialSkillB == skillB
-                && combo.materialLevelA == levelA && combo.materialLevelB == levelB)
+                && combo.materialLevelA == levelA && combo.materialLevelB == levelB
+                && BranchMatches(combo.materialBranchA, branchA)
+                && BranchMatches(combo.materialBranchB, branchB))
                 return combo;
 
             if (combo.materialSkillA == skillB && combo.materialSkillB == skillA
-                && combo.materialLevelA == levelB && combo.materialLevelB == levelA)
+                && combo.materialLevelA == levelB && combo.materialLevelB == levelA
+                && BranchMatches(combo.materialBranchA, branchB)
+                && BranchMatches(combo.materialBranchB, branchA))
                 return combo;
         }
-
         return null;
+    }
+
+    /// <summary>分支匹配：配方要求为空 = 不校验分支（旧配方兼容）；非空 = 必须与材料分支相等</summary>
+    private static bool BranchMatches(string recipeBranch, string materialBranch)
+    {
+        if (string.IsNullOrEmpty(recipeBranch)) return true;
+        return recipeBranch == materialBranch;
     }
 
     // ============================================================

@@ -29,4 +29,10 @@ public class CombinationSkillData : SkillData
 
     [Tooltip("使用后是否销毁（默认 false，作为永久技能存在）")]
     public bool destroyOnUse = false;
+
+    [Header("分支约束（阶段 6,B14）")]
+    [Tooltip("材料技能 A 的分支要求（\"Left\"/\"Right\"；为空 = 不校验分支,旧配方兼容）")]
+    public string materialBranchA;
+    [Tooltip("材料技能 B 的分支要求（\"Left\"/\"Right\"；为空 = 不校验分支,旧配方兼容）")]
+    public string materialBranchB;
 }

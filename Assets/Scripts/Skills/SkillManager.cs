@@ -187,7 +187,8 @@ public class SkillManager : MonoBehaviour
     private void UpdateCooldownTimer(int i, float cdScale)
     {
         if (cooldownTimers[i] <= 0f) return;
-        cooldownTimers[i] -= Time.deltaTime / cdScale;
+        // 卡帧(timeScale=0)期间 CD 照常转:卡帧只冻视觉,不冻技能数值(2026-08-19 saika 确认方案1)
+        cooldownTimers[i] -= Time.unscaledDeltaTime / cdScale;
         if (cooldownTimers[i] <= 0f)
             OnCooldownExpired(i);
     }

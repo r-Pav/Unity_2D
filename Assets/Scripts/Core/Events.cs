@@ -437,17 +437,23 @@ public readonly struct ElementProcEvent
 // 幻象系统事件（技能组阶段 4）
 // ============================================================
 
-/// <summary>冲刺结束事件 — 树 B B-01（冲刺留嘲讽幻象）订阅生成幻象；position=冲刺结束位置，direction=冲刺方向</summary>
+/// <summary>冲刺结束事件 — 树 B B-01（冲刺留嘲讽幻象）订阅生成幻象；position=冲刺起点，endPosition=冲刺落点（阶段 6 B-02 用），direction=冲刺方向</summary>
 public readonly struct DashEndedEvent
 {
-    /// <summary>冲刺结束位置</summary>
+    /// <summary>冲刺起点（B-01 嘲讽幻象留在起点，不与终点玩家重叠）</summary>
     public readonly Vector2 position;
+    /// <summary>冲刺落点（B-02 攻击幻象/沿途攻击用；= 冲刺结束瞬间 player 实际位置）</summary>
+    public readonly Vector2 endPosition;
     /// <summary>冲刺方向（单位向量，1/-1 水平方向）</summary>
     public readonly Vector2 direction;
 
     public DashEndedEvent(Vector2 position, Vector2 direction)
+        : this(position, position, direction) { }
+
+    public DashEndedEvent(Vector2 startPosition, Vector2 endPosition, Vector2 direction)
     {
-        this.position = position;
+        this.position = startPosition;
+        this.endPosition = endPosition;
         this.direction = direction;
     }
 }

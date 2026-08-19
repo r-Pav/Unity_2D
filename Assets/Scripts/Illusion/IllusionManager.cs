@@ -2,10 +2,10 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 幻象管理器（阶段 4）— 全局计数 + 统一销毁。
+/// 幻象管理器（阶段 4,攻击型阶段 6）— 全局计数 + 统一销毁。
 /// 静态 Instance（挂 Player 或场景任意对象；执行器可通过 EnsureInstance 惰性创建）。
 /// 按类型分别计数（决策 N3）：每类上限 maxPerType（默认 2）；Spawn 超限时顶替同类型最早的。
-/// 本阶段只生成嘲讽型（Taunt）；攻击型（Attack）阶段 6 落地，计数结构已预留。
+/// 嘲讽型（Taunt）阶段 4 落地；攻击型（Attack）阶段 6 落地（SpawnAttackIllusion）。
 /// </summary>
 public class IllusionManager : MonoBehaviour
 {
@@ -14,7 +14,7 @@ public class IllusionManager : MonoBehaviour
     [Header("预制体（saika 编辑器建；为空时由代码运行时生成半透明 player sprite 外观）")]
     [Tooltip("嘲讽幻象预制体（可选）")]
     [SerializeField] private GameObject tauntIllusionPrefab = null;
-    [Tooltip("攻击幻象预制体（阶段 6 使用，本阶段可为空）")]
+    [Tooltip("攻击幻象预制体（阶段 6 使用，可为空=程序生成外观）")]
     [SerializeField] private GameObject attackIllusionPrefab = null;
 
     [Header("上限")]
@@ -64,7 +64,6 @@ public class IllusionManager : MonoBehaviour
     /// <summary>
     /// 通用生成入口（决策 N3 顶替逻辑在此统一）。
     /// 超限时销毁同类型最早的；生成成功后触发 IllusionSpawnedEvent（UI/特效订阅）。
-    /// 攻击型本阶段不生成（阶段 6 落地），返回 null。
     /// </summary>
     public IllusionController SpawnIllusion(IllusionType type, Vector2 position, TauntIllusionConfig config)
     {
@@ -74,9 +73,10 @@ public class IllusionManager : MonoBehaviour
         {
             case IllusionType.Taunt:
                 return SpawnTauntIllusion(position, config);
+            case IllusionType.Attack:
+                // 攻击型（阶段 6）：TauntIllusionConfig 无法携带攻击参数,直接调专用入口
+                return SpawnAttackIllusion(position, default);
             default:
-                // Attack 型：阶段 6 落地（attackIllusionPrefab 为预留预制体槽位，届时使用）
-                _ = attackIllusionPrefab;
                 return null;
         }
     }
@@ -91,13 +91,33 @@ public class IllusionManager : MonoBehaviour
         while (list.Count >= maxPerType && list.Count > 0)
             Despawn(list[0]);
 
-        GameObject go = CreateIllusionObject(tauntIllusionPrefab, position);
+        GameObject go = CreateIllusionObject(tauntIllusionPrefab, position, IllusionType.Taunt);
         TauntIllusion illusion = go.AddComponent<TauntIllusion>();
         illusion.Initialize(IllusionType.Taunt, config.lifetime);
         illusion.Configure(config);
 
         list.Add(illusion);
         EventBus.Trigger(new IllusionSpawnedEvent(IllusionType.Taunt, position));
+        return illusion;
+    }
+
+    /// <summary>生成攻击幻象（阶段 6,B-02 线）— 超限顶替最早攻击幻象（N3 每类型独立计数）；返回生成的控制器（失败返回 null）</summary>
+    public AttackIllusion SpawnAttackIllusion(Vector2 position, AttackIllusionConfig config)
+    {
+        List<IllusionController> list = GetOrCreateList(IllusionType.Attack);
+        PurgeDead(list);
+
+        // 超限顶替：同类型最早的消失（决策 N3）
+        while (list.Count >= maxPerType && list.Count > 0)
+            Despawn(list[0]);
+
+        GameObject go = CreateIllusionObject(attackIllusionPrefab, position, IllusionType.Attack);
+        AttackIllusion illusion = go.AddComponent<AttackIllusion>();
+        illusion.Initialize(IllusionType.Attack, config.lifetime);
+        illusion.Configure(config);
+
+        list.Add(illusion);
+        EventBus.Trigger(new IllusionSpawnedEvent(IllusionType.Attack, position));
         return illusion;
     }
 
@@ -133,7 +153,7 @@ public class IllusionManager : MonoBehaviour
     }
 
     /// <summary>创建幻象根对象：有预制体实例化预制体，否则建空对象（外观由 IllusionController 程序生成）</summary>
-    private GameObject CreateIllusionObject(GameObject prefab, Vector2 position)
+    private GameObject CreateIllusionObject(GameObject prefab, Vector2 position, IllusionType type)
     {
         if (prefab != null)
         {
@@ -141,7 +161,7 @@ public class IllusionManager : MonoBehaviour
             go.SetActive(true);
             return go;
         }
-        var obj = new GameObject("Illusion_Taunt");
+        var obj = new GameObject(type == IllusionType.Taunt ? "Illusion_Taunt" : "Illusion_Attack");
         obj.transform.position = position;
         return obj;
     }

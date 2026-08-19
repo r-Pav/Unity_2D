@@ -54,10 +54,13 @@ public class PlayerDashState : EntityState
         dashTimer -= Time.deltaTime;
         if (dashTimer <= 0f)
         {
-            // 冲刺结束：发布 DashEndedEvent（树 B B-01 执行器订阅，在冲刺起点生成嘲讽幻象）
+            // 冲刺结束：发布 DashEndedEvent（树 B 执行器订阅）
+            // B-01（嘲讽幻象）留在冲刺起点(dashStartPos)，不与终点玩家重叠；
+            // B-02（阶段 6 攻击幻象/沿途攻击）用冲刺落点 = 冲刺结束瞬间 player 实际位置。
             // 注意在切状态前触发：事件处理器读到的仍是冲刺结束位置/朝向
             EventBus.Trigger(new DashEndedEvent(
-                dashStartPos,                                // 起点:嘲讽幻象留在冲刺开始处,不与终点玩家重叠
+                dashStartPos,
+                (Vector2)owner.transform.position,
                 Vector2.right * pc.GetFacing()));
 
             // 冲刺结束:落地 → Idle/Move;空中 → Fall(原 PlayerDash.OnPlayerUpdate 超时分支)
