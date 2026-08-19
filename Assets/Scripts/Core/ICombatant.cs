@@ -55,6 +55,16 @@ public struct DamageInfo
     public Vector2 sourcePosition;  // 攻击来源位置（用于方向计算）
     public string attackLabel;      // 攻击标签（Sword/Sword_Heavy/Projectile...）
     public Knockback knockback;     // 击退参数
+
+    /// <summary>元素标签（默认 None = 无元素；伤害触发时刻由攻击方写入，决策 N5 战斗中切换即时生效）</summary>
+    public ElementType element;
+
+    /// <summary>是否允许触发元素 proc（元素衍生伤害必须显式 false，防递归，决策 D14）。
+    /// 注：C#9 结构体无参构造不可用，默认 true 由各 player 攻击构造点显式设置。</summary>
+    public bool canTriggerElementProc;
+
+    /// <summary>本次伤害实际采用的暴击倍率（0 = 未暴击；暴击仲裁结果透传，供 UI/统计读取）</summary>
+    public float critMultiplier;
 }
 
 /// <summary>

@@ -110,6 +110,9 @@ public class PlayerCombat : MonoBehaviour
     private float attackCooldownTimer;
     private PlayerController _owner;
     private StatModifierManager statModManager;
+    private ElementModule elementModule;      // 元素模块（元素标签读取；组件缺失 = 无元素，安全降级）
+    private float _forcedCritMultiplier;      // 必定暴击倍率（ArmForcedCrit 注入，阶段 2/6 必暴技能用；0 = 未注入）
+    private float _lastCritMultiplier;        // 最近一次 RollCrit 采用的暴击倍率（0 = 未暴击；写进 DamageInfo.critMultiplier 透传）
     private WeaponThrow _weaponThrow;   // 武器投掷(挂在 Player 子物体武器上)
     private bool _warnedMissingWeaponThrow;   // 击退源缺失警告只输出一次
 
@@ -140,6 +143,7 @@ public class PlayerCombat : MonoBehaviour
     {
         _owner = GetComponent<PlayerController>();
         statModManager = GetComponent<StatModifierManager>();
+        elementModule = GetComponent<ElementModule>();
         // 武器投掷(挂在 Player 子物体武器上),攻击结束事件顺带触发其重生判定
         _weaponThrow = GetComponentInChildren<WeaponThrow>();
 
@@ -327,7 +331,10 @@ public class PlayerCombat : MonoBehaviour
                         force = totalForce.sqrMagnitude > 0.0001f ? totalForce.magnitude : 0f,
                         duration = 0f,
                         ignoreResistance = false
-                    }
+                    },
+                    element = elementModule != null ? elementModule.CurrentElement : ElementType.None, // 按触发时刻读取（决策 N5）
+                    canTriggerElementProc = true,   // player 攻击默认可触发元素 proc（C#9 结构体无字段默认值，显式设置）
+                    critMultiplier = _lastCritMultiplier   // 暴击仲裁结果透传（0=未暴击）
                 };
                 CombatResolver.Resolve(source, enemy, info);
                 hitAnything = true;
@@ -463,7 +470,10 @@ public class PlayerCombat : MonoBehaviour
                         force = 8f,          // 原强化击退 8f(原 3f),构造进 Knockback.force
                         duration = 0f,
                         ignoreResistance = false
-                    }
+                    },
+                    element = elementModule != null ? elementModule.CurrentElement : ElementType.None, // 按触发时刻读取（决策 N5）
+                    canTriggerElementProc = true,   // player 攻击默认可触发元素 proc（C#9 结构体无字段默认值，显式设置）
+                    critMultiplier = _lastCritMultiplier   // 暴击仲裁结果透传（0=未暴击）
                 };
                 CombatResolver.Resolve(source, enemy, info);
 
@@ -499,16 +509,59 @@ public class PlayerCombat : MonoBehaviour
         // return baseCD / Mathf.Max(0.1f, mult);
     }
 
-    /// <summary>暴击判定：受 CritRate/CritDamage 修饰</summary>
+    /// <summary>
+    /// 暴击倍率仲裁（技能组阶段 1，决策 D2/D15）— 多个候选倍率取最高，不叠加：
+    /// ① 普通暴击：CritRate 判定通过 → 1 + CritDamage
+    /// ② 火元素触发：当前元素 Fire 且 Random < 10% → 2.0f（火 proc 只在仲裁内判定，不在 CombatResolver 二次判定）
+    /// ③ 必定暴击来源：ArmForcedCrit 注入的 forcedCritMultiplier（阶段 2/6 必暴技能，默认 0）
+    /// 未触发任何暴击 → 倍率 1.0（不暴击）。
+    /// 返回语义不变：最终伤害 = baseDamage × 倍率；本次采用的倍率写入 _lastCritMultiplier 供 DamageInfo.critMultiplier 透传。
+    /// </summary>
     private float RollCrit(float baseDamage)
     {
-        if (statModManager == null) return baseDamage;
-        float critChance = statModManager.GetFinalValue(0f, StatId.CritRate);
-        if (critChance <= 0f || Random.value >= critChance)
-            return baseDamage;
-        float critDmg = statModManager.GetFinalValue(0f, StatId.CritDamage);
-        return baseDamage * (1f + critDmg);
+        float multiplier = 1f;
+
+        // ① 普通暴击
+        if (statModManager != null)
+        {
+            float critChance = statModManager.GetFinalValue(0f, StatId.CritRate);
+            if (critChance > 0f && Random.value < critChance)
+            {
+                float critDmg = statModManager.GetFinalValue(0f, StatId.CritDamage);
+                multiplier = Mathf.Max(multiplier, 1f + critDmg);
+            }
+        }
+
+        // ② 火元素触发（10% 概率 → 200%）
+        if (elementModule != null
+            && elementModule.CurrentElement == ElementType.Fire
+            && Random.value < ElementProc.ProcChance)
+        {
+            multiplier = Mathf.Max(multiplier, 2.0f);
+        }
+
+        // ③ 必定暴击来源（用后清除，只对下一次攻击生效）
+        if (_forcedCritMultiplier > 0f)
+        {
+            multiplier = Mathf.Max(multiplier, _forcedCritMultiplier);
+            _forcedCritMultiplier = 0f;
+        }
+
+        _lastCritMultiplier = multiplier > 1f ? multiplier : 0f;   // 0 = 未暴击
+        return baseDamage * multiplier;
     }
+
+    /// <summary>
+    /// 为下一次攻击装备必定暴击倍率（阶段 2/6 必暴技能在发射前注入）；本次攻击后自动清除。
+    /// multiplier ≤ 0 视为取消注入。仲裁时与普通暴击/火触发取最高者，不叠加（决策 D2/D15）。
+    /// </summary>
+    public void ArmForcedCrit(float multiplier)
+    {
+        _forcedCritMultiplier = Mathf.Max(0f, multiplier);
+    }
+
+    /// <summary>当前基础伤害（attackDamage × DamageMultiplier 修饰器）— 供元素衍生伤害（如落雷）取 player 基础值</summary>
+    public float CurrentBaseDamage => GetEffectiveDamage();
 
     /// <summary>获取当前有效伤害（基础值 × 伤害倍率）</summary>
     private float GetEffectiveDamage()

@@ -234,6 +234,9 @@ public class SkillManager : MonoBehaviour
         var data = skillSlots[index].data;
         if (data == null) return;
 
+        // 升级解锁被动型(树B 等):不响应激活——不进 CD、不切释放态、不发事件(UI 点击/热键双保险)
+        if (data is ActiveSkillData passiveTree && passiveTree.unlockPassiveOnly) return;
+
         // 冷却检查
         if (cooldownTimers[index] > 0f) return;
 
@@ -345,6 +348,13 @@ public class SkillManager : MonoBehaviour
             skillPool?.EquipToHud(slotIndex, data.skillName);
         else
             skillPool?.ClearHudSlot(slotIndex);
+
+        // [阶段3] 补发等级变化事件：SaveSystem 读档恢复唯一走 SetSlot（LevelUp 已触发），
+        // 升级类被动解锁（TreeB_Dash 充能+冲刺伤害）依赖此事件重放，否则读档后解锁丢失。
+        // 订阅者幂等：DashUpgradeExecutor 重复应用安全 / SkillPool 有 newLevel>entry.level 守卫 / UI 仅重读状态。
+        if (data != null && level >= 1)
+            EventBus.Trigger(new SkillLevelChangedEvent(data.skillName, slotIndex, level));
+
         RefreshSynergy();
     }
 

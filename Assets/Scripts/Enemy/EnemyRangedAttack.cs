@@ -64,10 +64,14 @@ public class EnemyRangedAttack : MonoBehaviour, IEnemyAttack
     {
         if (_owner == null) return;
 
-        PlayerController pc = PlayerController.Instance;
-        if (pc == null)
+        // B11（阶段 4 嘲讽目标层）：瞄准走 owner.PlayerTarget —— 嘲讽期间远程敌人朝幻象射击
+        // （真实玩家兜底，与 _owner.Awake 的 player 缓存一致；PlayerController.Instance 仅作 fallback）
+        Transform target = _owner.PlayerTarget;
+        if (target == null)
+            target = PlayerController.Instance != null ? PlayerController.Instance.transform : null;
+        if (target == null)
         {
-            Debug.LogWarning($"[{_owner.name}] 远程发射跳过：找不到Player");
+            Debug.LogWarning($"[{_owner.name}] 远程发射跳过：找不到目标");
             return;
         }
 
@@ -75,7 +79,7 @@ public class EnemyRangedAttack : MonoBehaviour, IEnemyAttack
         float finalDamage = statModManager != null ? statModManager.GetFinalValue(damage, StatId.EnemyDamage) : damage;
 
         // 2D 方向（含 Y，支持斜上/斜下射击）
-        Vector2 dir = ((Vector2)(pc.transform.position - _owner.transform.position)).normalized;
+        Vector2 dir = ((Vector2)(target.position - _owner.transform.position)).normalized;
 
         // 初始化 hitLayers（默认 Player 层）
         if (hitLayers == 0)

@@ -15,6 +15,9 @@ public class EnemyLvStats
     [Tooltip("最大血量基础值（运行时走管线后为管线输入 baseValue）")]
     public float maxHealth = 3f;
 
+    [Tooltip("护甲值(每档;0=无护甲)")]
+    public float armor;
+
     [Tooltip("检测矩形半宽（X 轴）")]
     public float detectionWidth = 8f;
 

@@ -398,3 +398,71 @@ public readonly struct ChapterChangedEvent
         this.chapter = chapter;
     }
 }
+
+// ============================================================
+// 元素系统事件（技能组阶段 1）
+// ============================================================
+
+/// <summary>元素切换事件 — ElementModule.SetElement 切换成功时触发，UI 指示器等订阅</summary>
+public readonly struct ElementChangedEvent
+{
+    /// <summary>切换前元素</summary>
+    public readonly ElementType oldElement;
+    /// <summary>切换后元素</summary>
+    public readonly ElementType newElement;
+
+    public ElementChangedEvent(ElementType oldElement, ElementType newElement)
+    {
+        this.oldElement = oldElement;
+        this.newElement = newElement;
+    }
+}
+
+/// <summary>元素 proc 触发事件 — 水/雷 proc 生效时触发（position = 触发位置），UI/特效订阅</summary>
+public readonly struct ElementProcEvent
+{
+    /// <summary>触发 proc 的元素类型</summary>
+    public readonly ElementType type;
+    /// <summary>触发位置</summary>
+    public readonly Vector2 position;
+
+    public ElementProcEvent(ElementType type, Vector2 position)
+    {
+        this.type = type;
+        this.position = position;
+    }
+}
+
+// ============================================================
+// 幻象系统事件（技能组阶段 4）
+// ============================================================
+
+/// <summary>冲刺结束事件 — 树 B B-01（冲刺留嘲讽幻象）订阅生成幻象；position=冲刺结束位置，direction=冲刺方向</summary>
+public readonly struct DashEndedEvent
+{
+    /// <summary>冲刺结束位置</summary>
+    public readonly Vector2 position;
+    /// <summary>冲刺方向（单位向量，1/-1 水平方向）</summary>
+    public readonly Vector2 direction;
+
+    public DashEndedEvent(Vector2 position, Vector2 direction)
+    {
+        this.position = position;
+        this.direction = direction;
+    }
+}
+
+/// <summary>幻象生成事件 — UI/特效订阅；type=幻象类型，position=生成位置</summary>
+public readonly struct IllusionSpawnedEvent
+{
+    /// <summary>幻象类型（Taunt=嘲讽 / Attack=攻击，阶段 6 启用）</summary>
+    public readonly IllusionType type;
+    /// <summary>生成位置</summary>
+    public readonly Vector2 position;
+
+    public IllusionSpawnedEvent(IllusionType type, Vector2 position)
+    {
+        this.type = type;
+        this.position = position;
+    }
+}

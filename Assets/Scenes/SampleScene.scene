@@ -46499,6 +46499,8 @@ GameObject:
   - component: {fileID: 1427529662}
   - component: {fileID: 1427529661}
   - component: {fileID: 1427529663}
+  - component: {fileID: 1427529664}
+  - component: {fileID: 1427529665}
   m_Layer: 6
   m_HasEditorInfo: 1
   m_Name: Player
@@ -47077,9 +47079,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 54ae83a45f2a9ba4cbf9fac9ca53306d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  dashSpeed: 10
+  dashSpeed: 12
   dashDuration: 0.15
-  dashCooldown: 0.6
+  maxCharges: 2
+  chargeCooldown: 0.6
+  dashHitLayers:
+    serializedVersion: 2
+    m_Bits: 128
+  dashHitBoxSize: {x: 3, y: 3}
+  dashHitForwardOffset: 1.05
+  dashKnockbackForce: 24
 --- !u!114 &1427529663
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -47092,6 +47101,32 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c1d7d2d77b6ebbf4b932ce3bd894fea2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!114 &1427529664
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1427529632}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 375fe9adc1031a740b23de915042f6a3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!114 &1427529665
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1427529632}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 55746b0c07f65ce43ac5ae8b453f8023, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _currentElement: 1
+  unlockedElements: 01000000
 --- !u!1 &1429523397
 GameObject:
   m_ObjectHideFlags: 0

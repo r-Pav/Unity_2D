@@ -24,6 +24,12 @@ public abstract class Projectile : MonoBehaviour
     /// <summary>攻击类型标签 — 构造进 DamageInfo.attackLabel 用于匹配 VFX 变体</summary>
     protected string attackType = "";
 
+    /// <summary>元素标签 — 由子类 Spawn 发射端写入(玩家魔法弹 = 发射时 ElementModule.CurrentElement);命中构造 DamageInfo 时写入 element,元素 proc 自动生效</summary>
+    protected ElementType element = ElementType.None;
+
+    /// <summary>本次伤害采用的暴击倍率(0 = 未暴击;由发射端注入,如必暴 1.8 / 火 200%;透传 DamageInfo.critMultiplier)</summary>
+    protected float critMultiplier = 0f;
+
     /// <summary>发射者（ICombatant）— 由子类 Spawn 通过 SetSource 注入；null 表示环境/无攻击者</summary>
     protected ICombatant source;
 
@@ -173,7 +179,10 @@ public abstract class Projectile : MonoBehaviour
                 // （击退方向 = enemy - sourcePosition）会随相对位置翻转，导致击退方向不稳/反直觉
                 sourcePosition = source != null ? (Vector2)source.Transform.position : (Vector2)transform.position,
                 attackLabel = attackType,
-                knockback = Knockback.None
+                knockback = Knockback.None,
+                element = element,                     // 元素继承:发射端写入实例字段,命中时透传(决策 N5)
+                canTriggerElementProc = element != ElementType.None, // 有元素才允许 proc;敌人子弹 element=None 保持原状
+                critMultiplier = critMultiplier        // 必暴/火仲裁结果透传(0=未暴击)
             });
         }
         // 敌人子弹打玩家（PlayerHealth 实现 ICombatant；击退力度/时长与原 TakeDamageWithKnockback 内部一致 10f/0.2s）
@@ -192,7 +201,10 @@ public abstract class Projectile : MonoBehaviour
                     force = 10f,     // 原 TakeDamageWithKnockback 硬编码击退力度
                     duration = 0.2f, // 原 KnockbackRoutine 硬编码硬直时长
                     ignoreResistance = false
-                }
+                },
+                element = element,                     // 元素继承(敌人子弹默认 None,无影响)
+                canTriggerElementProc = element != ElementType.None,
+                critMultiplier = critMultiplier
             });
         }
     }

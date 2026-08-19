@@ -1,39 +1,119 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 冲刺执行器 — P3b 降级为纯逻辑执行器(IsDashing 状态迁至 PlayerDashState)
-/// 仅提供:DoDash(清速度+设冲刺速度+启动冷却) / CooldownReady(冷却查询) / TickCooldown(冷却递减)
-/// dashSpeed/dashDuration/dashCooldown 保留序列化配置;dashDuration 由 PlayerController 注入状态类
-/// dashCooldownTimer 由 PlayerController.UpdateCooldowns 每帧调用 TickCooldown 递减(与改造前行为一致)
+/// 冲刺执行器 — 纯逻辑执行器(IsDashing 状态迁至 PlayerDashState)
+/// 充能制冲刺(决策 D3/D16):默认 1 充能,maxCharges 序列化可配;树 B lv1 解锁后 2 充能、各自独立恢复。
+/// 对外提供:DoDash(消耗充能+清速度+设冲刺速度+开恢复计时) / CooldownReady(充能查询) /
+/// TickCooldown(充能恢复) / UnlockExtraCharge / EnableDashDamage / SetDashDamage(树 B lv1 解锁入口)。
+/// dashSpeed/dashDuration 保留序列化配置;dashDuration 由 PlayerController 注入状态类。
+/// 冲刺伤害判定在 PlayerDashState(DashDamageEnabled 开启后每帧 OverlapBox),检测参数在本组件序列化配置。
 /// </summary>
 public class PlayerDash : MonoBehaviour
 {
     [Header("冲刺")]
     [SerializeField] private float dashSpeed = 10f;
     [SerializeField] private float dashDuration = 0.15f;
-    [SerializeField] private float dashCooldown = 0.6f;
 
-    private float dashCooldownTimer;
+    [Header("充能")]
+    [Tooltip("最大充能数(默认 1;树 B lv1 解锁后运行时 +1 到 2)")]
+    [SerializeField] private int maxCharges = 1;
+    [Tooltip("每充能恢复时间(秒,沿用原 0.6f 冷却语义;决策 D3 各充能独立计时)")]
+    [SerializeField] private float chargeCooldown = 0.6f;
 
-    /// <summary>冷却是否就绪(可由 FSM 状态类查询,决定 Shift 是否可触发冲刺)</summary>
-    public bool CooldownReady => dashCooldownTimer <= 0f;
+    [Header("冲刺伤害(树 B lv1 启用后生效)")]
+    [Tooltip("冲刺伤害检测 Layer(默认 Enemy,与 PlayerCombat.enemyLayer 一致)")]
+    [SerializeField] private LayerMask dashHitLayers; // 默认值在 Awake 赋值(NameToLayer 禁止在字段初始化器调用)
+    [Tooltip("冲刺伤害检测矩形尺寸(宽沿冲刺方向)")]
+    [SerializeField] private Vector2 dashHitBoxSize = new Vector2(1.2f, 1.0f);
+    [Tooltip("检测矩形中心相对玩家的前方偏移")]
+    [SerializeField] private float dashHitForwardOffset = 0.6f;
+    [Tooltip("冲刺击退力度(沿冲刺方向;冲刺只伤害+击退,不进敌人硬直分流)")]
+    [SerializeField] private float dashKnockbackForce = 3f;
+
+    // ── 运行时状态(不序列化:充能恢复直接补满,不持久化半恢复状态,与 CD 处理一致)──
+    [System.NonSerialized] private int charges;                              // 当前可用充能数
+    [System.NonSerialized] private readonly List<float> chargeTimers = new(); // 每消耗 1 充能 = 1 个独立恢复计时(决策 D3)
+    [System.NonSerialized] private bool extraChargeUnlocked;                 // 树 B lv1 已解锁标记(幂等,防 E 键重复激活 maxCharges 无限增长)
+    [System.NonSerialized] private bool dashDamageEnabled;                   // 树 B lv1 解锁后冲刺带伤害
+    [System.NonSerialized] private float dashDamage;                         // 冲刺伤害值(由 DashUpgradeExecutor 按 lv1Data.damage 注入;0 = 无伤害)
+
+    private void Awake()
+    {
+        if (dashHitLayers == 0)
+            dashHitLayers = LayerMask.GetMask("Enemy"); // 默认值兜底(NameToLayer 仅允许在 Awake/Start 调用)
+        charges = maxCharges; // 启动补满
+    }
+
+    /// <summary>是否可冲刺(充能 > 0;5 个状态类的 Shift 检测沿用此属性,语义自动变为"有充能",零代码改动)</summary>
+    public bool CooldownReady => charges > 0;
 
     /// <summary>冲刺时长(秒),注入 PlayerDashState 做超时退出</summary>
     public float DashDuration => dashDuration;
 
-    /// <summary>执行冲刺:清速度 + 设冲刺速度(facing × dashSpeed) + 启动冷却(由 PlayerDashState.OnEnter 调用)</summary>
+    /// <summary>当前可用充能数(HUD 充能显示预留)</summary>
+    public int Charges => charges;
+
+    /// <summary>最大充能数</summary>
+    public int MaxCharges => maxCharges;
+
+    /// <summary>冲刺伤害开关(树 B lv1 解锁后 true;未解锁冲刺无伤害,保持现状)</summary>
+    public bool DashDamageEnabled => dashDamageEnabled;
+
+    /// <summary>冲刺伤害值(由执行器按分支数据注入)</summary>
+    public float DashDamage => dashDamage;
+
+    // ── 冲刺伤害检测参数(PlayerDashState 每帧 OverlapBox 读取)──
+    public LayerMask DashHitLayers => dashHitLayers;
+    public Vector2 DashHitBoxSize => dashHitBoxSize;
+    public float DashHitForwardOffset => dashHitForwardOffset;
+    public float DashKnockbackForce => dashKnockbackForce;
+
+    /// <summary>执行冲刺:消耗 1 充能 + 开启该充能独立恢复计时 + 清速度 + 设冲刺速度(facing × dashSpeed)。由 PlayerDashState.OnEnter 调用。</summary>
     public void DoDash(PlayerController owner)
     {
-        dashCooldownTimer = dashCooldown;
+        if (charges <= 0) return; // 充能耗尽即不可冲刺,无保底(决策 D16;调用方已按 CooldownReady 拦截,此处双保险)
+
+        charges--;
+        chargeTimers.Add(chargeCooldown); // 每消耗 1 充能新增 1 个独立恢复槽(决策 D3)
+
         Rigidbody2D rb = owner.GetRigidbody();
         rb.velocity = Vector2.zero;
         rb.velocity = new Vector2(owner.GetFacing() * dashSpeed, 0);
     }
 
-    /// <summary>冷却倒计时(PlayerController.UpdateCooldowns 每帧调用;原 OnPlayerUpdate 内递减逻辑迁出)</summary>
+    /// <summary>充能恢复(PlayerController.UpdateCooldowns 每帧调用):遍历所有恢复中的充能槽,恢复满则 charges++(上限 maxCharges)</summary>
     public void TickCooldown()
     {
-        if (dashCooldownTimer > 0f)
-            dashCooldownTimer -= Time.deltaTime;
+        for (int i = chargeTimers.Count - 1; i >= 0; i--)
+        {
+            chargeTimers[i] -= Time.deltaTime;
+            if (chargeTimers[i] <= 0f)
+            {
+                chargeTimers.RemoveAt(i);
+                if (charges < maxCharges) charges++; // 恢复满 1 充能(上限 maxCharges)
+            }
+        }
+    }
+
+    /// <summary>树 B lv1 解锁:最大充能 +1 并补满。幂等:已解锁过直接返回(内部标记),防 E 键重复激活导致 maxCharges 无限增长。</summary>
+    public void UnlockExtraCharge()
+    {
+        if (extraChargeUnlocked) return;
+        extraChargeUnlocked = true;
+        maxCharges++;
+        if (charges < maxCharges) charges = maxCharges; // 解锁即补满
+    }
+
+    /// <summary>树 B lv1 解锁:启用冲刺伤害(幂等,重复调用安全;未解锁时冲刺无伤害,保持现状)</summary>
+    public void EnableDashDamage()
+    {
+        dashDamageEnabled = true;
+    }
+
+    /// <summary>设置冲刺伤害值(由 DashUpgradeExecutor 按分支 lv1Data.damage 注入;重复激活覆盖为同值,幂等)</summary>
+    public void SetDashDamage(float damage)
+    {
+        dashDamage = damage;
     }
 }

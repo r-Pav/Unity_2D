@@ -28,6 +28,10 @@ public class ActiveSkillData : SkillData
     [System.NonSerialized]
     public string chosenBranch; // null / "Left" / "Right"
 
+    [Header("激活模式")]
+    [Tooltip("升级解锁被动型：树效果由 SkillLevelChangedEvent 驱动（如树B 冲刺系），不响应热键激活——按 Q/E 不进 CD、不切释放态、不发 SkillActivatedEvent")]
+    public bool unlockPassiveOnly;
+
     // ============================================================
     // 数据获取 — 根据等级和 chosenBranch 返回对应分支数据
     // ============================================================
@@ -83,6 +87,9 @@ public class ActiveSkillData : SkillData
     [System.Serializable]
     public class ActiveBranchData
     {
+        [Tooltip("分支行为标识(唯一,执行器分发用;新增分支需全局唯一)")]
+        public string behaviorId;
+
         [Tooltip("分支/等级显示名称（如「散射弹幕」「弹幕风暴」）")]
         public string branchName;
 
@@ -98,10 +105,16 @@ public class ActiveSkillData : SkillData
         [Tooltip("法力消耗")]
         public float manaCost;
 
+        [Tooltip("作用范围半径（判定/检测/嘲讽范围；0 = 不使用）")]
+        public float range;
+
+        [Tooltip("持续时间（秒；嘲讽时长/持续效果时长；0 = 不使用）")]
+        public float duration;
+
         [TextArea(2, 4)]
         [Tooltip("技能效果描述（分支选择弹窗中显示）")]
         public string description;
 
-        // 后续可按需扩展：range / projectileCount / pierceCount / knockback 等
+        // 后续可按需扩展：projectileCount / pierceCount / knockback 等
     }
 }

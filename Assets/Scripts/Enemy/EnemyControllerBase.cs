@@ -118,8 +118,39 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     /// <summary>暴露检测矩形半高给攻击组件读取</summary>
     public float DetectionHeight => detectionHeight;
 
-    /// <summary>暴露缓存的 player Transform，供攻击组件使用（避免 FindObjectOfType）</summary>
-    public Transform PlayerTarget => player;
+    /// <summary>
+    /// 嘲讽目标抽象层（B11）— 所有 AI 读取目标位置统一走此属性：
+    /// 嘲讽期间返回 OverrideTarget（幻象等实体），否则返回真实玩家。
+    /// 追击/攻击/朝向/LOS/检测矩形全部跟随，enemy 追幻象即被牵引。
+    /// </summary>
+    public Transform PlayerTarget => OverrideTarget != null ? OverrideTarget : player;
+
+    // ── 嘲讽状态（B11/阶段 4：SetTaunt 把仇恨拉到幻象）──
+
+    /// <summary>嘲讽覆盖目标（SetTaunt 设置；null = 正常追玩家）</summary>
+    public Transform OverrideTarget { get; private set; }
+
+    /// <summary>嘲讽剩余时长（秒；>0 期间 OverrideTarget 生效，Update 归零自动 ClearTaunt）</summary>
+    private float tauntTimer;
+
+    /// <summary>
+    /// 施加嘲讽 — 仇恨转移到 source 实体（幻象等）持续 duration 秒。
+    /// Boss 嘲讽时长减半（决策：先做减半，免疫与否入数值调优清单）。
+    /// 重复嘲讽：取当前剩余与本次时长较大者（防连续刷新导致提前结束），目标指向最新 source。
+    /// </summary>
+    public void SetTaunt(Transform source, float duration)
+    {
+        if (source == null || isDead || duration <= 0f) return;
+        OverrideTarget = source;
+        tauntTimer = Mathf.Max(tauntTimer, IsBoss ? duration * 0.5f : duration);
+    }
+
+    /// <summary>解除嘲讽 — 仇恨回到真实玩家（tauntTimer 归零时自动调用）</summary>
+    public void ClearTaunt()
+    {
+        tauntTimer = 0f;
+        OverrideTarget = null;
+    }
 
     // ============================================================
     // 运行时状态
@@ -387,6 +418,14 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
         if (stunCooldownTimer > 0f)
             stunCooldownTimer -= Time.deltaTime;
+
+        // 嘲讽计时递减：归零自动解除（仇恨回到真实玩家；幻象销毁后 OverrideTarget 判空自动回退玩家）
+        if (tauntTimer > 0f)
+        {
+            tauntTimer -= Time.deltaTime;
+            if (tauntTimer <= 0f)
+                ClearTaunt();
+        }
     }
 
     /// <summary>
@@ -750,8 +789,26 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     /// <summary>格挡/弹反判定 — 敌人无格挡弹反</summary>
     public bool TryParry(ICombatant attacker, DamageInfo info) => false;
 
-    /// <summary>护甲减免 — 敌人无护甲</summary>
-    public float ApplyArmor(float amount) => amount;
+    /// <summary>
+    /// 护甲减免 — 伤害 - 护甲，保底 1 点（与玩家 PlayerHealth.ApplyArmorReduction 公式一致）。
+    /// 护甲基础值来自 EnemyLvStats.armor（每档，B13），经 StatModifierManager 管线读取
+    /// （enemy 已挂 StatModifierManager，参照 EnemyEquipment 同款 GetComponent 方式；
+    /// 组件缺失时直接用基础值）。基础值默认 0 → 返回原值，现有战斗数值不变（回归保障）。
+    /// </summary>
+    public float ApplyArmor(float amount)
+    {
+        float armor = GetArmorValue();
+        if (armor <= 0f) return amount;
+        return Mathf.Max(1f, amount - armor);
+    }
+
+    /// <summary>护甲终值 = EnemyLvStats.armor 基础值经修饰器管线（Boss/精英可注入修饰器差异化）</summary>
+    private float GetArmorValue()
+    {
+        float baseArmor = lvStats != null ? lvStats.armor : 0f;
+        if (statModManager == null) return baseArmor;
+        return statModManager.GetFinalValue(baseArmor, StatId.Armor);
+    }
 
     /// <summary>减伤 — 敌人无减伤</summary>
     public float ApplyReduction(float amount) => amount;
@@ -773,6 +830,14 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     public virtual void OnHitBy(DamageInfo info)
     {
         if (isDead) return;
+
+        // 落雷（Thunder_Strike）：强制硬直，不区分近战/远程路径（决策 D8）。
+        // 韧性判定已在 CombatResolver 跳过 Poise.RegisterHit → 霸体目标同样硬直。
+        if (info.attackLabel == ThunderStrike.AttackLabel)
+        {
+            EnterStunState();
+            return;
+        }
 
         bool isMelee = _poise != null && _poise.IsMeleeAttack(info.attackLabel);
 
@@ -927,34 +992,38 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     /// <summary>当前面朝方向（1=右, -1=左），供外部组件读取</summary>
     public int Facing => facing;
 
-    /// <summary>玩家是否存活（死亡后 enemy 停止检测/追击/攻击）</summary>
+    /// <summary>
+    /// 目标是否存活（死亡后 enemy 停止检测/追击/攻击）。
+    /// B11 语义确认：统一走 PlayerTarget —— 嘲讽目标为幻象时无 PlayerHealth（ph==null → 返回存活），
+    /// 即嘲讽期间玩家死亡幻象仍拉仇恨（接受该行为）；tauntTimer 归零 OverrideTarget=null 后恢复查真实玩家。
+    /// </summary>
     private bool IsPlayerAlive()
     {
-        if (player == null) return false;
-        var ph = player.GetComponent<PlayerHealth>();
+        if (PlayerTarget == null) return false;
+        var ph = PlayerTarget.GetComponent<PlayerHealth>();
         return ph == null || !ph.IsDead;
     }
 
     public bool CanSeePlayer()
     {
         if (!IsPlayerAlive()) return false;
-        if (player == null) return false;
+        if (PlayerTarget == null) return false;
         if (!IsInDetectionRect()) return false;
         return HasLineOfSight();
     }
 
     private bool IsInDetectionRect()
     {
-        float deltaX = player.position.x - transform.position.x;
-        float deltaY = player.position.y - transform.position.y;
+        float deltaX = PlayerTarget.position.x - transform.position.x;
+        float deltaY = PlayerTarget.position.y - transform.position.y;
         return Mathf.Abs(deltaX) <= detectionWidth * 0.5f
             && Mathf.Abs(deltaY) <= detectionHeight * 0.5f;
     }
 
     private bool HasLineOfSight()
     {
-        float dist = Vector2.Distance(transform.position, player.position);
-        Vector2 dir = ((Vector2)(player.position - transform.position)).normalized;
+        float dist = Vector2.Distance(transform.position, PlayerTarget.position);
+        Vector2 dir = ((Vector2)(PlayerTarget.position - transform.position)).normalized;
         Vector2 origin = (Vector2)transform.position + Vector2.up * 0.5f;
 
         RaycastHit2D[] hits = Physics2D.RaycastAll(origin, dir, dist);
@@ -962,6 +1031,9 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         {
             if (hit.transform == transform || hit.transform.IsChildOf(transform))
                 continue;
+            // 目标本体（玩家或嘲讽幻象）视为可见；幻象无碰撞体时射线自然穿透到目标位置
+            if (hit.transform == PlayerTarget)
+                return true;
             if (hit.transform.TryGetComponent(out PlayerController _))
                 return true;
             return false;
@@ -972,16 +1044,16 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     public bool PlayerInAttackRange()
     {
         if (!IsPlayerAlive()) return false;
-        if (player == null) return false;
-        float deltaX = player.position.x - transform.position.x;
-        float deltaY = player.position.y - transform.position.y;
+        if (PlayerTarget == null) return false;
+        float deltaX = PlayerTarget.position.x - transform.position.x;
+        float deltaY = PlayerTarget.position.y - transform.position.y;
         return Mathf.Abs(deltaX) <= attackWidth * 0.5f && Mathf.Abs(deltaY) <= attackHeight * 0.5f;
     }
 
     public float DirectionToPlayer()
     {
-        if (player == null) return 0f;
-        return player.position.x > transform.position.x ? 1f : -1f;
+        if (PlayerTarget == null) return 0f;
+        return PlayerTarget.position.x > transform.position.x ? 1f : -1f;
     }
 
     /// <summary>
@@ -999,23 +1071,24 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         return hit.collider != null;
     }
 
-    /// <summary>是否可以对玩家发起攻击（综合所有条件）。子类可覆盖以添加额外条件（如远程后退区）。</summary>
+    /// <summary>是否可以对目标发起攻击（综合所有条件）。子类可覆盖以添加额外条件（如远程后退区）。
+    /// B11：统一走 PlayerTarget —— 嘲讽幻象在攻击框内时正常出招（攻击打空=幻象不可被攻击）。</summary>
     public virtual bool CanAttack()
     {
-        if (player == null) return false;
+        if (PlayerTarget == null) return false;
         if (!CanSeePlayer()) return false;
         if (attackCooldownTimer > 0f) return false;
 
-        // 玩家空中击飞时不攻击，避免无限连击
-        var pc = player.GetComponent<PlayerController>();
+        // 目标空中击飞时不攻击，避免无限连击（仅对真实玩家生效；幻象无 PlayerController 跳过）
+        var pc = PlayerTarget.GetComponent<PlayerController>();
         if (pc != null)
         {
             var ph = pc.GetComponent<PlayerHealth>();
             if (ph != null && ph.IsAirHurt) return false;
         }
 
-        float deltaX = player.position.x - transform.position.x;
-        float deltaY = player.position.y - transform.position.y;
+        float deltaX = PlayerTarget.position.x - transform.position.x;
+        float deltaY = PlayerTarget.position.y - transform.position.y;
         return Mathf.Abs(deltaX) <= attackWidth * 0.5f && Mathf.Abs(deltaY) <= attackHeight * 0.5f;
     }
 
