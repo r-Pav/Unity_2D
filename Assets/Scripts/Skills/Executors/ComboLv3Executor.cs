@@ -44,8 +44,8 @@ public class ComboLv3Executor : ISkillExecutor
     private static DamageWindow _window; // 路径伤害回血统计窗口（发射开 / 传送关）
 
     // A02B02 瞄准状态（慢动作 + 瞄准线 + 确认传送）
-    private static bool _aiming;
-    private static string _aimingSkill;
+    // 注：saika 2026-08-19 交互定稿后确认传送走 PlayerAimingState.confirmedCleanup 直连回调，
+    //     无需 _aiming/_aimingSkill 标志（历史字段已清除,CS0414 零新增）
 
     // ============================================================
     // 发射/效果配置（代码内可调；数值调优项，手册 11.6）
@@ -87,16 +87,12 @@ public class ComboLv3Executor : ISkillExecutor
         _activeBolt = null;
         _pendingSkill = null;
         _window = null;
-        _aiming = false;
-        _aimingSkill = null;
         // 玩家死亡清瞄准（防复活后按技能键误传送残留瞄准点）
         EventBus.Subscribe<PlayerDeathEvent>(OnPlayerDeath);
     }
 
     private static void OnPlayerDeath(PlayerDeathEvent e)
     {
-        _aiming = false;
-        _aimingSkill = null;
         SlowMotionController.ExitSlow();
     }
 
@@ -310,9 +306,6 @@ public class ComboLv3Executor : ISkillExecutor
         PlayerAimLine aimLine = playerGo.GetComponent<PlayerAimLine>();
         if (aimLine == null) aimLine = playerGo.AddComponent<PlayerAimLine>();
 
-        _aiming = true;
-        _aimingSkill = _skillName;
-
         // 慢动作（HitStop 冻结期间自动挂起,由 SlowMotionController 协调）
         SlowMotionController.EnterSlow(slowMotionScale, slowMotionDuration);
 
@@ -350,8 +343,6 @@ public class ComboLv3Executor : ISkillExecutor
         teleport.TeleportTo(dest);
 
         // 清瞄准标记;退出瞄准态时 OnExit 跳过清理回调(慢动作保留,等下一轮/0 充能)
-        _aiming = false;
-        _aimingSkill = null;
         if (pc.AimingState != null) pc.AimingState.confirmedCleanup = true;
         pc.PlayerFsm.ChangeState(pc.IdleState);
 
@@ -364,8 +355,6 @@ public class ComboLv3Executor : ISkillExecutor
     /// <summary>清理瞄准状态 + 解除慢动作（超时 / 确认 / 玩家死亡共用）</summary>
     private void CancelAiming()
     {
-        _aiming = false;
-        _aimingSkill = null;
         SlowMotionController.ExitSlow();
     }
 

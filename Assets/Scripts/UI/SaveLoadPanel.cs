@@ -277,16 +277,24 @@ public class SaveLoadPanel : MonoBehaviour, IPanel, ISlideClose
                 RefreshSlots();
                 break;
             case PendingAction.Load:
-                if (onLoadRequested != null)
+                Debug.Log($"[DEBUG-Load] OnConfirmOkClicked Load: onLoadRequested={(onLoadRequested != null)}, slot={slot}, saveSystem={(saveSystem != null)}");
+                if (onLoadRequested != null && HasAliveLoadListener())
                 {
                     // 外部读档回调（主菜单 TitleScene 用）：由回调方（MainMenu）设标记 + 切场景，
                     // 面板随场景销毁，无需手动关闭（TitleScene 里直接 LoadGame 会因场景未加载空引用）
                     onLoadRequested.Invoke(slot);
                 }
-                else if (saveSystem.LoadGame(slot))
-                    PanelManager.Instance?.CloseAllPanels(); // 读档成功 → 关闭全部面板恢复游戏
                 else
-                    RefreshSlots();
+                {
+                    // 游戏内读档（或 onLoadRequested 引用的是已销毁对象——从 TitleScene 复制面板带过来的误配置）：
+                    // 直接 LoadGame + 关面板恢复游戏
+                    bool loaded = saveSystem.LoadGame(slot);
+                    Debug.Log($"[DEBUG-Load] LoadGame 返回 {loaded}");
+                    if (loaded)
+                        PanelManager.Instance?.CloseAllPanels(); // 读档成功 → 关闭全部面板恢复游戏
+                    else
+                        RefreshSlots();
+                }
                 break;
             case PendingAction.Delete:
                 saveSystem.DeleteSave(slot);
@@ -298,6 +306,23 @@ public class SaveLoadPanel : MonoBehaviour, IPanel, ISlideClose
     private void OnConfirmCancelClicked()
     {
         HideConfirm();
+    }
+
+    /// <summary>
+    /// onLoadRequested 是否存在存活监听目标（2026-08-19 读档修复）：
+    /// 游戏内 LoadPanel 若从 TitleScene 复制而来,UnityEvent 引用标题 MainMenu(已销毁)——
+    /// 引用非 null 但目标销毁,Invoke 空调用导致"读档没反应"。存活监听判断避免误走外部回调。
+    /// </summary>
+    private bool HasAliveLoadListener()
+    {
+        if (onLoadRequested == null) return false;
+        int count = onLoadRequested.GetPersistentEventCount();
+        for (int i = 0; i < count; i++)
+        {
+            var target = onLoadRequested.GetPersistentTarget(i);
+            if (target != null) return true; // UnityEngine.Object 的 == 能识别销毁对象
+        }
+        return false;
     }
 
     private void OnQuitClicked()

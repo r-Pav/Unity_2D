@@ -41,6 +41,8 @@ public class SaveSystem : MonoBehaviour
     private SkillPointManager skillPointManager;
     private PassiveEquipManager passiveEquipManager;
     private WeaponSkillLink weaponSkillLink;
+    // [阶段8] 元素模块引用（可空：Player 未挂 ElementModule 时存档/读档跳过元素数据，不报错）
+    private ElementModule elementModule;
 
     // Debug 触发计数器（≤3 帧限制）
     private int _debugCount;
@@ -57,6 +59,8 @@ public class SaveSystem : MonoBehaviour
         skillPointManager = GetComponent<SkillPointManager>();
         passiveEquipManager = GetComponent<PassiveEquipManager>();
         weaponSkillLink = GetComponent<WeaponSkillLink>();
+        // [阶段8] 元素模块（可空：未挂时存档/读档跳过元素数据）
+        elementModule = GetComponent<ElementModule>();
     }
 
     private void OnEnable()
@@ -127,6 +131,8 @@ public class SaveSystem : MonoBehaviour
         CollectHudAssignments(data);
         CollectPassiveSlots(data);
         CollectWeapon(data);
+        // [阶段8] 元素状态（决策 D17：走 ElementModule 导出接口，SaveSystem 不直接管字段语义）
+        CollectElement(data);
 
         // [Phase5] 保存属性分配点
         CollectAttributePoints(data);
@@ -191,6 +197,9 @@ public class SaveSystem : MonoBehaviour
         RestoreHudAssignments(data);
         RestorePassiveSlots(data);
         RestoreWeapon(data);
+        // [阶段8] 元素状态（决策 D17：走 ElementModule 导入接口；先解锁列表后当前元素）
+        RestoreElement(data);
+        Debug.Log($"[DEBUG-Load] Restore 阶段完成: element={data.currentElement}, unlocked={(data.unlockedElements != null ? data.unlockedElements.Count : -1)}, 技能点数={data.skillPoints}");
 
         // [Phase5] 恢复属性分配点和背包数据
         RestoreAttributePoints(data);
@@ -417,6 +426,17 @@ public class SaveSystem : MonoBehaviour
     }
 
     // ============================================================
+    // [阶段8] 收集 — 元素状态（决策 D17：SaveSystem 不直接管字段语义，只搬运 ElementModule 导出接口）
+    // ============================================================
+
+    private void CollectElement(SaveData data)
+    {
+        if (elementModule == null) return; // 元素模块未挂（Player 未配置）→ 跳过，字段保持默认（None + 空列表）
+        data.currentElement = elementModule.CurrentElement;
+        data.unlockedElements = new List<ElementType>(elementModule.UnlockedElements);
+    }
+
+    // ============================================================
     // 恢复 — 技能点
     // ============================================================
 
@@ -556,6 +576,29 @@ public class SaveSystem : MonoBehaviour
     }
 
     // ============================================================
+    // [阶段8] 恢复 — 元素状态（决策 D17：走 ElementModule 导入接口）
+    // 恢复顺序（手册 8.1）：先恢复解锁列表，再恢复当前元素——
+    // SetElement 校验 IsUnlocked，当前元素必须先出现在解锁列表里才能切换成功。
+    // ============================================================
+
+    private void RestoreElement(SaveData data)
+    {
+        if (elementModule == null) return; // 元素模块未挂（Player 未配置）→ 跳过，不报错
+
+        // 1. 恢复解锁列表（旧档无此字段 → unlockedElements=null，跳过 = 空解锁列表）
+        if (data.unlockedElements != null)
+        {
+            for (int i = 0; i < data.unlockedElements.Count; i++)
+            {
+                elementModule.UnlockElement(data.unlockedElements[i]);
+            }
+        }
+
+        // 2. 恢复当前元素（None 恒可用；旧档默认 None；异常档当前元素未解锁由 SetElement 内部校验忽略）
+        elementModule.SetElement(data.currentElement);
+    }
+
+    // ============================================================
     // 辅助 — 技能名查找
     // ============================================================
 
@@ -579,6 +622,15 @@ public class SaveSystem : MonoBehaviour
         // 不查这里会导致读档后技能池恢复为空、HUD 装备报"不在池中"
         if (skillPool != null && skillPool.TryGetInitialSkill(skillName, out SkillData initial))
             return initial;
+
+        // 兜底2：合成技能（CombinationSkillData 在 Resources/Skills/Combo，不在槽位/初始技能中）——
+        // 2026-08-19 修复：不查这里合成产物读档后从池中消失
+        var combos = Resources.LoadAll<CombinationSkillData>("Skills/Combo");
+        for (int i = 0; i < combos.Length; i++)
+        {
+            if (combos[i] != null && combos[i].skillName == skillName)
+                return combos[i];
+        }
 
         return null;
     }
@@ -728,6 +780,10 @@ public class SaveSystem : MonoBehaviour
         public int assignedAgi;
         // 被动解锁改造：章节进度
         public int currentChapter = 1;
+        // [阶段8] 元素状态（决策 D17：SaveSystem 只搬运，不解释字段语义——写入读 CurrentElement/UnlockedElements，
+        // 恢复走 UnlockElement/SetElement；旧档无此字段 → currentElement=None、unlockedElements=null 视为空）
+        public ElementType currentElement;
+        public List<ElementType> unlockedElements;
         // [存档UI] 槽位元数据
         public string saveTime;  // DateTime.Now.ToString("MM-dd HH:mm")
         public string areaName;  // 玩家所在地区名（地区名追踪后续优化，字段预留）
