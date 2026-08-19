@@ -103,6 +103,9 @@ public class PlayerController : PlayerCharacterBase
     public PlayerDashState DashState { get; private set; }
     public PlayerSkillCastState SkillCastState { get; private set; }
 
+    // [阶段7] 瞄准选点状态（传送后慢动作选点；由 ComboLv3Executor 切入/退出）
+    public PlayerAimingState AimingState { get; private set; }
+
     // ============================================================
     // 状态转发属性 — 动画聚合 / 敌人 AI 查询统一走这里
     // ============================================================
@@ -203,6 +206,7 @@ public class PlayerController : PlayerCharacterBase
         DashState = new PlayerDashState(this, PlayerFsm, _animator, dash,
             dash != null ? dash.DashDuration : 0.15f);
         SkillCastState = new PlayerSkillCastState(this, PlayerFsm, _animator);
+        AimingState = new PlayerAimingState(this, PlayerFsm, _animator);
         PlayerFsm.ChangeState(IdleState);
     }
 

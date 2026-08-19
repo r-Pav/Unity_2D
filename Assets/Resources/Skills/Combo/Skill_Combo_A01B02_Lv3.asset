@@ -1,0 +1,41 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 58432dd9f20e9514fa512d9d9ff0a9e3, type: 3}
+  m_Name: Skill_Combo_A01B02_Lv3
+  m_EditorClassIdentifier: 
+  skillName: Combo_A01B02_Lv3
+  description: "\u6cbf\u9014\u653b\u51fb\u5fc5\u5b9a\u66b4\u51fb + \u56fa\u5b9a\u5f53\u524d\u5143\u7d20"
+  icon: {fileID: 1481292190, guid: 7ae0115109b4a6f42a4f7ad59397d09b, type: 3}
+  hotkey: 0
+  cooldown: 10
+  manaCost: 20
+  useCharges: 0
+  maxCharges: 1
+  chargeRechargeTime: 6
+  type: 0
+  category: 0
+  unlockLevel: 0
+  castTime: 0
+  interceptsStateAfterActivate: 0
+  skillLevel: 3
+  maxLevel: 3
+  vfxPrefab: {fileID: 0}
+  sfxClip: {fileID: 0}
+  materialSkillA: {fileID: 11400000, guid: fc420bc3f2955d7429e5ca965d1df967, type: 2}
+  materialLevelA: 3
+  materialSkillB: {fileID: 11400000, guid: 24363fc3e25e7894c99d15f1e46f38ce, type: 2}
+  materialLevelB: 3
+  combinationLevel: 3
+  effectType: "\u6cbf\u9014\u5fc5\u66b4"
+  destroyOnUse: 0
+  materialBranchA: Left
+  materialBranchB: Right

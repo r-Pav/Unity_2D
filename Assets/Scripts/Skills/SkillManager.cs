@@ -55,6 +55,10 @@ public class SkillManager : MonoBehaviour
     private PlayerController owner;              // 所属玩家控制器
     private float[] cooldownTimers;              // 每个槽位独立冷却计时
     private int[] slotLevels;                    // 每个槽位技能等级
+    // [阶段7] 充能模型（7.1）：useCharges 技能走充能——每槽独立计数 + 已消耗充能各自独立恢复计时；
+    // 未启用充能的技能（useCharges=false）完全走原单 CD 路径（零回归）。
+    private int[] chargeCounts;                  // 每槽当前可用充能数
+    private System.Collections.Generic.List<float>[] chargeTimers; // 每槽已消耗充能的独立恢复计时（1 消耗 = 1 槽）
     private SynergyBonus activeSynergy;          // 当前激活的联动 Bonus
     private StatModifierManager statModManager;  // [P3] 属性修饰器（CD/法耗查询）
     private SkillPointManager skillPointManager; // [P3] 技能点管理器（替代自管池）
@@ -72,19 +76,29 @@ public class SkillManager : MonoBehaviour
         ? statModManager.GetFinalValue(maxMana, StatId.MaxMana)
         : maxMana;
 
-    /// <summary>获取指定槽位的冷却剩余（秒）</summary>
+    /// <summary>获取指定槽位的冷却剩余（秒）；充能技能返回「下一个充能恢复」剩余秒数（无恢复中 = 0）</summary>
     public float GetCooldownTimer(int index)
     {
         if (index < 0 || index >= cooldownTimers.Length) return 0f;
+        if (IsChargeSkill(index)) return GetNextChargeTimer(index);
         return cooldownTimers[index];
     }
 
-    /// <summary>获取指定槽位的冷却比例（0=冷却完毕，1=刚触发）</summary>
+    /// <summary>获取指定槽位的冷却比例（0=冷却完毕，1=刚触发）；充能技能返回下一个充能的恢复进度</summary>
     public float GetCooldownRatio(int index)
     {
         if (index < 0 || index >= skillSlots.Length) return 0f;
         var data = skillSlots[index]?.data;
         if (data == null) return 0f;
+
+        // [阶段7] 充能模型：充能满 = 无遮罩；否则按下一个充能的恢复进度显示
+        if (data.useCharges)
+        {
+            if (chargeCounts[index] >= data.maxCharges) return 0f;
+            float recharge = data.chargeRechargeTime > 0f ? data.chargeRechargeTime : data.cooldown;
+            if (recharge <= 0f) return 0f;
+            return Mathf.Clamp01(GetNextChargeTimer(index) / recharge);
+        }
 
         // [P3] 对 ActiveSkillData 使用分支等级对应的冷却时间
         float cd = data.cooldown;
@@ -100,6 +114,42 @@ public class SkillManager : MonoBehaviour
     }
 
     // ============================================================
+    // [阶段7] 充能查询（HUD 充能显示；PlayerDash 充能保持独立，不并入本管理器）
+    // ============================================================
+
+    /// <summary>该槽位是否启用充能模型（useCharges=true）</summary>
+    public bool IsChargeSkill(int index)
+    {
+        if (index < 0 || index >= skillSlots.Length) return false;
+        return skillSlots[index]?.data?.useCharges ?? false;
+    }
+
+    /// <summary>当前可用充能数（非充能技能返回 0；HUD 按 IsChargeSkill 判断显示）</summary>
+    public int GetCharges(int index)
+    {
+        if (index < 0 || index >= chargeCounts.Length) return 0;
+        return chargeCounts[index];
+    }
+
+    /// <summary>最大充能数（非充能技能返回 1）</summary>
+    public int GetMaxCharges(int index)
+    {
+        if (index < 0 || index >= skillSlots.Length) return 1;
+        return skillSlots[index]?.data?.maxCharges ?? 1;
+    }
+
+    /// <summary>下一个充能恢复的剩余秒数（无恢复中 = 0）</summary>
+    private float GetNextChargeTimer(int index)
+    {
+        var timers = chargeTimers[index];
+        if (timers == null || timers.Count == 0) return 0f;
+        float min = float.MaxValue;
+        for (int t = 0; t < timers.Count; t++)
+            if (timers[t] < min) min = timers[t];
+        return Mathf.Max(0f, min);
+    }
+
+    // ============================================================
     // 生命周期
     // ============================================================
 
@@ -110,6 +160,15 @@ public class SkillManager : MonoBehaviour
         lastManaEventValue = currentMana;
         cooldownTimers = new float[skillSlots.Length];
         slotLevels = new int[skillSlots.Length];
+
+        // [阶段7] 充能模型：初始化计数与恢复槽（useCharges 技能启动补满）
+        chargeCounts = new int[skillSlots.Length];
+        chargeTimers = new System.Collections.Generic.List<float>[skillSlots.Length];
+        for (int i = 0; i < skillSlots.Length; i++)
+        {
+            chargeTimers[i] = new System.Collections.Generic.List<float>();
+            InitSlotCharges(i);
+        }
 
         // [P7] 订阅 SkillPool 事件，同步 skillSlots 缓存
         if (skillPool != null)
@@ -186,11 +245,49 @@ public class SkillManager : MonoBehaviour
 
     private void UpdateCooldownTimer(int i, float cdScale)
     {
+        // [阶段7] 充能模型：useCharges 技能遍历恢复充能（每充能独立计时）
+        if (skillSlots[i]?.data is SkillData chargeSkill && chargeSkill.useCharges)
+        {
+            UpdateChargeTimer(i, chargeSkill, cdScale);
+            return;
+        }
+
         if (cooldownTimers[i] <= 0f) return;
         // 卡帧(timeScale=0)期间 CD 照常转:卡帧只冻视觉,不冻技能数值(2026-08-19 saika 确认方案1)
         cooldownTimers[i] -= Time.unscaledDeltaTime / cdScale;
         if (cooldownTimers[i] <= 0f)
             OnCooldownExpired(i);
+    }
+
+    /// <summary>
+    /// [阶段7] 充能恢复：遍历该槽所有恢复中的充能槽，恢复满则 chargeCounts++（上限 maxCharges）。
+    /// 用 unscaledDeltaTime：卡帧(timeScale=0)期间充能照常恢复（与阶段 6 抗卡帧一致）。
+    /// 最后一个充能恢复满（计数回满且无恢复中）时触发 SkillCooldownEndEvent（HUD 充能转好提示）。
+    /// </summary>
+    private void UpdateChargeTimer(int i, SkillData data, float cdScale)
+    {
+        System.Collections.Generic.List<float> timers = chargeTimers[i];
+        if (timers == null || timers.Count == 0) return;
+
+        for (int t = timers.Count - 1; t >= 0; t--)
+        {
+            timers[t] -= Time.unscaledDeltaTime / cdScale;
+            if (timers[t] <= 0f)
+            {
+                timers.RemoveAt(t);
+                if (chargeCounts[i] < data.maxCharges)
+                    chargeCounts[i]++;
+            }
+        }
+
+        // 计数回满且无恢复中 = 最后一个充能恢复满（本帧触发一次；下帧 timers 空提前 return 不会重复）
+        if (chargeCounts[i] >= data.maxCharges && timers.Count == 0)
+        {
+            EventBus.Trigger(new SkillCooldownEndEvent(
+                data.skillName ?? "",
+                i
+            ));
+        }
     }
 
     private void OnCooldownExpired(int i)
@@ -239,8 +336,16 @@ public class SkillManager : MonoBehaviour
         if (data is ActiveSkillData passiveTree && passiveTree.unlockPassiveOnly) return;
 
         // 冷却检查（传送弹二次激活,阶段 5：执行器挂起未使用的传送弹时,CD 期间允许再按技能键触发传送）
-        bool pendingReactivate = SkillExecutorRegistry.HasPendingReactivation(data.skillName);
-        if (!pendingReactivate && cooldownTimers[index] > 0f) return;
+        // [阶段7] 充能模型：useCharges 技能「有充能则消耗并激活」；否则走原单 CD 路径（零回归）
+        if (data.useCharges)
+        {
+            if (chargeCounts[index] <= 0) return; // 充能耗尽不可激活
+        }
+        else
+        {
+            bool pendingReactivate = SkillExecutorRegistry.HasPendingReactivation(data.skillName);
+            if (!pendingReactivate && cooldownTimers[index] > 0f) return;
+        }
 
         // [P3] 对 ActiveSkillData 使用分支等级对应的基础值
         // [MP-REMOVED 2026-08-17] 删除 MP 判定:不再检查/扣蓝,CD 为唯一限制。
@@ -265,7 +370,18 @@ public class SkillManager : MonoBehaviour
         // SpendMana(effectiveManaCost);
 
         // [P3] 冷却时间受 StatModifierManager 修饰
-        cooldownTimers[index] = GetEffectiveCooldown(baseCooldown);
+        // [阶段7] 充能模型：消耗 1 充能 + 开启该充能独立恢复计时；未启用走原单 CD
+        if (data.useCharges)
+        {
+            chargeCounts[index]--;
+            // 每充能恢复时间（未配置时回退到技能 cooldown；同样受 CooldownMultiplier 修饰，与 CD 一致）
+            float recharge = data.chargeRechargeTime > 0f ? data.chargeRechargeTime : baseCooldown;
+            chargeTimers[index].Add(GetEffectiveCooldown(Mathf.Max(0f, recharge)));
+        }
+        else
+        {
+            cooldownTimers[index] = GetEffectiveCooldown(baseCooldown);
+        }
 
         // 发射技能激活事件（Phase 2 的具体技能逻辑会订阅此事件）
         EventBus.Trigger(new SkillActivatedEvent(
@@ -277,8 +393,16 @@ public class SkillManager : MonoBehaviour
 
         // P3b:技能激活成功 → 切入技能释放状态(行为层表现 + 输入锁定,时长由状态类管理;
         // 技能冷却/法力逻辑保留在 SkillManager 数据层;快捷键(CheckHotkeys)/UI 按钮调用均触发)
-        if (owner != null && owner.PlayerFsm != null && owner.SkillCastState != null)
+        // [阶段7 B9 出口]：interceptsStateAfterActivate 技能由执行器接管状态（瞄准选点等长时选点），
+        // 不切 PlayerSkillCastState 固定 0.25s（否则瞄准态会被强制弹回 Idle/Move）
+        if (data.interceptsStateAfterActivate)
+        {
+            Debug.Log($"[Skill] {data.skillName} activated (slot {index}) - state intercepted by executor");
+        }
+        else if (owner != null && owner.PlayerFsm != null && owner.SkillCastState != null)
+        {
             owner.PlayerFsm.ChangeState(owner.SkillCastState);
+        }
 
         Debug.Log($"[Skill] {data.skillName} activated (slot {index})");
     }
@@ -334,6 +458,8 @@ public class SkillManager : MonoBehaviour
         if (slotIndex < 0 || slotIndex >= skillSlots.Length) return;
         skillSlots[slotIndex].data = null;
         slotLevels[slotIndex] = 0;
+        // [阶段7] 槽位技能变更：充能状态重置（空槽 = 0 计数 + 清恢复槽）
+        InitSlotCharges(slotIndex);
         // [P7] 同步清空 SkillPool HUD 槽位
         skillPool?.ClearHudSlot(slotIndex);
         RefreshSynergy();
@@ -345,6 +471,8 @@ public class SkillManager : MonoBehaviour
         if (slotIndex < 0 || slotIndex >= skillSlots.Length) return;
         skillSlots[slotIndex].data = data;
         slotLevels[slotIndex] = level;
+        // [阶段7] 槽位技能变更：充能状态重置为满（新技能新状态，防旧技能残留计数）
+        InitSlotCharges(slotIndex);
         // [P7] 同步装备到 SkillPool HUD 槽位
         if (data != null)
             skillPool?.EquipToHud(slotIndex, data.skillName);
@@ -369,8 +497,25 @@ public class SkillManager : MonoBehaviour
     {
         if (hudIndex < 0 || hudIndex >= skillSlots.Length) return;
         var entry = skillPool?.GetHudSkill(hudIndex);
+        SkillData oldData = skillSlots[hudIndex].data;
         skillSlots[hudIndex].data = entry?.skillData;
         slotLevels[hudIndex] = entry?.level ?? 0;
+        // [阶段7] HUD 槽位技能变更（换装备）：充能状态重置为满（新技能新状态）
+        if (oldData != skillSlots[hudIndex].data)
+            InitSlotCharges(hudIndex);
+    }
+
+    /// <summary>
+    /// [阶段7] 初始化指定槽位的充能状态：useCharges 技能计数补满（上限 maxCharges），清空恢复槽；
+    /// 非充能技能/空槽计数置 0。槽位技能变更（装备/清空/读档）时调用。
+    /// </summary>
+    private void InitSlotCharges(int index)
+    {
+        if (index < 0 || index >= skillSlots.Length) return;
+        var data = skillSlots[index]?.data;
+        chargeCounts[index] = data != null && data.useCharges ? Mathf.Max(1, data.maxCharges) : 0;
+        if (chargeTimers[index] != null)
+            chargeTimers[index].Clear();
     }
 
     /// <summary>SkillPool 池内容变化时刷新所有 slot 缓存</summary>

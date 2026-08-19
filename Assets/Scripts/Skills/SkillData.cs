@@ -38,6 +38,14 @@ public class SkillData : ScriptableObject
     public float cooldown;          // 冷却时间（秒，0 = 无冷却）
     public float manaCost;          // 法力消耗（0 = 无消耗）
 
+    [Header("充能（阶段7，可选）")]
+    [Tooltip("启用充能模型：有充能则消耗并激活，充能各自独立恢复；未启用走原单 CD 路径（零回归）")]
+    public bool useCharges;
+    [Tooltip("最大充能数（useCharges=true 时生效；默认 1）")]
+    public int maxCharges = 1;
+    [Tooltip("每充能恢复时间（秒，useCharges=true 时生效；每个已消耗的充能独立计时）")]
+    public float chargeRechargeTime = 5f;
+
     [Header("分类")]
     public SkillType type;          // Active / Passive / Toggle
     public SkillCategory category;  // 攻击 / 位移 / 防御 / 辅助 / 被动
@@ -45,6 +53,10 @@ public class SkillData : ScriptableObject
     [Header("进阶")]
     public int unlockLevel;         // 解锁等级（0 = 初始可用）
     public float castTime;          // 施法时间（秒，0 = 瞬发）
+
+    [Header("状态接管（阶段7，B9 出口）")]
+    [Tooltip("激活成功后由执行器接管状态（不切 PlayerSkillCastState 固定 0.25s；瞄准选点等需要长时间选点的技能用）")]
+    public bool interceptsStateAfterActivate;
 
     [Header("等级")]
     public int skillLevel = 1;      // 当前等级

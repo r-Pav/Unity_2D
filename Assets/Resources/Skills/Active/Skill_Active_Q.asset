@@ -30,42 +30,54 @@ MonoBehaviour:
     behaviorId: treeA_bolt
     branchName: Lv1-R
     icon: {fileID: 6943229999192725836, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
-    damage: 35
+    damage: 10
     cooldown: 3
     manaCost: 10
+    range: 0
+    duration: 0
     description: "\u53D1\u5C04\u4E00\u679A\u80FD\u91CF\u7403\uFF0C\u5BF9\u9996\u4E2A\u654C\u4EBA\u9020\u6210
       35 \u70B9\u4F24\u5BB3"
   lv2Left:
     behaviorId: treeA_burst3
     branchName: Q-lv2-l
     icon: {fileID: 1660957820977104790, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
-    damage: 25
+    damage: 10
     cooldown: 4
     manaCost: 15
+    range: 0
+    duration: 0
     description: "\u53D1\u5C04 3 \u679A\u5F39\u5E55\uFF0C\u6BCF\u679A\u9020\u6210
       25 \u70B9\u4F24\u5BB3"
   lv2Right:
     behaviorId: treeA_teleport
     branchName: "A-02 \u4F20\u9001\u5F39"
     icon: {fileID: -5063555655813669412, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
-    damage: 55
+    damage: 10
     cooldown: 5
     manaCost: 18
+    range: 0
+    duration: 0
     description: "\u53D1\u5C04\u6301\u7EED\u4F20\u9001\u5F39\uFF1A\u60AC\u505C\u4E0D\u6D88\u5931\uFF0C\u518D\u6B21\u6309\u952E\u77AC\u79FB\u5230\u5F39\u4F4D\u7F6E"
   lv3Left:
     behaviorId: treeA_burst5_crit
     branchName: "\u5F39\u5E55\u98CE\u66B4"
     icon: {fileID: 5000730549932156952, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
-    damage: 30
+    damage: 10
     cooldown: 3.5
     manaCost: 20
+    range: 0
+    duration: 0
     description: "\u53D1\u5C04 5 \u679A\u5F39\u5E55\uFF0C\u6BCF\u679A\u9020\u6210
       30 \u70B9\u4F24\u5BB3"
   lv3Right:
     behaviorId: treeA_teleport_heal
     branchName: "A-02 \u4F20\u9001\u56DE\u8840"
     icon: {fileID: 6789135733701371458, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
-    damage: 90
+    damage: 10
     cooldown: 4.5
     manaCost: 25
-    description: "\u53D1\u5C04\u6301\u7EED\u4F20\u9001\u5F39\uFF1A\u518D\u6B21\u6309\u952E\u77AC\u79FB\u5230\u5F39\u4F4D\u7F6E\uFF1B\u4F20\u9001\u65F6\u56DE\u590D\u7A97\u53E3\u5185\u9020\u6210\u4F24\u5BB3\u7684 50%"
+    range: 0
+    duration: 0
+    description: "\u53D1\u5C04\u6301\u7EED\u4F20\u9001\u5F39\uFF1A\u518D\u6B21\u6309\u952E\u77AC\u79FB\u5230\u5F39\u4F4D\u7F6E\uFF1B\u4F20\u9001\u65F6\u56DE\u590D\u7A97\u53E3\u5185\u9020\u6210\u4F24\u5BB3\u7684
+      50%"
+  unlockPassiveOnly: 0
