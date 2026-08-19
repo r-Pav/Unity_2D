@@ -51,7 +51,6 @@ public class DashIllusionExecutor
         if (branch == null) return;
 
         dashIllusionEnabled = true;
-        Debug.Log($"[DEBUG-Illusion] 树B Lv{e.newLevel} 左分支:启用冲刺留嘲讽幻象, branch={branch.branchName}, range={branch.range}, duration={branch.duration}, dot={branch.damage}");
         cachedConfig = new TauntIllusionConfig
         {
             tauntRadius = branch.range > 0f ? branch.range : 3f,      // lv3 资产 range 变大（大范围）
@@ -65,13 +64,11 @@ public class DashIllusionExecutor
 
     private static void OnDashEnded(DashEndedEvent e)
     {
-        Debug.Log($"[DEBUG-Illusion] DashEnded 收到, enabled={dashIllusionEnabled}, pos={e.position}");
         if (!dashIllusionEnabled) return; // 未解锁 B-01（或未选左分支）：忽略
 
         // 原地生成嘲讽幻象（决策 N3 顶替逻辑在管理器内）
         var mgr = IllusionManager.EnsureInstance();
         if (mgr == null) return;
-        var spawned = mgr.SpawnTauntIllusion(e.position, cachedConfig);
-        Debug.Log($"[DEBUG-Illusion] SpawnTauntIllusion 返回={spawned != null} @ {e.position}");
+        mgr.SpawnTauntIllusion(e.position, cachedConfig);
     }
 }

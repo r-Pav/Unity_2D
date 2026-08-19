@@ -237,8 +237,9 @@ public class SkillManager : MonoBehaviour
         // 升级解锁被动型(树B 等):不响应激活——不进 CD、不切释放态、不发事件(UI 点击/热键双保险)
         if (data is ActiveSkillData passiveTree && passiveTree.unlockPassiveOnly) return;
 
-        // 冷却检查
-        if (cooldownTimers[index] > 0f) return;
+        // 冷却检查（传送弹二次激活,阶段 5：执行器挂起未使用的传送弹时,CD 期间允许再按技能键触发传送）
+        bool pendingReactivate = SkillExecutorRegistry.HasPendingReactivation(data.skillName);
+        if (!pendingReactivate && cooldownTimers[index] > 0f) return;
 
         // [P3] 对 ActiveSkillData 使用分支等级对应的基础值
         // [MP-REMOVED 2026-08-17] 删除 MP 判定:不再检查/扣蓝,CD 为唯一限制。

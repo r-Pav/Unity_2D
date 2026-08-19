@@ -57,6 +57,10 @@ public static class CombatResolver
         }
 
         defender.ApplyDamage(info);  // 扣血+VFX+事件
+
+        // 伤害结算事件（技能组阶段 5,伤害统计窗口订阅）— finalAmount = info.amount 已被护甲/减伤修改,用最终值
+        EventBus.Trigger(new DamageDealtEvent(attacker, defender, info.amount));
+
         ElementProc.TryProc(info, defender); // 元素 proc（落雷衍生伤害 canTriggerElementProc=false 在此短路，防递归）
         defender.OnHitBy(info);      // 状态机推送 Hurt/AirHurt/Stun
         return info.amount;

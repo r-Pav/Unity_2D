@@ -13,9 +13,9 @@ public class IllusionManager : MonoBehaviour
 
     [Header("预制体（saika 编辑器建；为空时由代码运行时生成半透明 player sprite 外观）")]
     [Tooltip("嘲讽幻象预制体（可选）")]
-    [SerializeField] private GameObject tauntIllusionPrefab;
+    [SerializeField] private GameObject tauntIllusionPrefab = null;
     [Tooltip("攻击幻象预制体（阶段 6 使用，本阶段可为空）")]
-    [SerializeField] private GameObject attackIllusionPrefab;
+    [SerializeField] private GameObject attackIllusionPrefab = null;
 
     [Header("上限")]
     [Tooltip("每类型幻象数量上限（决策 N3：超限顶替同类型最早的）")]
@@ -75,7 +75,8 @@ public class IllusionManager : MonoBehaviour
             case IllusionType.Taunt:
                 return SpawnTauntIllusion(position, config);
             default:
-                // Attack 型：阶段 6 落地
+                // Attack 型：阶段 6 落地（attackIllusionPrefab 为预留预制体槽位，届时使用）
+                _ = attackIllusionPrefab;
                 return null;
         }
     }

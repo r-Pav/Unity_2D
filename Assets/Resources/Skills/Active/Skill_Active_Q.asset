@@ -45,14 +45,13 @@ MonoBehaviour:
     description: "\u53D1\u5C04 3 \u679A\u5F39\u5E55\uFF0C\u6BCF\u679A\u9020\u6210
       25 \u70B9\u4F24\u5BB3"
   lv2Right:
-    behaviorId: 
-    branchName: Q-lv2-R
+    behaviorId: treeA_teleport
+    branchName: "A-02 \u4F20\u9001\u5F39"
     icon: {fileID: -5063555655813669412, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
     damage: 55
     cooldown: 5
     manaCost: 18
-    description: "\u53D1\u5C04\u7A7F\u900F\u5F39\uFF0C\u9020\u6210 55 \u70B9\u4F24\u5BB3\uFF0C\u7A7F\u900F
-      3 \u4E2A\u76EE\u6807"
+    description: "\u53D1\u5C04\u6301\u7EED\u4F20\u9001\u5F39\uFF1A\u60AC\u505C\u4E0D\u6D88\u5931\uFF0C\u518D\u6B21\u6309\u952E\u77AC\u79FB\u5230\u5F39\u4F4D\u7F6E"
   lv3Left:
     behaviorId: treeA_burst5_crit
     branchName: "\u5F39\u5E55\u98CE\u66B4"
@@ -63,10 +62,10 @@ MonoBehaviour:
     description: "\u53D1\u5C04 5 \u679A\u5F39\u5E55\uFF0C\u6BCF\u679A\u9020\u6210
       30 \u70B9\u4F24\u5BB3"
   lv3Right:
-    behaviorId: 
-    branchName: "\u6BC1\u706D\u5C04\u7EBF"
+    behaviorId: treeA_teleport_heal
+    branchName: "A-02 \u4F20\u9001\u56DE\u8840"
     icon: {fileID: 6789135733701371458, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
     damage: 90
     cooldown: 4.5
     manaCost: 25
-    description: "\u53D1\u5C04\u6BC1\u706D\u5C04\u7EBF\uFF0C\u9020\u6210 90 \u70B9\u4F24\u5BB3\uFF0C\u53EF\u53CD\u5F39"
+    description: "\u53D1\u5C04\u6301\u7EED\u4F20\u9001\u5F39\uFF1A\u518D\u6B21\u6309\u952E\u77AC\u79FB\u5230\u5F39\u4F4D\u7F6E\uFF1B\u4F20\u9001\u65F6\u56DE\u590D\u7A97\u53E3\u5185\u9020\u6210\u4F24\u5BB3\u7684 50%"

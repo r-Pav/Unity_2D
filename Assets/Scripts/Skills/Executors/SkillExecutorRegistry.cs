@@ -43,6 +43,27 @@ public class SkillExecutorRegistry : MonoBehaviour
     }
 
     // ============================================================
+    // 二次激活挂起（技能组阶段 5 传送弹：CD 期间允许再按技能键触发传送）
+    // ============================================================
+
+    private static readonly HashSet<string> pendingReactivationSkills = new();
+
+    /// <summary>
+    /// 设置技能「二次激活挂起」标记：true = 有未使用的传送弹，CD 期间允许再次触发；
+    /// false = 清除。由 TeleportBoltExecutor 发射时置位、TeleportBolt 回池时清除（含玩家死亡）。
+    /// </summary>
+    public static void SetPendingReactivation(string skillName, bool pending)
+    {
+        if (string.IsNullOrEmpty(skillName)) return;
+        if (pending) pendingReactivationSkills.Add(skillName);
+        else pendingReactivationSkills.Remove(skillName);
+    }
+
+    /// <summary>该技能是否处于二次激活挂起（SkillManager 冷却检查据此放行）</summary>
+    public static bool HasPendingReactivation(string skillName)
+        => !string.IsNullOrEmpty(skillName) && pendingReactivationSkills.Contains(skillName);
+
+    // ============================================================
     // 实例字典（behaviorId → executor;skillName → executor）
     // ============================================================
 

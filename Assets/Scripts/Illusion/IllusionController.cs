@@ -100,11 +100,10 @@ public class IllusionController : MonoBehaviour
             Color c = sr.color;
             c.a = Mathf.Clamp01(alpha);
             sr.color = c;
-            Debug.Log($"[DEBUG-Illusion] 外观生成 OK: sprite={(sr.sprite != null ? sr.sprite.name : "NULL")}, alpha={c.a}, pos={transform.position}");
         }
         else
         {
-            Debug.LogWarning("[DEBUG-Illusion] 外观生成失败: 无 SpriteRenderer 且 player 无可用贴图");
+            Debug.LogWarning("IllusionController 外观生成失败: 无 SpriteRenderer 且 player 无可用贴图");
         }
     }
 }

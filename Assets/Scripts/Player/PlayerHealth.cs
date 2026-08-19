@@ -108,6 +108,41 @@ public class PlayerHealth : MonoBehaviour, ICombatant
         : baseMaxHealth;
 
     // ============================================================
+    // 治疗（技能组阶段 5,决策 B2）
+    // ============================================================
+
+    /// <summary>
+    /// 治疗 — 死亡时不生效；钳制到 MaxHealth；触发 PlayerHealthChangedEvent（HUD 血条刷新）。
+    /// 参考 Revive 的事件触发方式（L126）。
+    /// </summary>
+    public void Heal(float amount)
+    {
+        if (_isDead) return;
+        if (amount <= 0f) return;
+
+        float before = currentHealth;
+        currentHealth = Mathf.Min(MaxHealth, currentHealth + amount);
+        if (Mathf.Abs(currentHealth - before) > 0.001f)
+            EventBus.Trigger(new PlayerHealthChangedEvent(currentHealth, MaxHealth));
+    }
+
+    // ============================================================
+    // 无敌帧（技能组阶段 5 — 传送落地短暂无敌,防卡进 enemy 身体瞬间受伤）
+    // ============================================================
+
+    private float invincibleTimer;
+
+    /// <summary>是否处于无敌帧（由 PlayerTeleport 注入;期间 CanBeDamaged=false → CombatResolver 整条结算短路,不受击/不击退/不进受击态）</summary>
+    public bool IsInvincible => invincibleTimer > 0f;
+
+    /// <summary>设置无敌帧时长（秒；重复调用取更长）</summary>
+    public void SetInvincible(float duration)
+    {
+        if (duration <= 0f) return;
+        invincibleTimer = Mathf.Max(invincibleTimer, duration);
+    }
+
+    // ============================================================
     // 复活
     // ============================================================
 
@@ -164,10 +199,15 @@ public class PlayerHealth : MonoBehaviour, ICombatant
     // 父类调用接口
     // ============================================================
 
-    /// <summary>每帧被 PlayerController 调用（当前无需每帧逻辑，保留接口）</summary>
+    /// <summary>每帧被 PlayerController 调用（当前无需每帧逻辑，保留接口；无敌帧计时在此递减）</summary>
     public void OnPlayerUpdate(PlayerController pc)
     {
         owner = pc;
+        if (invincibleTimer > 0f)
+        {
+            invincibleTimer -= Time.deltaTime;
+            if (invincibleTimer < 0f) invincibleTimer = 0f;
+        }
     }
 
     // ============================================================
@@ -258,8 +298,8 @@ public class PlayerHealth : MonoBehaviour, ICombatant
     /// <summary>韧性组件 — 玩家不挂 PoiseComponent（P4 方案），返回 null → CombatResolver 走 fallback 直接击退</summary>
     public PoiseComponent Poise => null;
 
-    /// <summary>是否处于可被攻击的状态</summary>
-    public bool CanBeDamaged => !_isDead;
+    /// <summary>是否处于可被攻击的状态（死亡或无敌帧期间不可被攻击）</summary>
+    public bool CanBeDamaged => !_isDead && !IsInvincible;
 
     /// <summary>是否处于攻击判定帧（弹反查询用；玩家无敌人弹反，按攻击状态近似返回）</summary>
     public bool IsInAttackFrame =>

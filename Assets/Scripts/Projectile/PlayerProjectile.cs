@@ -2,7 +2,8 @@ using UnityEngine;
 
 /// <summary>
 /// 玩家魔法弹 — 继承 Projectile 基类;静态对象池 + Spawn 工厂(照抄 EnemyProjectile 模式)。
-/// 元素继承:发射时由执行器读 ElementModule.CurrentElement 写入 element 实例字段,
+/// 元素继承:发射时 Spawn 优先取调用方显式传入的 element,未指定时兜底从发射者 source
+/// 读取 ElementModule.CurrentElement 写入 element 实例字段(决策 N5:伤害实例按触发时刻读取),
 /// 命中走基类 TryDealDamage → DamageInfo.element → CombatResolver.Resolve,元素 proc 自动生效(决策 N5/D14)。
 /// 必暴:发射端(执行器)把仲裁倍率写入 critMultiplier 实例字段,命中透传 DamageInfo.critMultiplier(决策 D15)。
 /// </summary>
@@ -71,7 +72,14 @@ public class PlayerProjectile : Projectile
         p.SetAppearance(radius, color);
         // 携带发射者(player 侧 ICombatant)，命中结算时作为 DamageInfo.source
         p.SetSource(source);
-        // 元素继承:发射时写入实例字段,命中由基类 TryDealDamage 透传
+        // 元素继承:发射时写入实例字段,命中由基类 TryDealDamage 透传。
+        // 优先采用调用方显式传入的 element;未显式指定(默认 None)时兜底从发射者
+        // source 读取 ElementModule.CurrentElement(决策 N5:伤害实例按触发时刻读取)。
+        if (element == ElementType.None && source != null)
+        {
+            ElementModule em = source.GameObject.GetComponent<ElementModule>();
+            if (em != null) element = em.CurrentElement;
+        }
         p.element = element;
         p.critMultiplier = critMultiplier;
         // 攻击类型标签(发射端配置) — 匹配 VFX 变体

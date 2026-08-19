@@ -466,3 +466,43 @@ public readonly struct IllusionSpawnedEvent
         this.position = position;
     }
 }
+
+// ============================================================
+// 伤害统计 / 传送事件（技能组阶段 5）
+// ============================================================
+
+/// <summary>
+/// 伤害结算事件 — CombatResolver.ApplyDamage 成功后触发（护甲/减伤后的最终值）。
+/// 伤害统计窗口（DamageWindow）订阅累计 player 来源伤害；source=攻击方，target=受击方。
+/// </summary>
+public readonly struct DamageDealtEvent
+{
+    /// <summary>攻击方（null = 环境/无攻击者，不计入 player 统计）</summary>
+    public readonly ICombatant source;
+    /// <summary>受击方</summary>
+    public readonly ICombatant target;
+    /// <summary>最终伤害（已过护甲/减伤/暴击修改，非原始量）</summary>
+    public readonly float finalAmount;
+
+    public DamageDealtEvent(ICombatant source, ICombatant target, float finalAmount)
+    {
+        this.source = source;
+        this.target = target;
+        this.finalAmount = finalAmount;
+    }
+}
+
+/// <summary>玩家传送事件（占位，特效/音效订阅；阶段 5 传送弹落地触发）</summary>
+public readonly struct PlayerTeleportedEvent
+{
+    /// <summary>传送起点</summary>
+    public readonly Vector2 from;
+    /// <summary>传送落点</summary>
+    public readonly Vector2 to;
+
+    public PlayerTeleportedEvent(Vector2 from, Vector2 to)
+    {
+        this.from = from;
+        this.to = to;
+    }
+}
