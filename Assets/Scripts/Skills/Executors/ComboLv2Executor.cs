@@ -352,7 +352,7 @@ public class IllusionBoltEmitter : MonoBehaviour
             radius: radius,
             color: color,
             parent: null,
-            wallLayers: (1 << 3) | (1 << 11), // Ground + Wall,与魔法弹同款
+            wallLayers: (1 << 3) | (1 << 11) | LayerMask.GetMask("Channel"), // Ground + Wall + Channel(管道,撞管道回池消失)
             sourceLayer: PlayerController.Instance != null ? 1 << PlayerController.Instance.gameObject.layer : 0,
             source: source,
             element: element,

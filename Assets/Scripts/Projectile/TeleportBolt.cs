@@ -156,19 +156,31 @@ public class TeleportBolt : MonoBehaviour
 
     private void OnTriggerEnter2D(Collider2D other)
     {
+        // 悬停后（已传送标记）不再响应任何碰撞
+        if (stopped) return;
+
         int otherLayer = 1 << other.gameObject.layer;
 
         // ① 排除发射源自身层
         if (sourceLayer != 0 && (sourceLayer & otherLayer) != 0) return;
 
-        // ② 墙：停止悬停（不销毁 — 传送标记不能因撞墙消失）
+        // ② 管道回弹:命中 Channel 层 → 反向继续飞（距离从回弹点重新计）,不悬停。
+        // 回弹后最终撞普通墙/到 maxDistance 才悬停,瞬移落点在管道另一侧。
+        if ((LayerMask.GetMask("Channel") & otherLayer) != 0)
+        {
+            direction = -direction;
+            origin = transform.position;
+            return;
+        }
+
+        // ③ 墙：停止悬停（不销毁 — 传送标记不能因撞墙消失）
         if (wallLayers != 0 && (wallLayers & otherLayer) != 0)
         {
             stopped = true;
             return;
         }
 
-        // ③ 命中 enemy：每敌一次伤害（带元素，proc 生效），不销毁
+        // ④ 命中 enemy：每敌一次伤害（带元素，proc 生效），不销毁
         if ((hitLayers & otherLayer) == 0) return;
         EnemyControllerBase enemy = other.GetComponentInParent<EnemyControllerBase>();
         if (enemy == null || !enemy.CanBeDamaged) return;

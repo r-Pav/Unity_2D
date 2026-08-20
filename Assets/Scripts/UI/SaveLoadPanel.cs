@@ -8,8 +8,8 @@ using UnityEngine.UI;
 
 /// <summary>
 /// 存档/读档面板 — 挂 SavePanel（mode=Save）/ LoadPanel（mode=Load）。
-/// IPanel：FullScreen + Pause + Lock + Cursor；实现 ISlideClose（关闭时向左渐隐，不拖入 UIFadeManager.fadePanels）。
-/// 动效：打开 = 从右侧滑入出现（SlideIn）；关闭 = 向左渐隐（SlideClose）。
+/// IPanel：FullScreen + Pause + Lock + Cursor；实现 ISlideClose（关闭时向右滑出，不拖入 UIFadeManager.fadePanels）。
+/// 动效：打开 = 从右侧滑入出现（SlideIn）；关闭 = 向右滑出（SlideClose）。
 /// 槽位：slotUIs[5] = 手动槽 0-4；autoSlot = 自动存档槽 5（只读，点按无效、无删除按钮）。
 /// 交互：
 ///   Save：点空槽 → 直接保存；点有存档槽 → 确认"覆盖存档？"；Btn_Delete → 确认"确认删除该存档？"
@@ -47,9 +47,9 @@ public class SaveLoadPanel : MonoBehaviour, IPanel, ISlideClose
     [SerializeField] private Button confirmCancel;
 
     [Header("返回")]
-    [Tooltip("返回按钮 → 关闭当前页（向左渐隐，PauseMenu 向右渐显回居中）")]
+    [Tooltip("返回按钮 → 关闭当前页（向右滑出，PauseMenu 回一级）")]
     [SerializeField] private Button quitButton;
-    [Tooltip("PauseMenu 引用（拖 PauseMenu 物体）：本面板关闭后菜单右移回默认位置")]
+    [Tooltip("PauseMenu 引用（拖 PauseMenu 物体）：本面板关闭后菜单回一级（ReturnToLevel1）")]
     [SerializeField] private PauseMenu pauseMenu;
 
     [Header("存档系统")]
@@ -81,7 +81,7 @@ public class SaveLoadPanel : MonoBehaviour, IPanel, ISlideClose
     private readonly List<UnityAction> _boundHandlers = new List<UnityAction>();
 
     private const float SlideCloseDuration = 0.2f;
-    private const float SlideCloseDistance = -300f;
+    private const float SlideCloseDistance = 300f; // 向右滑出（反方向，与 SlideIn 同向）；SlideIn +300 从右滑入
     private const float SlideInDistance = 300f;
 
     private void Awake()
@@ -277,7 +277,6 @@ public class SaveLoadPanel : MonoBehaviour, IPanel, ISlideClose
                 RefreshSlots();
                 break;
             case PendingAction.Load:
-                Debug.Log($"[DEBUG-Load] OnConfirmOkClicked Load: onLoadRequested={(onLoadRequested != null)}, slot={slot}, saveSystem={(saveSystem != null)}");
                 if (onLoadRequested != null && HasAliveLoadListener())
                 {
                     // 外部读档回调（主菜单 TitleScene 用）：由回调方（MainMenu）设标记 + 切场景，
@@ -289,7 +288,6 @@ public class SaveLoadPanel : MonoBehaviour, IPanel, ISlideClose
                     // 游戏内读档（或 onLoadRequested 引用的是已销毁对象——从 TitleScene 复制面板带过来的误配置）：
                     // 直接 LoadGame + 关面板恢复游戏
                     bool loaded = saveSystem.LoadGame(slot);
-                    Debug.Log($"[DEBUG-Load] LoadGame 返回 {loaded}");
                     if (loaded)
                         PanelManager.Instance?.CloseAllPanels(); // 读档成功 → 关闭全部面板恢复游戏
                     else
@@ -327,7 +325,7 @@ public class SaveLoadPanel : MonoBehaviour, IPanel, ISlideClose
 
     private void OnQuitClicked()
     {
-        // 游戏内（SampleScene）：PanelManager 在 → 走栈管理 CloseTopPanel（PanelManager 检测 ISlideClose 走左滑关闭动效）
+        // 游戏内（SampleScene）：PanelManager 在 → 走栈管理 CloseTopPanel（PanelManager 检测 ISlideClose 走右滑关闭动效）
         // 主菜单（TitleScene）：无 PanelManager → 自己走 SlideClose 动画（播完再 SetActive(false)，与游戏内动效一致）
         if (PanelManager.Instance != null)
         {
@@ -353,7 +351,7 @@ public class SaveLoadPanel : MonoBehaviour, IPanel, ISlideClose
     }
 
     // ============================================================
-    // ISlideClose — 向左渐隐（不拖入 UIFadeManager.fadePanels）
+    // ISlideClose — 向右滑出（不拖入 UIFadeManager.fadePanels）
     // ============================================================
 
     /// <summary>打开时从右侧滑入出现（右滑出现 + 渐显 0→1）</summary>
@@ -384,8 +382,8 @@ public class SaveLoadPanel : MonoBehaviour, IPanel, ISlideClose
     public void SlideClose(Action onComplete)
     {
         if (_closeRoutine != null) StopCoroutine(_closeRoutine);
-        // 并行动效：菜单右移回默认位置 与 本面板左滑消失 同时进行（一起走）
-        if (pauseMenu != null) pauseMenu.ReturnToCenter();
+        // 并行动效：菜单回一级（二级 bg 反方向滑出消失）与 本面板向右滑出 同时进行（一起走）
+        if (pauseMenu != null) pauseMenu.ReturnToLevel1();
         _closeRoutine = StartCoroutine(SlideCloseRoutine(onComplete));
     }
 
@@ -407,8 +405,8 @@ public class SaveLoadPanel : MonoBehaviour, IPanel, ISlideClose
         if (_rect != null) _rect.anchoredPosition = targetPos;
         if (_canvasGroup != null) _canvasGroup.alpha = 0f;
 
-        // 菜单右移已由 SlideClose() 提前并行启动（见 SlideClose 注释）
-        // 左移只是视觉动画：播完恢复初始位置，否则下次打开 SlideIn 的 target 取到偏移位置，反复开关会累积偏移
+        // 菜单回一级已由 SlideClose() 提前并行启动（见 SlideClose 注释）
+        // 右滑只是视觉动画：播完恢复初始位置，否则下次打开 SlideIn 的 target 取到偏移位置，反复开关会累积偏移
         if (_rect != null) _rect.anchoredPosition = startPos;
 
         onComplete?.Invoke();

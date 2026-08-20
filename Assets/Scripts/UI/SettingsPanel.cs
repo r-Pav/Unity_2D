@@ -6,7 +6,7 @@ using UnityEngine.UI;
 
 /// <summary>
 /// 系统设置面板 — 页签式（音量 / 画面），挂 SettingsPanel 物体。
-/// IPanel：FullScreen + Pause + Lock + Cursor；实现 ISlideClose（关闭时向左渐隐，不拖入 UIFadeManager.fadePanels）。
+/// IPanel：FullScreen + Pause + Lock + Cursor；实现 ISlideClose（关闭时向右滑出，不拖入 UIFadeManager.fadePanels）。
 /// 场景结构（saika 已搭，勿重建）：
 ///   SettingsPanel > BTN > Btn_Volume / Btn_Video
 ///   SettingsPanel > Grp_Volume > Master+Sld_Master / BGM+Sld_BGM / SFX+Sld_SFX
@@ -17,7 +17,7 @@ using UnityEngine.UI;
 ///   - 任意改动立即应用：音量 → AudioManager.Instance.SetVolumes()；全屏 → Screen.fullScreen；
 ///     分辨率 → 解析选项文本 Split('x') → Screen.SetResolution(w, h, fullscreen)
 ///   - PlayerPrefs 持久化：key "GameSettings"，JSON 存 master/bgm/sfx/fullscreen/resolutionIndex；OnEnable 读回刷新控件
-///   - Btn_Back → PanelManager 存在时 CloseTopPanel（检测 ISlideClose 走左滑关闭动效，并行 pauseMenu.ReturnToCenter()）；
+///   - Btn_Back → PanelManager 存在时 CloseTopPanel（检测 ISlideClose 走右滑关闭动效，并行 pauseMenu.ReturnToLevel1()）；
 ///     无 PanelManager（TitleScene 主菜单）时直接 SetActive(false) 显隐关闭
 /// </summary>
 public class SettingsPanel : MonoBehaviour, IPanel, ISlideClose
@@ -52,9 +52,9 @@ public class SettingsPanel : MonoBehaviour, IPanel, ISlideClose
     [SerializeField] private TMP_Dropdown resolutionDropdown;
 
     [Header("返回")]
-    [Tooltip("返回按钮 → 关闭当前页（向左渐隐，PauseMenu 向右渐显回居中）")]
+    [Tooltip("返回按钮 → 关闭当前页（向右滑出，PauseMenu 回一级）")]
     [SerializeField] private Button backButton;
-    [Tooltip("PauseMenu 引用（拖 PauseMenu 物体）：本面板关闭后菜单右移回默认位置")]
+    [Tooltip("PauseMenu 引用（拖 PauseMenu 物体）：本面板关闭后菜单回一级（ReturnToLevel1）")]
     [SerializeField] private PauseMenu pauseMenu;
 
     private RectTransform _rect;
@@ -62,7 +62,7 @@ public class SettingsPanel : MonoBehaviour, IPanel, ISlideClose
     private Coroutine _closeRoutine;
 
     private const float SlideCloseDuration = 0.2f;
-    private const float SlideCloseDistance = -300f;
+    private const float SlideCloseDistance = 300f; // 向右滑出（反方向，与 SlideIn 同向）；SlideIn +300 从右滑入
     private const float SlideInDistance = 300f; // 打开从右侧滑入（与 SaveLoadPanel 一致：+300 = 从右往左滑入）
 
     private void Awake()
@@ -274,14 +274,14 @@ public class SettingsPanel : MonoBehaviour, IPanel, ISlideClose
     }
 
     // ============================================================
-    // ISlideClose — 向左渐隐（不拖入 UIFadeManager.fadePanels）
+    // ISlideClose — 向右滑出（不拖入 UIFadeManager.fadePanels）
     // ============================================================
 
     public void SlideClose(Action onComplete)
     {
         if (_closeRoutine != null) StopCoroutine(_closeRoutine);
-        // 并行动效：菜单右移回默认位置 与 本面板左滑消失 同时进行（一起走）
-        if (pauseMenu != null) pauseMenu.ReturnToCenter();
+        // 并行动效：菜单回一级（二级 bg 反方向滑出消失）与 本面板向右滑出 同时进行（一起走）
+        if (pauseMenu != null) pauseMenu.ReturnToLevel1();
         _closeRoutine = StartCoroutine(SlideCloseRoutine(onComplete));
     }
 
@@ -303,7 +303,7 @@ public class SettingsPanel : MonoBehaviour, IPanel, ISlideClose
         if (_rect != null) _rect.anchoredPosition = targetPos;
         if (_canvasGroup != null) _canvasGroup.alpha = 0f;
 
-        // 左移只是视觉动画：播完恢复初始位置，否则下次打开位置残留偏移
+        // 右滑只是视觉动画：播完恢复初始位置，否则下次打开位置残留偏移
         if (_rect != null) _rect.anchoredPosition = startPos;
 
         onComplete?.Invoke();

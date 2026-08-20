@@ -152,7 +152,7 @@ public class MagicBoltExecutor : ISkillExecutor
         // source = player 侧 ICombatant(PlayerHealth 实现);击退源点=玩家位置,与近战一致
         ICombatant source = playerGo.GetComponent<ICombatant>();
 
-        // 墙层:Ground(3)+Wall(11),与 EnemyRangedAttack L93 同款;sourceLayer=玩家自身层,防自伤
+        // 墙层:Ground(3)+Wall(11)+Channel(管道,子弹撞管道回池消失);sourceLayer=玩家自身层,防自伤
         PlayerProjectile.Spawn(
             position: pos,
             direction: dir,
@@ -162,7 +162,7 @@ public class MagicBoltExecutor : ISkillExecutor
             radius: boltRadius,
             color: boltColor,
             parent: null,
-            wallLayers: (1 << 3) | (1 << 11),
+            wallLayers: (1 << 3) | (1 << 11) | LayerMask.GetMask("Channel"),
             sourceLayer: 1 << playerGo.layer,
             source: source,
             element: element,

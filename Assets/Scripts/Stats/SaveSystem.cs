@@ -199,7 +199,6 @@ public class SaveSystem : MonoBehaviour
         RestoreWeapon(data);
         // [阶段8] 元素状态（决策 D17：走 ElementModule 导入接口；先解锁列表后当前元素）
         RestoreElement(data);
-        Debug.Log($"[DEBUG-Load] Restore 阶段完成: element={data.currentElement}, unlocked={(data.unlockedElements != null ? data.unlockedElements.Count : -1)}, 技能点数={data.skillPoints}");
 
         // [Phase5] 恢复属性分配点和背包数据
         RestoreAttributePoints(data);

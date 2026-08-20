@@ -101,6 +101,19 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     [Tooltip("下探距离（Y 轴）：从脚底向下探多深，探不到 = 悬崖/空洞")]
     [SerializeField] private float cliffCheckDown = 0.8f;
 
+    [Header("巡逻管道检测")]
+    [Tooltip("管道检测层(Channel):巡逻边界用")]
+    [SerializeField] private LayerMask channelLayer = 0;
+
+    [Tooltip("管道检测射线长度(前方)")]
+    [SerializeField] private float channelCheckForward = 1.5f;
+
+    [Tooltip("射线发射高度偏移(腰部)")]
+    [SerializeField] private float channelRayHeightOffset = 0.5f;
+
+    /// <summary>管道检测射线命中缓冲（团结引擎 ContactFilter2D 重载需结果数组；静态复用防每帧 GC）</summary>
+    private static readonly RaycastHit2D[] channelCheckHits = new RaycastHit2D[1];
+
     [Header("移动范围")]
     [Tooltip("活动范围半径（X 轴，以出生锚点为中心；0 = 不限制）")]
     [SerializeField] protected float homeRange = 0f;
@@ -1069,6 +1082,17 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         Vector2 origin = new Vector2(transform.position.x + dir * cliffCheckForward, footY);
         RaycastHit2D hit = Physics2D.Raycast(origin, Vector2.down, cliffCheckDown, groundLayer);
         return hit.collider != null;
+    }
+
+    /// <summary>巡逻管道检测 — 水平射线检测前方 Channel 层。命中返回 true，巡逻应转身。
+    /// 注意:管道 collider 是 trigger,Physics2D.Raycast 默认忽略 trigger,必须用 ContactFilter2D useTriggers=true。
+    /// 团结引擎的 ContactFilter2D 重载签名 = (origin, direction, filter, results[], distance),返回命中数。</summary>
+    public bool HasChannelAhead(int dir)
+    {
+        Vector2 origin = new Vector2(transform.position.x + dir * 0.1f, transform.position.y + channelRayHeightOffset);
+        var filter = new ContactFilter2D { useTriggers = true, layerMask = channelLayer };
+        int count = Physics2D.Raycast(origin, Vector2.right * dir, filter, channelCheckHits, channelCheckForward);
+        return count > 0;
     }
 
     /// <summary>是否可以对目标发起攻击（综合所有条件）。子类可覆盖以添加额外条件（如远程后退区）。
