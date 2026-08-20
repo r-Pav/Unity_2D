@@ -111,6 +111,13 @@ public class ActiveSkillData : SkillData
         [Tooltip("持续时间（秒；嘲讽时长/持续效果时长；0 = 不使用）")]
         public float duration;
 
+        [Tooltip("A02B02 减速圈半径")]
+        public float slowZoneRadius = 2f;    // A02B02 减速圈半径
+        [Tooltip("A02B02 减速圈持续时长(秒)")]
+        public float slowZoneDuration = 5f;  // A02B02 减速圈持续时长(秒)
+        [Tooltip("A02B02 减速比例(0.5 = 敌人移速减半)")]
+        public float slowFactor = 0.5f;      // A02B02 减速比例(0.5 = 移速减半)
+
         [TextArea(2, 4)]
         [Tooltip("技能效果描述（分支选择弹窗中显示）")]
         public string description;

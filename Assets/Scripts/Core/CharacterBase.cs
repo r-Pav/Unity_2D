@@ -67,10 +67,14 @@ public abstract class CharacterBase : MonoBehaviour
     public Collider2D Col => col;
     public Animator Animator => _animator;
 
-    /// <summary>当前移动速度（有临时覆盖直接用；否则走修饰器管线）</summary>
-    protected float MoveSpeed => _moveSpeedOverride ?? (statModManager != null
+    /// <summary>当前移动速度（有临时覆盖直接用；否则走修饰器管线；末尾乘外部速度乘数）</summary>
+    protected float MoveSpeed => (_moveSpeedOverride ?? (statModManager != null
         ? statModManager.GetFinalValue(baseMoveSpeed, StatId.MoveSpeed)
-        : baseMoveSpeed);
+        : baseMoveSpeed)) * speedMultiplier;
+
+    /// <summary>外部速度乘数(减速圈等用);1 = 不变</summary>
+    [Tooltip("外部速度乘数(减速圈等用);1 = 不变")]
+    public float speedMultiplier = 1f;
 
     // ============================================================
     // 生命周期

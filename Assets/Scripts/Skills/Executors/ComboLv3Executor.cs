@@ -9,15 +9,18 @@ using UnityEngine;
 ///   ② Combo_A01B02_Lv3（Q左+E右）：沿途攻击必定暴击 + 固定当前元素（决策 D9，element 取触发时刻 ElementModule.CurrentElement）
 ///   ③ Combo_A02B01_Lv3（Q右+E左）：传送弹 + 范围内 20% 闪避（StatId.DodgeChance 临时 Modifier，进范围加/离开移除）
 ///        + 吸引 enemy（嘲讽幻象持续刷新嘲讽）+ 伤害 50% 回血（DamageWindow + PlayerHealth.Heal）
-///   ④ Combo_A02B02_Lv3（Q右+E右）：传送弹（距离加长）+ 路径伤害 50% 回血 + 充能 3（走 SkillManager 充能模型）
-///        + 传送后慢动作 + AimLine 选下一次释放位置；无充能不进慢动作
+///   ④ Combo_A02B02_Lv3（Q右+E右）：减速圈传送 — 点技能键 = 玩家当前位置生成减速圈 + 瞄准（不发射）
+///        + 左键两段（第1次发射传送弹 / 第2次传送到弹位置）+ 落点减速圈 + 路径伤害 50% 回血 + 充能 3（走 SkillManager 充能模型）
+///        + 传送后慢动作 + AimLine 瞄准；有充能循环下一轮,无充能结束
 ///
 /// 传送弹二次激活与 CD：照抄 TeleportBoltExecutor / ComboLv2Executor 模式 —— 发射时 SetPendingReactivation(skillName,true)，
 /// SkillManager 在 CD 期间对该技能放行（再按技能键 = 传送）；挂起标记在传送使用 / 玩家死亡 / 弹回池时清除。
 ///
 /// A02B02 瞄准流程（B9 出口生效：配方资产 interceptsStateAfterActivate=true → TryActivate 不切 0.25s 释放态）：
-///   激活1（消耗充能）→ 发射传送弹 → 激活2（消耗充能）→ 传送到弹 → 慢动作 + 瞄准线（有充能才进）→
-///   激活3（消耗充能，瞄准态内按技能键确认）→ 传送到瞄准点 → 充能耗尽则技能结束（无充能不进慢动作）。
+///   点技能键（消耗1充能）→ 玩家当前位置生成减速圈 + 进入瞄准（不发射）
+///   → 左键第1次：发射传送弹（沿瞄准方向，距离沿用 boltLv3MaxDistance）
+///   → 左键第2次：传送到弹位置 + 落点生成减速圈
+///   → 有充能：退出瞄准态，慢动作保留，再点技能键开始下一轮；无充能：技能结束。
 ///   瞄准超时 = 技能干净结束（慢动作解除、player 恢复默认状态、充能按已消耗结算不返还）。
 /// </summary>
 public class ComboLv3Executor : ISkillExecutor
@@ -120,7 +123,7 @@ public class ComboLv3Executor : ISkillExecutor
             case "Combo_A01B01_Lv3": ExecuteA01B01(playerGo); break;
             case "Combo_A01B02_Lv3": ExecuteA01B02(playerGo); break;
             case "Combo_A02B01_Lv3": ExecuteA02B01(playerGo); break;
-            case "Combo_A02B02_Lv3": ExecuteA02B02(playerGo, e.slotIndex); break;
+            case "Combo_A02B02_Lv3": ExecuteA02B02(playerGo, e.slotIndex, branch); break;
             default: break; // 未知 skillName 静默跳过（注册表已按 skillName 分发,此分支为双保险）
         }
     }
@@ -260,22 +263,53 @@ public class ComboLv3Executor : ISkillExecutor
     }
 
     // ============================================================
-    // ④ A02B02（Q右+E右）：传送弹（距离加长）+ 路径伤害 50% 回血 + 充能 3 + 慢动作 + AimLine
+    // ④ A02B02（Q右+E右）：减速圈传送 — 点技能键自身圈+瞄准,左键两段(发射→传送)+落点圈 + 充能 3 + 慢动作 + AimLine
     // ============================================================
 
-    private void ExecuteA02B02(GameObject playerGo, int slotIndex)
+    private void ExecuteA02B02(GameObject playerGo, int slotIndex, ActiveSkillData.ActiveBranchData branch)
     {
-        // saika 2026-08-19 定稿:点技能键 = 消耗 1 充能(TryActivate 已扣)+ 发射传送弹(沿鼠标瞄准方向)+ 进入瞄准态(线跟鼠标)
-        // 左键确认 = 传送到瞄准点,不消耗充能(confirmCallback 直连执行器);直到充能耗尽技能结束
-        FireTeleportBolt(playerGo, boltLv3MaxDistance, healEnabled: true); // 首次:发射(距离加长 + 路径回血窗口)
-        EnterAiming(playerGo, slotIndex);                                   // 显示瞄准线 + 慢动作选下一次释放位置
+        // saika 2026-08-20 定稿(按键规则):技能键 = 消耗 1 充能 开圈+瞄准 / 已发射后技能键二次激活 = 传送(不扣充能);
+        // 左键 = 仅发射传送弹(沿瞄准方向);循环:技能键(开圈) → 左键(发射) → 技能键(传送) → 自动瞄准 → ...
+        // 二次激活 = 技能键传送(照抄 A02B01 模式):有挂起弹且归属本技能 → 传送,不再开新圈
+        if (_activeBolt != null && _activeBolt.IsActive && _pendingSkill == _skillName)
+        {
+            DoTeleportA02B02(playerGo, slotIndex, branch); // 技能键传送:传送到刚创建的圈(弹落点圈)
+            return;
+        }
+
+        // 首次激活:先清理上一轮残留传送弹(瞄准超时未确认等场景),避免左键误判为"已发射"
+        if (_activeBolt != null)
+        {
+            if (_activeBolt.IsActive) _activeBolt.Cancel();
+            _activeBolt = null;
+        }
+        _pendingSkill = null;
+
+        // 减速圈参数读分支资产（A02B02 = Q右+E右 → E 树 lv3Right；与 A01B0x 的 GetBranchSide 模式一致,saika 在 Inspector 调）
+        ActiveSkillData.ActiveBranchData slowBranch = branch ?? GetBranchSide(LoadTreeB(), 3, "Right");
+        // 已在圈内不重复生成（圈是实体各自生命周期;传送后玩家站在圈里再释放技能不再叠圈）
+        if (!SlowZone.IsPointInAnyZone(playerGo.transform.position))
+        {
+            SlowZone.Spawn(playerGo.transform.position, // 自身减速圈
+                slowBranch != null && slowBranch.slowZoneRadius > 0f ? slowBranch.slowZoneRadius : 2f,
+                slowBranch != null && slowBranch.slowZoneDuration > 0f ? slowBranch.slowZoneDuration : 5f,
+                slowBranch != null && slowBranch.slowFactor > 0f ? slowBranch.slowFactor : 0.5f);
+        }
+        EnterAiming(playerGo, slotIndex);                                                          // 进入瞄准(不发射)
     }
 
-    /// <summary>传送到弹位置 → 路径伤害回血 → 有剩余充能则进入慢动作 + 瞄准（无充能不进慢动作）</summary>
-    private void DoTeleportA02B02(GameObject playerGo, int slotIndex)
+    /// <summary>技能键二次激活传送 — 传送到刚创建的圈(弹落点圈,弹位置即圈位置)→ 路径伤害回血 → 有剩余充能自动进瞄准(无充能结束)</summary>
+    private void DoTeleportA02B02(GameObject playerGo, int slotIndex, ActiveSkillData.ActiveBranchData branch)
     {
         if (_activeBolt == null || !_activeBolt.IsActive) return;
         Vector2 dest = _activeBolt.Position;
+
+        // 落点生成减速圈(刚创建的圈 = 传送目标位置)
+        ActiveSkillData.ActiveBranchData slowBranch = branch ?? GetBranchSide(LoadTreeB(), 3, "Right");
+        SlowZone.Spawn(dest,
+            slowBranch != null && slowBranch.slowZoneRadius > 0f ? slowBranch.slowZoneRadius : 2f,
+            slowBranch != null && slowBranch.slowZoneDuration > 0f ? slowBranch.slowZoneDuration : 5f,
+            slowBranch != null && slowBranch.slowFactor > 0f ? slowBranch.slowFactor : 0.5f);
 
         // 瞬移（组件缺失时运行时挂载,默认参数可用）
         PlayerTeleport teleport = playerGo.GetComponent<PlayerTeleport>();
@@ -290,10 +324,21 @@ public class ComboLv3Executor : ISkillExecutor
         _activeBolt = null;
         _pendingSkill = null;
 
-        // 传送后慢动作 + AimLine 选下一次释放位置；无充能不进慢动作
+        // 退出当前瞄准态(技能键传送发生时玩家处于瞄准态;confirmedCleanup 跳过清理回调,慢动作由后续 EnterAiming/无充能处理)
+        PlayerController pc = playerGo.GetComponent<PlayerController>();
+        if (pc != null && pc.AimingState != null && pc.PlayerFsm != null
+            && pc.PlayerFsm.CurrentState == pc.AimingState)
+        {
+            pc.AimingState.confirmedCleanup = true;
+            pc.PlayerFsm.ChangeState(pc.IdleState);
+        }
+
+        // 传送后慢动作 + AimLine 选下一次释放位置；无充能不进慢动作并解除慢动作
         SkillManager sm = playerGo.GetComponent<SkillManager>();
         if (sm != null && sm.GetCharges(slotIndex) > 0)
             EnterAiming(playerGo, slotIndex);
+        else
+            SlowMotionController.ExitSlow();
     }
 
     /// <summary>进入瞄准：慢动作 + 瞄准线显示 + FSM 切 PlayerAimingState（B9 出口：不被 0.25s 释放态打断）</summary>
@@ -310,46 +355,14 @@ public class ComboLv3Executor : ISkillExecutor
         SlowMotionController.EnterSlow(slowMotionScale, slowMotionDuration);
 
         // 瞄准态：超时回调 = 技能干净结束（慢动作解除 + 清瞄准标记;状态类自己切回 Idle/Move）
-        // 确认回调 = 执行器直接传送到瞄准点（不走 TryActivate,确认不消耗充能,1 点/轮）
+        // 确认回调 = 左键仅发射(2026-08-20 定稿):未发射 → 发射传送弹;已发射 → 忽略(传送改技能键二次激活,防误按)
         pc.AimingState.Begin(aimTimeout, aimDistance, WallMask, slotIndex, CancelAiming,
-            () => DoTeleportToAimPoint(playerGo, slotIndex));
+            () =>
+            {
+                if (_activeBolt == null || !_activeBolt.IsActive)
+                    FireTeleportBolt(playerGo, boltLv3MaxDistance, healEnabled: true);
+            });
         pc.PlayerFsm.ChangeState(pc.AimingState);
-    }
-
-    /// <summary>
-    /// 瞄准确认（saika 2026-08-19 定稿）：传送目标 = 魔法弹当前位置（每轮:点技能键发射消耗 1 充能 → 左键传送到弹位置）。
-    /// 传送后退出瞄准态（技能键恢复可用,等玩家点技能键开始下一轮,不自动链式）;慢动作保留到 0 充能才解除。
-    /// </summary>
-    private void DoTeleportToAimPoint(GameObject playerGo, int slotIndex)
-    {
-        PlayerController pc = playerGo.GetComponent<PlayerController>();
-        if (pc == null) return;
-
-        // 传送目标 = 当前魔法弹位置
-        if (_activeBolt == null || !_activeBolt.IsActive)
-        {
-            CancelAiming();
-            pc.PlayerFsm.ChangeState(pc.IdleState);
-            return;
-        }
-        Vector2 dest = _activeBolt.Position;
-        _activeBolt.Cancel();
-        _activeBolt = null;
-        _pendingSkill = null;
-
-        // 瞬移（贴墙钳制 + 清速度 + 无敌帧）
-        PlayerTeleport teleport = playerGo.GetComponent<PlayerTeleport>();
-        if (teleport == null) teleport = playerGo.AddComponent<PlayerTeleport>();
-        teleport.TeleportTo(dest);
-
-        // 清瞄准标记;退出瞄准态时 OnExit 跳过清理回调(慢动作保留,等下一轮/0 充能)
-        if (pc.AimingState != null) pc.AimingState.confirmedCleanup = true;
-        pc.PlayerFsm.ChangeState(pc.IdleState);
-
-        // 0 充能:技能结束,解除慢动作;有充能:慢动作保留,玩家可点技能键开始下一轮
-        SkillManager sm = playerGo.GetComponent<SkillManager>();
-        if (sm == null || sm.GetCharges(slotIndex) <= 0)
-            SlowMotionController.ExitSlow();
     }
 
     /// <summary>清理瞄准状态 + 解除慢动作（超时 / 确认 / 玩家死亡共用）</summary>

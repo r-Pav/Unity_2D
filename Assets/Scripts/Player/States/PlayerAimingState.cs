@@ -75,6 +75,15 @@ public class PlayerAimingState : EntityState
         {
             onConfirm?.Invoke();
         }
+
+        // 技能键二次激活(2026-08-20 A02B02 定稿:发射后技能键=传送):瞄准态自行轮询热键
+        // (LocksInput=true → SkillManager.CheckHotkeys 不跑,这里补上;TryActivate 内部 pendingReactivate 放行且不扣充能)
+        KeyCode[] hudKeys = { KeyCode.Q, KeyCode.E, KeyCode.R, KeyCode.F };
+        if (slotIndex >= 0 && slotIndex < hudKeys.Length && Input.GetKeyDown(hudKeys[slotIndex]))
+        {
+            var sm = pc != null ? pc.GetComponent<SkillManager>() : null;
+            if (sm != null) sm.TryActivate(slotIndex);
+        }
     }
 
     public override void OnExit()

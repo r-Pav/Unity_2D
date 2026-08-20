@@ -337,13 +337,14 @@ public class SkillManager : MonoBehaviour
 
         // 冷却检查（传送弹二次激活,阶段 5：执行器挂起未使用的传送弹时,CD 期间允许再按技能键触发传送）
         // [阶段7] 充能模型：useCharges 技能「有充能则消耗并激活」；否则走原单 CD 路径（零回归）
+        // [2026-08-20 A02B02] 二次激活(技能键传送)不扣充能：pendingReactivate 时放行且不消耗
+        bool pendingReactivate = SkillExecutorRegistry.HasPendingReactivation(data.skillName);
         if (data.useCharges)
         {
-            if (chargeCounts[index] <= 0) return; // 充能耗尽不可激活
+            if (!pendingReactivate && chargeCounts[index] <= 0) return; // 充能耗尽且非二次激活不可激活
         }
         else
         {
-            bool pendingReactivate = SkillExecutorRegistry.HasPendingReactivation(data.skillName);
             if (!pendingReactivate && cooldownTimers[index] > 0f) return;
         }
 
@@ -370,13 +371,16 @@ public class SkillManager : MonoBehaviour
         // SpendMana(effectiveManaCost);
 
         // [P3] 冷却时间受 StatModifierManager 修饰
-        // [阶段7] 充能模型：消耗 1 充能 + 开启该充能独立恢复计时；未启用走原单 CD
+        // 扣充能段:二次激活(传送)不扣、不开新恢复计时
         if (data.useCharges)
         {
-            chargeCounts[index]--;
-            // 每充能恢复时间（未配置时回退到技能 cooldown；同样受 CooldownMultiplier 修饰，与 CD 一致）
-            float recharge = data.chargeRechargeTime > 0f ? data.chargeRechargeTime : baseCooldown;
-            chargeTimers[index].Add(GetEffectiveCooldown(Mathf.Max(0f, recharge)));
+            if (!pendingReactivate)
+            {
+                chargeCounts[index]--;
+                // 每充能恢复时间（未配置时回退到技能 cooldown；同样受 CooldownMultiplier 修饰，与 CD 一致）
+                float recharge = data.chargeRechargeTime > 0f ? data.chargeRechargeTime : baseCooldown;
+                chargeTimers[index].Add(GetEffectiveCooldown(Mathf.Max(0f, recharge)));
+            }
         }
         else
         {
