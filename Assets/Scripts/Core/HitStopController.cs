@@ -30,13 +30,14 @@ public class HitStopController : MonoBehaviour
     /// <summary>
     /// 触发命中停顿（默认 0.04s，timeScale 置 0 冻结）。支持重叠调用，只有最后一次结束时才恢复原始 timescale。
     /// 可选震屏参数：shakeDuration > 0 时同入口触发相机震动（真实时间驱动，卡帧冻结期间照常播放）；
+    /// shakeDirection 非零时震屏沿该方向为主（近战命中传攻击方向）；传 0 = 随机方向（旧行为）。
     /// 传 0 = 不震（PlayerHealth 玩家受击调用不传震屏 → 不震，行为不变）。
     /// </summary>
-    public void Trigger(float duration = 0.04f, float shakeDuration = 0f, float shakeMagnitude = 0f)
+    public void Trigger(float duration = 0.04f, float shakeDuration = 0f, float shakeMagnitude = 0f, Vector2 shakeDirection = default)
     {
         // 震屏独立于卡肉：卡肉时长为 0 时照样震
         if (shakeDuration > 0f)
-            TriggerShake(shakeDuration, shakeMagnitude);
+            TriggerShake(shakeDuration, shakeMagnitude, shakeDirection);
 
         if (duration <= 0f) return;   // 时长为 0 = 停顿关闭，避免无意义的 timeScale 置 0/恢复
         if (activeCount == 0)
@@ -45,8 +46,8 @@ public class HitStopController : MonoBehaviour
         StartCoroutine(Routine(duration));
     }
 
-    /// <summary>触发相机震动 — 走 CameraShakeExtension（与下坠攻击同路径；找不到 VCam 时静默跳过）</summary>
-    private void TriggerShake(float duration, float magnitude)
+    /// <summary>触发相机震动 — 走 CameraShakeExtension（与下坠攻击同路径；找不到 VCam 时静默跳过）。direction 非零时透传到 Shake（沿方向为主）</summary>
+    private void TriggerShake(float duration, float magnitude, Vector2 direction)
     {
         if (_shakeExtension == null)
         {
@@ -59,7 +60,7 @@ public class HitStopController : MonoBehaviour
             }
         }
         if (_shakeExtension == null) return;
-        _shakeExtension.Shake(duration, magnitude);
+        _shakeExtension.Shake(duration, magnitude, direction);
     }
 
     private System.Collections.IEnumerator Routine(float duration)

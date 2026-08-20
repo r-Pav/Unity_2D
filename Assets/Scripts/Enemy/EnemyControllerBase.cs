@@ -47,6 +47,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     [Header("受伤反馈")]
     [SerializeField] protected Color hitColor = Color.white;  // 白色闪白更明显
     [SerializeField] protected float hitFlashDuration = 0.1f;
+    [Tooltip("受击停顿(秒):当前受击 enemy 在全局卡帧结束后,自己再冻结受击动画的时长。0/空 = 不启用")]
+    [SerializeField] private float enemyHitPause = 0f;   // 显式 0 与"不设默认值"行为等价（0 = 不启用），避免 CS0649
 
     [Header("蓄力反馈")]
     [Tooltip("蓄力色 — 蓄力帧(OnCharge)开始闪烁、发射帧(OnFire)结束；灭相位恢复原始材质色")]
@@ -196,6 +198,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     private bool isChargeFlashing;       // 蓄力闪烁中（BeginChargeFlash 置位，EndChargeFlash 复位）
     private float chargeFlashStartTime;  // 蓄力闪烁开始时间（Time.time），驱动频率加速
     private float hitKnockbackWindow;    // 受击击退滑行窗口（>0 时 OnFixedUpdate 不 Move(0)，保留击退速度滑行；对齐 stun 豁免）
+    private float hitPauseTimer;         // 受击停顿倒计时（>0 冻结受击动画；ApplyDamage 置 enemyHitPause，OnUpdate 倒数）
 
     // ── FSM ──
     protected StateMachine fsm;
@@ -389,6 +392,19 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
             _localFreezeRemaining = 0f;
             EndLocalFreeze();
         }
+
+        // 受击停顿清理：禁用/回收时恢复动画速度，防止 animator.speed=0 残留冻结
+        if (hitPauseTimer > 0f)
+        {
+            hitPauseTimer = 0f;
+            if (_animator != null) _animator.speed = 1f;
+        }
+    }
+
+    /// <summary>销毁兜底：恢复动画速度，防场景切换/销毁时 animator.speed=0 残留冻结</summary>
+    protected virtual void OnDestroy()
+    {
+        if (_animator != null) _animator.speed = 1f;
     }
 
     protected void Start()
@@ -464,6 +480,18 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     {
         if (isDead) return;
         if (_localFreezeRemaining > 0f) return;   // 本地冻结：FSM 停更，AI/攻击全部暂停
+
+        // 受击停顿：卡帧结束后的自身小冻结（不移动 + 冻结受击动画，只影响本 enemy）。
+        // 用 Time.deltaTime 倒数 → 全局卡帧(timeScale=0)期间不走，卡帧结束后才开始计 = 总卡顿 = 卡帧 + 停顿
+        if (hitPauseTimer > 0f)
+        {
+            hitPauseTimer -= Time.deltaTime;
+            moveInput = 0f;                        // 停顿期间不移动
+            if (_animator != null) _animator.speed = 0f;   // 冻结受击动画（停在当前帧）
+            if (hitPauseTimer <= 0f && _animator != null) _animator.speed = 1f;   // 停顿结束恢复
+            return;                                // 短路其余逻辑（攻击/状态切换等）
+        }
+
         fsm?.Update();
     }
 
@@ -620,6 +648,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     {
         currentHealth -= amount;
         FlashHit();
+        hitPauseTimer = enemyHitPause;   // 受击停顿：近战/远程受击都生效（0/空 = 不启用，行为不变）
 
         Vector2 pos = vfxPos ?? (Vector2)transform.position;
 
@@ -695,6 +724,13 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         {
             _localFreezeRemaining = 0f;
             EndLocalFreeze();
+        }
+
+        // 受击停顿中死亡 → 立即解除（同上：animator.speed=0 会卡死死亡动画及其末帧事件）
+        if (hitPauseTimer > 0f)
+        {
+            hitPauseTimer = 0f;
+            if (_animator != null) _animator.speed = 1f;
         }
 
         // 死亡停住：清移动输入 + 水平速度（移动中被杀时 moveInput 残留 → 死亡动画期间会继续滑动）

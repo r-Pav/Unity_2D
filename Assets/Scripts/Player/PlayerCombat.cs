@@ -359,10 +359,11 @@ public class PlayerCombat : MonoBehaviour
 
         if (hitAnything)
         {
-            // 命中震屏随卡帧同入口触发（真实时间驱动，卡帧冻结期间照常播放）；命中 Boss 用 Boss 档位
+            // 命中震屏随卡帧同入口触发（真实时间驱动，卡帧冻结期间照常播放）；命中 Boss 用 Boss 档位；
+            // 震屏沿攻击方向为主（AttackDir = 武器攻击线朝向，带少量垂直抖动）
             float shakeDur = hitBoss ? bossHitShakeDuration : enemyHitShakeDuration;
             float shakeMag = hitBoss ? bossHitShakeMagnitude : enemyHitShakeMagnitude;
-            HitStopController.Instance?.Trigger(meleeHitStopDuration, shakeDur, shakeMag);
+            HitStopController.Instance?.Trigger(meleeHitStopDuration, shakeDur, shakeMag, new Vector2(AttackDir, 0f));
         }
 
         rangeIndicator.Flash();
@@ -486,10 +487,10 @@ public class PlayerCombat : MonoBehaviour
 
         if (hitAnything)
         {
-            // 命中震屏随卡帧同入口触发；命中 Boss 用 Boss 档位
+            // 命中震屏随卡帧同入口触发；命中 Boss 用 Boss 档位；震屏沿攻击方向为主（弹反重击同普通路径）
             float shakeDur = hitBoss ? bossHitShakeDuration : enemyHitShakeDuration;
             float shakeMag = hitBoss ? bossHitShakeMagnitude : enemyHitShakeMagnitude;
-            HitStopController.Instance?.Trigger(meleeHitStopDuration, shakeDur, shakeMag);
+            HitStopController.Instance?.Trigger(meleeHitStopDuration, shakeDur, shakeMag, new Vector2(AttackDir, 0f));
         }
 
         rangeIndicator.Flash();
