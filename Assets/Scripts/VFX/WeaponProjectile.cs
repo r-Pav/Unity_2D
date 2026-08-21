@@ -14,6 +14,7 @@ public class WeaponProjectile : MonoBehaviour
     private float _easeOutPower = 2f;   // 缓出强度:越大前段甩得越快
     private Vector3 _origin;
     private Transform _followTarget;   // 非空时每帧基准跟随该物体(玩家移动中攻击不脱节)
+    private Vector3 _followOffset;     // 跟随基准的固定偏移(生成瞬间定格:武器相对 Player 根的位置快照)
     private SpriteRenderer _sr;
     private Material _runtimeMat;
     private bool _hasDissolve;   // 是否真的用了溶解 shader(否则只做 alpha 渐隐)
@@ -42,7 +43,8 @@ public class WeaponProjectile : MonoBehaviour
         LayerMask groundLayer,
         GameObject landingVFX,
         GameObject stickVFX,
-        Transform followTarget)
+        Transform followTarget,
+        Vector3 followOffset)
     {
         _path = pathPoints;
         _travelDuration = travelDuration;
@@ -59,6 +61,7 @@ public class WeaponProjectile : MonoBehaviour
         _sr = GetComponent<SpriteRenderer>();
         _col = GetComponent<BoxCollider2D>();
         _followTarget = followTarget;
+        _followOffset = followOffset;
 
         // 溶解材质:
         // - 拖了 dissolveMaterial 字段 → 用它
@@ -119,9 +122,10 @@ public class WeaponProjectile : MonoBehaviour
             // 缓出:前段甩得快,后段飘。power 越大前段越猛
             float t = 1f - Mathf.Pow(1f - raw, _easeOutPower);
 
-            // 基准点:有跟随目标(玩家)时每帧取玩家当前位置,移动中攻击不脱节;
+            // 基准点:有跟随目标(玩家根)时 = 玩家位置 + 生成瞬间定格的武器偏移快照。
+            // 快照不随翻转镜像 → 剑不跳;与 Gizmos 曲线基准(武器位置)一致 → 所见即所得。
             // 无目标时固定用出手位置(原行为)
-            Vector3 basePos = _followTarget != null ? _followTarget.position : _origin;
+            Vector3 basePos = _followTarget != null ? _followTarget.position + _followOffset : _origin;
             transform.position = basePos + GetPathPosition(t);
 
             // 插墙检测:用射线扫本帧位移路径,路径穿过墙就停(任何速度都不穿透)
