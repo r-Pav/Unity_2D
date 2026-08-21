@@ -6,13 +6,15 @@ using UnityEngine;
 /// 充能制冲刺(决策 D3/D16):默认 1 充能,maxCharges 序列化可配;树 B lv1 解锁后 2 充能、各自独立恢复。
 /// 对外提供:DoDash(消耗充能+清速度+设冲刺速度+开恢复计时) / CooldownReady(充能查询) /
 /// TickCooldown(充能恢复) / UnlockExtraCharge / EnableDashDamage / SetDashDamage(树 B lv1 解锁入口)。
-/// dashSpeed/dashDuration 保留序列化配置;dashDuration 由 PlayerController 注入状态类。
+/// dashDistance/dashDuration 保留序列化配置(未注入 SO 时的回退);速度 = 距离 ÷ 时长 推导。
 /// 冲刺伤害判定在 PlayerDashState(DashDamageEnabled 开启后每帧 OverlapBox),检测参数在本组件序列化配置。
 /// </summary>
 public class PlayerDash : MonoBehaviour
 {
     [Header("冲刺")]
-    [SerializeField] private float dashSpeed = 10f;
+    [Tooltip("冲刺距离(米);速度 = 距离 ÷ 总时长 自动推导;树B SO 未注入时回退此值")]
+    [SerializeField] private float dashDistance = 1.8f;
+    [Tooltip("冲刺总持续时间(秒);树B SO 未注入时回退此值")]
     [SerializeField] private float dashDuration = 0.15f;
 
     [Header("充能")]
@@ -39,7 +41,7 @@ public class PlayerDash : MonoBehaviour
     [System.NonSerialized] private float dashDamage;                         // 冲刺伤害值(由 DashUpgradeExecutor 按 lv1Data.damage 注入;0 = 无伤害)
     [System.NonSerialized] private float dashDistanceMultiplier = 1f;        // 冲刺距离修饰(阶段 6 lv3B-02 右分支"距离增加";运行时注入,默认 1 = 原距离)
 
-    // [2026-08-21] 树B SO 注入的冲刺参数(0 = 未注入,回退序列化 dashSpeed/dashDuration):
+    // [2026-08-21] 树B SO 注入的冲刺参数(0 = 未注入,回退序列化 dashDistance/dashDuration):
     // 冲刺距离/总时长从 ActiveBranchData 读取,速度 = 距离 ÷ 时长 推导(见 DashUpgradeExecutor)
     [System.NonSerialized] private float dashSpeedOverride;
     [System.NonSerialized] private float dashDurationOverride;
@@ -57,8 +59,9 @@ public class PlayerDash : MonoBehaviour
     /// <summary>冲刺时长(秒),注入 PlayerDashState 做超时退出;SO 注入值优先,0 回退序列化</summary>
     public float DashDuration => dashDurationOverride > 0f ? dashDurationOverride : dashDuration;
 
-    /// <summary>冲刺速度(米/秒),DoDash 设速用;SO 注入值优先,0 回退序列化</summary>
-    public float DashSpeed => dashSpeedOverride > 0f ? dashSpeedOverride : dashSpeed;
+    /// <summary>冲刺速度(米/秒),DoDash 设速用;SO 注入值优先,未注入用 距离 ÷ 时长 推导</summary>
+    public float DashSpeed => dashSpeedOverride > 0f ? dashSpeedOverride
+        : (dashDistance > 0f && dashDuration > 0f ? dashDistance / dashDuration : 0f);
 
     /// <summary>当前可用充能数(HUD 充能显示预留)</summary>
     public int Charges => charges;
@@ -81,7 +84,7 @@ public class PlayerDash : MonoBehaviour
     public float DashHitForwardOffset => dashHitForwardOffset;
     public float DashKnockbackForce => dashKnockbackForce;
 
-    /// <summary>执行冲刺:消耗 1 充能 + 开启该充能独立恢复计时 + 清速度 + 设冲刺速度(facing × dashSpeed)。由 PlayerDashState.OnEnter 调用。</summary>
+    /// <summary>执行冲刺:消耗 1 充能 + 开启该充能独立恢复计时 + 清速度 + 设冲刺速度(facing × DashSpeed)。由 PlayerDashState.OnEnter 调用。</summary>
     public void DoDash(PlayerController owner)
     {
         if (charges <= 0) return; // 充能耗尽即不可冲刺,无保底(决策 D16;调用方已按 CooldownReady 拦截,此处双保险)
@@ -134,7 +137,7 @@ public class PlayerDash : MonoBehaviour
 
     /// <summary>
     /// [2026-08-21] 设置冲刺距离/总时长(由 DashUpgradeExecutor 按树B 当前等级分支数据注入;
-    /// 速度 = 距离 ÷ 时长 自动推导,不单独配置;≤0 的值视为未配置,回退序列化 dashSpeed/dashDuration;幂等)
+    /// 速度 = 距离 ÷ 时长 自动推导,不单独配置;≤0 的值视为未配置,回退序列化 dashDistance/dashDuration;幂等)
     /// </summary>
     public void SetDashParams(float distance, float duration)
     {
