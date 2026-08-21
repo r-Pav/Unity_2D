@@ -203,7 +203,7 @@ public class PlayerController : PlayerCharacterBase
         AirHurtState = new PlayerAirHurtState(this, PlayerFsm, _animator, health, jump,
             health != null ? health.AirHurtTimeout : 1.5f);
         DeadState = new PlayerDeadState(this, PlayerFsm, _animator);
-        DashState = new PlayerDashState(this, PlayerFsm, _animator, dash,
+        DashState = new PlayerDashState(this, PlayerFsm, _animator, dash, jump,
             dash != null ? dash.DashDuration : 0.15f);
         SkillCastState = new PlayerSkillCastState(this, PlayerFsm, _animator);
         AimingState = new PlayerAimingState(this, PlayerFsm, _animator);

@@ -12,6 +12,7 @@ using UnityEngine;
 public class PlayerDashState : EntityState
 {
     private readonly PlayerDash dash;
+    private readonly PlayerJump jump;
     private readonly float dashDuration;   // 冲刺时长(原 PlayerDash 序列化值,由 PlayerController 注入)
     private float dashTimer;               // 冲刺剩余计时
 
@@ -24,10 +25,11 @@ public class PlayerDashState : EntityState
     public override bool LocksInput => true;
 
     public PlayerDashState(CharacterBase owner, StateMachine stateMachine, Animator anim,
-        PlayerDash dash, float dashDuration)
+        PlayerDash dash, PlayerJump jump, float dashDuration)
         : base(owner, stateMachine, anim, new[] { AnimParams.IsDashing })
     {
         this.dash = dash;
+        this.jump = jump;
         this.dashDuration = dashDuration;
         playerCombatant = owner.GetComponent<ICombatant>();
         elementModule = owner.GetComponent<ElementModule>();
@@ -69,9 +71,14 @@ public class PlayerDashState : EntityState
                 Vector2.right * pc.GetFacing()));
 
             // 冲刺结束:落地 → Idle/Move;空中 → Fall(原 PlayerDash.OnPlayerUpdate 超时分支)
+            // [2026-08-21] 落地必须重置跳跃次数:空中二段跳后冲刺撞墙/落地直接切 Idle/Move
+            // (不经过 FallState 的落地分支),jumpsLeft 残留 0 → 之后按空格跳不了(与 AirAttack/GroundPound 同款坑)
             float h = Input.GetAxisRaw("Horizontal");
             if (owner.IsGrounded)
+            {
+                jump?.ResetJumps();
                 stateMachine.ChangeState(Mathf.Abs(h) > 0.1f ? pc.MoveState : pc.IdleState);
+            }
             else
                 stateMachine.ChangeState(pc.FallState);
         }
