@@ -195,7 +195,7 @@ public class PlayerController : PlayerCharacterBase
             combat != null ? combat.ComboResetTimer : 0.6f,
             combat != null ? combat.ComboExitWindow : 0.12f);
         AirAttackState = new PlayerAirAttackState(this, PlayerFsm, _animator, combat, GetComponentInChildren<WeaponThrow>(), jump);
-        BlockState = new PlayerBlockState(this, PlayerFsm, _animator, combat,
+        BlockState = new PlayerBlockState(this, PlayerFsm, _animator, combat, jump,
             combat != null ? combat.ParryMaxWindow : 0.2f);
         GroundPoundState = new PlayerGroundPoundState(this, PlayerFsm, _animator, groundPound, jump);
         HurtState = new PlayerHurtState(this, PlayerFsm, _animator,

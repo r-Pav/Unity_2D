@@ -61,6 +61,11 @@ public class PlayerAttackState : EntityState
     {
         var pc = (PlayerController)owner;
 
+        // [2026-08-21] 攻击中朝向跟随输入(连击转向灵敏:伤害判定 OnMeleeHitFrame 读 AttackDir,
+        // 同步新方向;受击/死亡状态不受影响)。OnAnimStart 的转向保留,同值无害
+        float h = Input.GetAxisRaw("Horizontal");
+        if (Mathf.Abs(h) > 0.1f) pc.UpdateFacing(h);
+
         // 输入检测：动画播放中 或 预输入缓冲期内 按攻击键 → 排队/直切
         if (Input.GetMouseButtonDown(0) && comboIndex < comboLimit)
         {
@@ -86,7 +91,6 @@ public class PlayerAttackState : EntityState
             _exitBufferTimer -= Time.deltaTime;
             if (_exitBufferTimer <= 0f)
             {
-                float h = Input.GetAxisRaw("Horizontal");
                 stateMachine.ChangeState(Mathf.Abs(h) > 0.1f ? pc.MoveState : pc.IdleState);
             }
         }
@@ -96,7 +100,6 @@ public class PlayerAttackState : EntityState
         if (_stateTimer > MaxAttackDuration)
         {
             Debug.LogWarning("[Combat] AttackState 超时兜底退出(动画事件可能丢失)");
-            float h = Input.GetAxisRaw("Horizontal");
             stateMachine.ChangeState(Mathf.Abs(h) > 0.1f ? pc.MoveState : pc.IdleState);
         }
     }

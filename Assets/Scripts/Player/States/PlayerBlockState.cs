@@ -9,14 +9,16 @@ using UnityEngine;
 public class PlayerBlockState : EntityState
 {
     private readonly PlayerCombat combat;
+    private readonly PlayerJump jump;
     private readonly float parryMaxWindow;
     private float blockStartTime;
 
     public PlayerBlockState(CharacterBase owner, StateMachine stateMachine, Animator anim,
-        PlayerCombat combat, float parryMaxWindow)
+        PlayerCombat combat, PlayerJump jump, float parryMaxWindow)
         : base(owner, stateMachine, anim)
     {
         this.combat = combat;
+        this.jump = jump;
         this.parryMaxWindow = parryMaxWindow;
     }
 
@@ -41,6 +43,23 @@ public class PlayerBlockState : EntityState
         {
             stateMachine.ChangeState(pc.DashState);
             return;
+        }
+
+        // [2026-08-21] 空格 → 打断格挡跳跃(优先级:跳 > 格挡;OnExit 自动清理减伤/恢复颜色)。
+        // 翻顶成功同样退出格挡(格挡无动画收尾,需主动切;Move/Idle 的 !grounded 分支会转 Fall)
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            if (pc.TryVault())
+            {
+                float h = Input.GetAxisRaw("Horizontal");
+                stateMachine.ChangeState(Mathf.Abs(h) > 0.1f ? pc.MoveState : pc.IdleState);
+                return;
+            }
+            if (jump != null && jump.TryJump(pc))
+            {
+                stateMachine.ChangeState(pc.JumpState);
+                return;
+            }
         }
 
         // 松手 → 判定弹反/正常结束(原 PlayerCombat.HandleBlockParryInput)

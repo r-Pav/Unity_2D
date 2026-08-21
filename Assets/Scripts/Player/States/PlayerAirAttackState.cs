@@ -66,13 +66,17 @@ public class PlayerAirAttackState : EntityState
         var pc = (PlayerController)owner;
         _hoverTimer += Time.deltaTime;
 
+        // [2026-08-21] 空中攻击中朝向跟随输入(转向灵敏;伤害判定读 AttackDir 同步新方向)。
+        // OnEnter 的转向保留,同值无害
+        float h = Input.GetAxisRaw("Horizontal");
+        if (Mathf.Abs(h) > 0.1f) pc.UpdateFacing(h);
+
         // 落地 → 退出(方案三:AirAttack 退出条件 = 动画结束/落地)。
         // 需先滞空 MinHoverTime:低空攻击时贴地瞬间不立即退出,保留滞空/动画表现(原版事件驱动退出);
         // 动画事件正常时 OnAirAttackEnd 先触发(→FallState),此处仅作事件丢失/低空兜底
         if (pc.IsGrounded() && _hoverTimer >= MinHoverTime)
         {
             jump?.ResetJumps();   // 修复:空中攻击落地后不重置跳跃次数 → 之后按空格跳不了
-            float h = Input.GetAxisRaw("Horizontal");
             stateMachine.ChangeState(Mathf.Abs(h) > 0.1f ? pc.MoveState : pc.IdleState);
         }
     }

@@ -30,19 +30,22 @@ public class PlayerJump : MonoBehaviour
     public void ResetJumps() => jumpsLeft = maxJumps;
 
     /// <summary>锁定期间调用(PlayerController.IsActionLocked 分支):处理跳跃打断/缓冲。
-    /// P2:攻击锁定由 FSM 状态表达(PlayerAttackState/PlayerAirAttackState 当前状态),
-    /// 跳跃打断攻击 = ChangeState(JumpState),状态 OnExit 自动清理(原 CancelAttackForJump 职责)。
-    /// 正常移动/落地检测由 FSM 状态接管,此处只响应空格输入。</summary>
+    /// [2026-08-21 扩展] 所有锁定状态统一响应空格,不再只认攻击:
+    ///   - 攻击类(PlayerAttackState/PlayerAirAttackState):jumpBreaksAttack=true 打断直接跳(跳>攻优先级),false 走缓冲
+    ///   - 其他锁定状态(冲刺/下坠/施法/受击):记录缓冲意图,状态结束后 Idle/Move/Jump/Fall 的 UpdateJumpBuffer 窗口内补跳
+    ///   - 排除:死亡 / 瞄准(技能流程) / 贴墙(蹬墙跳自己的空格,WallClingState 处理)
+    /// P2:攻击锁定由 FSM 状态表达,跳跃打断攻击 = ChangeState(JumpState),状态 OnExit 自动清理(原 CancelAttackForJump 职责)。</summary>
     public void OnLockedUpdate(PlayerController owner)
     {
-        // 只有攻击类状态可被跳跃打断(原 combat.IsInputLocked 条件)
-        bool inBreakableAttack = owner.PlayerFsm != null
-            && (owner.PlayerFsm.CurrentState is PlayerAttackState
-                || owner.PlayerFsm.CurrentState is PlayerAirAttackState);
-        if (!inBreakableAttack) return;
         if (!Input.GetKeyDown(KeyCode.Space)) return;
 
-        if (jumpBreaksAttack)
+        // 不可缓冲状态:死亡 / 瞄准(技能流程) / 贴墙(蹬墙跳自己的空格)
+        var cur = owner.PlayerFsm != null ? owner.PlayerFsm.CurrentState : null;
+        if (cur is PlayerDeadState || cur is PlayerAimingState || cur is WallClingState) return;
+
+        // 攻击类状态:jumpBreaksAttack=true 打断攻击直接跳(优先级:跳 > 攻击);false 走缓冲
+        bool inBreakableAttack = cur is PlayerAttackState || cur is PlayerAirAttackState;
+        if (inBreakableAttack && jumpBreaksAttack)
         {
             // 墙顶优先翻顶:TryVault(框+射线)成功 → 翻顶同样打断攻击(传送完成,状态由攻击自然收尾);
             // 不进入跳跃状态(去重标记已置位,状态切换交给调用方)
@@ -51,12 +54,11 @@ public class PlayerJump : MonoBehaviour
             // 跳跃打断攻击(力由 TryJump 施加;攻击状态由 ChangeState 自动退出并清理)
             if (TryJump(owner))
                 owner.PlayerFsm.ChangeState(owner.JumpState);
+            return;
         }
-        else
-        {
-            // 缓冲 — 记录跳跃意图,解锁后各状态 OnUpdate 窗口内补跳
-            jumpBufferTimer = jumpBufferWindow;
-        }
+
+        // 其他锁定状态(冲刺/下坠/施法/受击)及攻击缓冲态:记录跳跃意图,解锁后各状态 OnUpdate 窗口内补跳
+        jumpBufferTimer = jumpBufferWindow;
     }
 
     /// <summary>跳跃缓冲递减:>0 时尝试补跳。返回 true 表示已跳起(调用方切换 JumpState);
