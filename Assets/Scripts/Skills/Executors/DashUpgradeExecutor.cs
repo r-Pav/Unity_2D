@@ -34,10 +34,10 @@ public class DashUpgradeExecutor
         dash.UnlockExtraCharge();
         dash.EnableDashDamage();
         dash.SetDashDamage(GetBranchParam(b => b.damage, e.newLevel, 0f));
-        // [2026-08-21] 冲刺速度/时长随技能等级从分支数据注入(冲刺距离 = 速度 × 时长);
+        // [2026-08-21] 冲刺距离/总时长随技能等级从分支数据注入(速度 = 距离 ÷ 时长 自动推导);
         // 当前等级分支未配置(0)时回退 lv1Data,仍为 0 则回退 PlayerDash 序列化
         dash.SetDashParams(
-            GetBranchParam(b => b.dashSpeed, e.newLevel, 0f),
+            GetBranchParam(b => b.dashDistance, e.newLevel, 0f),
             GetBranchParam(b => b.dashDuration, e.newLevel, 0f));
     }
 

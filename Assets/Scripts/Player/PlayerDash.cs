@@ -40,7 +40,7 @@ public class PlayerDash : MonoBehaviour
     [System.NonSerialized] private float dashDistanceMultiplier = 1f;        // 冲刺距离修饰(阶段 6 lv3B-02 右分支"距离增加";运行时注入,默认 1 = 原距离)
 
     // [2026-08-21] 树B SO 注入的冲刺参数(0 = 未注入,回退序列化 dashSpeed/dashDuration):
-    // 冲刺距离 = 冲刺速度 × 冲刺时长,两值随树B 等级从 ActiveBranchData 读取(见 DashUpgradeExecutor)
+    // 冲刺距离/总时长从 ActiveBranchData 读取,速度 = 距离 ÷ 时长 推导(见 DashUpgradeExecutor)
     [System.NonSerialized] private float dashSpeedOverride;
     [System.NonSerialized] private float dashDurationOverride;
 
@@ -133,13 +133,16 @@ public class PlayerDash : MonoBehaviour
     }
 
     /// <summary>
-    /// [2026-08-21] 设置冲刺速度/时长(由 DashUpgradeExecutor 按树B 当前等级分支数据注入;
-    /// 冲刺距离 = 速度 × 时长,两值随技能升级变化;≤0 的值视为未配置,回退序列化 dashSpeed/dashDuration;幂等)
+    /// [2026-08-21] 设置冲刺距离/总时长(由 DashUpgradeExecutor 按树B 当前等级分支数据注入;
+    /// 速度 = 距离 ÷ 时长 自动推导,不单独配置;≤0 的值视为未配置,回退序列化 dashSpeed/dashDuration;幂等)
     /// </summary>
-    public void SetDashParams(float speed, float duration)
+    public void SetDashParams(float distance, float duration)
     {
-        dashSpeedOverride = speed > 0f ? speed : 0f;
         dashDurationOverride = duration > 0f ? duration : 0f;
+        if (distance > 0f && duration > 0f)
+            dashSpeedOverride = distance / duration; // 冲刺速度 = 距离 ÷ 总时长
+        else
+            dashSpeedOverride = 0f;
     }
 
     /// <summary>
