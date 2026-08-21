@@ -456,6 +456,10 @@ public class WeaponThrow : MonoBehaviour
         // 竖直方向不受左右翻转影响,无需按 face 区分
         float dissolveDir = 0f;
 
+        // [2026-08-21] followTarget 传 Player 根(transform.root)而非武器本体:
+        // 武器本体在 Player 子物体上,攻击中转向时父级 scale 翻转 → 武器世界位置镜像跳变(±偏移),
+        // 正在飞的剑若跟随武器本体也会跟着瞬移(表现为"剑离 player 变远")。
+        // Player 根翻转只改 scale 不改 position,剑跟随它不会跳,玩家移动时剑仍跟手。
         WeaponProjectile comp = proj.AddComponent<WeaponProjectile>();
         comp.Init(
             pathPoints: path,
@@ -471,7 +475,7 @@ public class WeaponThrow : MonoBehaviour
             groundLayer: groundLayer,
             landingVFX: config.landingVFX,
             stickVFX: config.stickVFX,
-            followTarget: transform);
+            followTarget: transform.root);
 
         return proj;
     }
