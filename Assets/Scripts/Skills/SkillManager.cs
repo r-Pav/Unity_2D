@@ -236,9 +236,19 @@ public class SkillManager : MonoBehaviour
     /// </summary>
     public void OnPlayerUpdate(PlayerController pc)
     {
+        UpdateTimers();
+        CheckHotkeys();
+    }
+
+    /// <summary>
+    /// 数值层更新(法力回复 + CD/充能计时),不含按键检测。
+    /// 由 PlayerController 在锁定判定前调用:攻击/受击/冲刺等 LocksInput 状态期间 CD 照常转,
+    /// 卡帧(timeScale=0)也不停(unscaledDeltaTime),只冻视觉不冻数值。
+    /// </summary>
+    public void UpdateTimers()
+    {
         UpdateMana();
         UpdateCooldowns();
-        CheckHotkeys();
     }
 
     private void UpdateMana()
@@ -317,7 +327,7 @@ public class SkillManager : MonoBehaviour
         ));
     }
 
-    private void CheckHotkeys()
+    public void CheckHotkeys()
     {
         if (owner != null && !owner.InputEnabled) return;
 

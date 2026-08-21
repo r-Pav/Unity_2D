@@ -303,6 +303,10 @@ public class PlayerController : PlayerCharacterBase
         // P3b:冲刺冷却倒计时(原 PlayerDash.OnPlayerUpdate 内递减迁出,统一在此递减;
         // 放锁定判定前保证冷却持续走,与改造前"每帧调用一次"一致)
         dash?.TickCooldown();
+
+        // 技能数值层(CD/充能/法力回复):放锁定判定前,攻击等 LocksInput 状态期间照常走。
+        // 卡帧(timeScale=0)也不停:SkillManager 内用 unscaledDeltaTime,只冻视觉不冻数值。
+        skillManager?.UpdateTimers();
     }
 
     /// <summary>贴墙入口检测：空中 + 碰墙 + 不在上升 + 非贴墙中 → 切换至 WallClingState</summary>
@@ -317,10 +321,10 @@ public class PlayerController : PlayerCharacterBase
         PlayerFsm.ChangeState(WallClingState);
     }
 
-    /// <summary>调用子模块 OnPlayerUpdate(P2:战斗/下坠攻击输入已迁入 FSM,此处仅剩数据层技能系统)</summary>
+    /// <summary>非锁定态子模块更新:仅技能按键检测(数值层 CD/充能/法力已由锁定前的 UpdateCooldowns 跑,避免攻击等锁定期间停表)</summary>
     private void UpdateSubModules()
     {
-        skillManager?.OnPlayerUpdate(this);
+        skillManager?.CheckHotkeys();
     }
 
     protected override void OnFixedUpdate()
