@@ -37,6 +37,9 @@ public class PlayerDashState : EntityState
     {
         // IsDashing=true → Dash 动画(控制器参数存在但未用于路由,保持设置)
         base.OnEnter();
+        // [2026-08-21] 强制直切 Dash 动画(坑 39/47:Entry 路由运行中不评估、普通过渡同帧竞争;
+        // Play 绕过渡,与 AirAttack/Death 同款手法;Dash 状态在 Base Layer 短名可靠)
+        anim?.Play("Dash", 0, 0f);
         // [2026-08-21] 每次冲刺读最新时长(树B SO 升级注入后实时生效,不用构造快照;
         // 距离 = DashSpeed × DashDuration,时长由这里计时,速度由 PlayerDash.DoDash 设置)
         dashTimer = dash != null ? dash.DashDuration : dashDuration;
