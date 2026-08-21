@@ -1,3 +1,12 @@
+// ============================================================
+// [废弃 2026-08-21] 旧 Q 技能(障碍球)执行器 — 已废弃,场景/资产零引用
+//   被树A(TreeA_MagicBolt)+SkillExecutorRegistry 范式取代(手册 B12/N7)
+//   依赖的 PlayerAimLine.AimDirection 接口保留(PlayerAimingState/ComboLv3Executor 仍在用)
+//   保留原因:作为旧执行器范式参考,防外部引用断;
+//   若注释后重新编译报错 = 有残留引用,先排查再删
+//   相关废弃资产:Prefab/Barrier.prefab、Prefab/ObstacleBall.prefab(可在编辑器删除)
+// ============================================================
+/*
 using UnityEngine;
 
 /// <summary>
@@ -76,3 +85,4 @@ public class BarrierSkill : MonoBehaviour, ISkill
 
     public void Deactivate(PlayerController pc) { }
 }
+*/

@@ -178,12 +178,19 @@ public class SkillManager : MonoBehaviour
         }
 
         // 主动技能从运行时未解锁状态开始；SO 的 skillLevel 只描述资产默认值。
+        // defaultUnlocked 技能开局自动解锁到 Lv1（不消耗技能点；读档时以存档等级为准，见 Start 事件重放）
         for (int i = 0; i < skillSlots.Length; i++)
         {
             SkillData data = skillSlots[i]?.data;
-            slotLevels[i] = data is ActiveSkillData ? 0 : data?.skillLevel ?? 0;
             if (data is ActiveSkillData activeData)
+            {
+                slotLevels[i] = activeData.defaultUnlocked ? 1 : 0;
                 activeData.chosenBranch = null;
+            }
+            else
+            {
+                slotLevels[i] = data?.skillLevel ?? 0;
+            }
         }
 
         // [P3] 获取属性修饰器管理器（CD/法耗查询）
@@ -206,6 +213,17 @@ public class SkillManager : MonoBehaviour
     {
         // Start() 在所有 OnEnable() 之后执行，确保 HUD 已订阅事件
         EventBus.Trigger(new PlayerManaChangedEvent(currentMana, MaxMana));
+
+        // 默认解锁事件重放：defaultUnlocked 技能在 Awake 已置 Lv1，但事件不能在 Awake 发
+        // （静态执行器 AfterSceneLoad 订阅、UI 在 OnEnable 订阅，均晚于 Awake）——此处补发驱动
+        // SkillPool 等级同步 / HUD 与技能树刷新 / 执行器解锁效果。
+        // 读档模式：SetSlot 已按存档等级重发事件（订阅方幂等）；slotLevels 被存档覆盖为 0 的槽位不重发，存档优先。
+        for (int i = 0; i < skillSlots.Length; i++)
+        {
+            SkillData data = skillSlots[i]?.data;
+            if (data is ActiveSkillData activeData && activeData.defaultUnlocked && slotLevels[i] >= 1)
+                EventBus.Trigger(new SkillLevelChangedEvent(data.skillName, i, slotLevels[i]));
+        }
     }
 
     // ============================================================

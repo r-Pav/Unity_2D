@@ -13,8 +13,9 @@ MonoBehaviour:
   m_Name: Skill_Combo_A02B02_Lv3
   m_EditorClassIdentifier: 
   skillName: Combo_A02B02_Lv3
-  description: "\u4f20\u9001\u5f39\uff08\u8ddd\u79bb\u52a0\u957f\uff09+ \u8def\u5f84\u4f24\u5bb3 50% \u56de\u8840 + \u5145\u80fd 3 + \u4f20\u9001\u540e\u6162\u52a8\u4f5c\u7784\u51c6\u9009\u70b9"
-  icon: {fileID: 1481292190, guid: 7ae0115109b4a6f42a4f7ad59397d09b, type: 3}
+  description: "\u4F20\u9001\u5F39\uFF08\u8DDD\u79BB\u52A0\u957F\uFF09+ \u8DEF\u5F84\u4F24\u5BB3
+    50% \u56DE\u8840 + \u5145\u80FD 3 + \u4F20\u9001\u540E\u6162\u52A8\u4F5C\u7784\u51C6\u9009\u70B9"
+  icon: {fileID: 7782233633226555941, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
   hotkey: 0
   cooldown: 10
   manaCost: 20
@@ -35,7 +36,7 @@ MonoBehaviour:
   materialSkillB: {fileID: 11400000, guid: 24363fc3e25e7894c99d15f1e46f38ce, type: 2}
   materialLevelB: 3
   combinationLevel: 3
-  effectType: "\u5145\u80fd3+\u6162\u52a8\u4f5c+\u7784\u51c6"
+  effectType: "\u5145\u80FD3+\u6162\u52A8\u4F5C+\u7784\u51C6"
   destroyOnUse: 0
   materialBranchA: Right
   materialBranchB: Right

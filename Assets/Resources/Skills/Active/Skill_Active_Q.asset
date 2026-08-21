@@ -37,6 +37,7 @@ MonoBehaviour:
     duration: 0
     description: "\u53D1\u5C04\u4E00\u679A\u80FD\u91CF\u7403\uFF0C\u5BF9\u9996\u4E2A\u654C\u4EBA\u9020\u6210
       35 \u70B9\u4F24\u5BB3"
+  defaultUnlocked: 1
   lv2Left:
     behaviorId: treeA_burst3
     branchName: Q-lv2-l

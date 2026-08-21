@@ -1,3 +1,9 @@
+// ============================================================
+// [废弃 2026-08-21] 障碍球实体 — 旧 Q 技能(障碍球)的一部分,随 BarrierSkill 一起废弃
+//   只被 BarrierSkill.cs 引用(已注释);场景/资产零实例
+//   相关废弃资产:Prefab/ObstacleBall.prefab(可在编辑器删除)
+// ============================================================
+/*
 using UnityEngine;
 
 /// <summary>
@@ -196,3 +202,4 @@ public class ObstacleBall : MonoBehaviour
         Gizmos.DrawWireSphere(transform.position, radius);
     }
 }
+*/

@@ -2,8 +2,16 @@ using UnityEngine;
 
 /// <summary>
 /// 玩家瞄准虚线 — 从玩家指向鼠标位置，用 LineRenderer 虚线显示
-/// 提供 AimDirection 供 PlayerCombat 读取子弹方向
+/// 提供 AimDirection 供 PlayerCombat/BarrierSkill 读取子弹方向
 /// 虚线在 XY 平面自由移动（横板游戏中可上下左右瞄准）
+///
+/// [2026-08-21 重写] 瞄准线完全自管理，不再依赖场景手动挂载的 LineRenderer：
+///   - 场景遗留（Player 身上的 LineRenderer + 子物体 AimLine）已清除，
+///     AddComponent 时 RequireComponent 自动创建干净的 LineRenderer，组件自己接管
+///   - Awake 强制初始化并默认隐藏（positionCount=0 + 组件 enabled=false），
+///     只在瞄准态（PlayerAimingState）ConfigureAim/Show 时显示 —— 杜绝"进入游戏自带瞄准线"
+///   - Shader 用 Sprites/Default（BIRP 项目，Always Included Shaders 已含 10753），
+///     fallback Unlit/Transparent；两个都拿不到时仅告警，不抛异常
 /// </summary>
 [RequireComponent(typeof(LineRenderer))]
 public class PlayerAimLine : MonoBehaviour
@@ -20,7 +28,7 @@ public class PlayerAimLine : MonoBehaviour
     private Camera mainCamera;
     private static Material cachedMaterial;
 
-    /// <summary>当前瞄准方向（单位向量，XY 平面），供 PlayerCombat 读取</summary>
+    /// <summary>当前瞄准方向（单位向量，XY 平面），供 PlayerCombat/BarrierSkill 读取</summary>
     public Vector2 AimDirection { get; private set; } = Vector2.right;
 
     /// <summary>[阶段7] 当前瞄准端点（世界坐标，已按最大距离/墙面截断；技能瞄准确认用）</summary>
@@ -62,22 +70,32 @@ public class PlayerAimLine : MonoBehaviour
     {
         mainCamera = Camera.main;
 
-        // 设置 LineRenderer
+        // 自管理 LineRenderer：场景遗留已清除，这里拿到的是 RequireComponent 自动创建的干净实例。
+        // 双保险：万一场景仍有手动挂载的旧 LineRenderer，也统一接管——强制初始化 + 默认隐藏，不信任序列化状态。
         line = GetComponent<LineRenderer>();
-        line.positionCount = 2;
+        if (line == null) line = gameObject.AddComponent<LineRenderer>();
+
+        // 强制初始化（positionCount 从 0 开始 = 隐藏态，防旧场景残留 positionCount>0 直接渲染）
+        line.positionCount = 0;
         line.startWidth = lineWidth;
         line.endWidth = lineWidth;
         line.startColor = lineColor;
         line.endColor = lineColor;
         line.useWorldSpace = true;
+        line.enabled = true;
 
         // 使用静态缓存避免 Material 泄漏（Player disable/enable 复用）
-        if (cachedMaterial != null)
-        {
-            line.material = cachedMaterial;
-            return;
-        }
+        if (cachedMaterial == null)
+            cachedMaterial = CreateDashedMaterial();
+        line.material = cachedMaterial;
 
+        // 默认隐藏：只在瞄准态显示（旧远程遗留一直显示的问题在此根治）
+        Hide();
+    }
+
+    /// <summary>创建虚线材质（白点 + 透明间隔；Shader 取 Sprites/Default，构建版 Always Included 已含）</summary>
+    private static Material CreateDashedMaterial()
+    {
         // 创建虚线纹理（白点 + 透明间隔）
         Texture2D tex = new Texture2D(8, 1, TextureFormat.ARGB32, false);
         for (int i = 0; i < 8; i++)
@@ -90,21 +108,29 @@ public class PlayerAimLine : MonoBehaviour
         tex.Apply();
         tex.wrapMode = TextureWrapMode.Repeat;
 
-        // 使用 Sprites/Default（几乎所有项目都有，兼容 URP/BIRP）
+        // 使用 Sprites/Default（几乎所有项目都有，兼容 URP/BIRP）；fallback Unlit/Transparent
         Shader shader = Shader.Find("Sprites/Default");
+        if (shader == null) shader = Shader.Find("Unlit/Transparent");
         if (shader == null)
-            shader = Shader.Find("Unlit/Transparent");
-        cachedMaterial = new Material(shader);
-        cachedMaterial.mainTexture = tex;
-        cachedMaterial.mainTextureScale = new Vector2(30f, 1f);
-        line.material = cachedMaterial;
+        {
+            // 极端情况：两个 shader 都未包含进构建 → 线不渲染，但组件不崩（后续 Show 时 Update 仍安全）
+            Debug.LogWarning("[PlayerAimLine] Shader.Find 未找到 Sprites/Default 与 Unlit/Transparent，瞄准线将不可见。"
+                + "请在 GraphicsSettings -> Always Included Shaders 加入 Sprites/Default");
+            shader = Shader.Find("Hidden/InternalErrorShader");
+            if (shader == null) return null;
+        }
 
-        // saika 2026-08-19:默认隐藏,只在瞄准态显示(旧远程遗留一直显示的问题)。ConfigureAim/Show 恢复
-        Hide();
+        Material mat = new Material(shader);
+        mat.mainTexture = tex;
+        mat.mainTextureScale = new Vector2(30f, 1f);
+        return mat;
     }
 
     private void Update()
     {
+        // 防御：相机/组件缺失时静默跳过（不抛异常）
+        if (line == null || mainCamera == null) return;
+
         // 鼠标屏幕坐标 → 世界坐标（XY 平面）
         Vector3 mouseScreen = Input.mousePosition;
         mouseScreen.z = Mathf.Abs(mainCamera.transform.position.z - transform.position.z);
@@ -133,16 +159,5 @@ public class PlayerAimLine : MonoBehaviour
         line.SetPosition(0, start);
         line.SetPosition(1, end);
         AimPoint = end;
-
-        // 【注释保留】朝向翻转逻辑 — 2026-08-04 取消远程攻击后,朝向统一按近战规则
-        // (PlayerCombat.AttackDir / UpdateFacing)驱动,不再由鼠标瞄准控制。
-        // 若后续技能需要"瞄准朝向翻转角色",取消注释即可。
-        // if (Mathf.Abs(dir.x) > 0.1f)
-        // {
-        //     float facing = dir.x > 0 ? 1 : -1;
-        //     Vector3 scale = transform.root.localScale;
-        //     scale.x = Mathf.Abs(scale.x) * facing;
-        //     transform.root.localScale = scale;
-        // }
     }
 }

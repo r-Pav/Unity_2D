@@ -12,6 +12,9 @@ public class ActiveSkillData : SkillData
     [Tooltip("Lv1 版本的技能参数（首次获得时的形态）")]
     public ActiveBranchData lv1Data;
 
+    [Tooltip("默认解锁：新游戏开始时该技能自动解锁到 Lv1（不消耗技能点；读档时以存档记录的等级为准）")]
+    public bool defaultUnlocked;
+
     [Header("分支数据（Lv2）")]
     [Tooltip("Lv2 左分支参数")]
     public ActiveBranchData lv2Left;

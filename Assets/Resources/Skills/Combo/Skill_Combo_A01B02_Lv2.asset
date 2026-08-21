@@ -13,15 +13,19 @@ MonoBehaviour:
   m_Name: Skill_Combo_A01B02_Lv2
   m_EditorClassIdentifier: 
   skillName: Combo_A01B02_Lv2
-  description: "\u843d\u70b9\u653b\u51fb\u5e7b\u8c61\u4e09\u8fde\u51fb\uff0c\u6bcf\u51fb\u53d1\u5c04\u5206\u88c2\u5f39"
-  icon: {fileID: 1481292190, guid: 7ae0115109b4a6f42a4f7ad59397d09b, type: 3}
+  description: "\u843D\u70B9\u653B\u51FB\u5E7B\u8C61\u4E09\u8FDE\u51FB\uFF0C\u6BCF\u51FB\u53D1\u5C04\u5206\u88C2\u5F39"
+  icon: {fileID: 1435083807972979427, guid: f2c3060b2bafe0146877a72c930086e0, type: 3}
   hotkey: 0
   cooldown: 10
   manaCost: 20
+  useCharges: 0
+  maxCharges: 1
+  chargeRechargeTime: 5
   type: 0
   category: 0
   unlockLevel: 0
   castTime: 0
+  interceptsStateAfterActivate: 0
   skillLevel: 2
   maxLevel: 2
   vfxPrefab: {fileID: 0}
@@ -31,7 +35,7 @@ MonoBehaviour:
   materialSkillB: {fileID: 11400000, guid: 24363fc3e25e7894c99d15f1e46f38ce, type: 2}
   materialLevelB: 2
   combinationLevel: 2
-  effectType: "\u4e09\u8fde\u51fb+\u5206\u88c2\u5f39"
+  effectType: "\u4E09\u8FDE\u51FB+\u5206\u88C2\u5F39"
   destroyOnUse: 0
   materialBranchA: Left
   materialBranchB: Right

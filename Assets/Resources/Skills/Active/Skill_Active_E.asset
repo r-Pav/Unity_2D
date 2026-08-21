@@ -14,17 +14,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   skillName: TreeB_Dash
   description: "\u671D\u524D\u65B9\u51B2\u523A\u4E00\u6BB5\u8DDD\u79BB"
-  icon: {fileID: 0}
+  icon: {fileID: -7668790182515900673, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
   hotkey: 101
   cooldown: 3
   manaCost: 8
+  useCharges: 0
+  maxCharges: 1
+  chargeRechargeTime: 5
   type: 0
   category: 1
   unlockLevel: 0
   castTime: 0
+  interceptsStateAfterActivate: 0
   skillLevel: 0
   maxLevel: 3
-  unlockPassiveOnly: 1
   vfxPrefab: {fileID: 0}
   sfxClip: {fileID: 0}
   lv1Data:
@@ -34,44 +37,63 @@ MonoBehaviour:
     damage: 12
     cooldown: 3
     manaCost: 8
+    range: 0
+    duration: 0
+    slowZoneRadius: 2
+    slowZoneDuration: 5
+    slowFactor: 0.5
     description: "\u671D\u524D\u65B9\u51B2\u523A 3 \u7C73\u8DDD\u79BB"
+  defaultUnlocked: 0
   lv2Left:
     behaviorId: 
     branchName: "\u5632\u8BBD\u5E7B\u8C61"
-    icon: {fileID: -1267685469, guid: 7ae0115109b4a6f42a4f7ad59397d09b, type: 3}
+    icon: {fileID: -2128185250591344747, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
     damage: 0
     cooldown: 3.5
     manaCost: 12
     range: 3
     duration: 4
+    slowZoneRadius: 2
+    slowZoneDuration: 5
+    slowFactor: 0.5
     description: "\u51B2\u523A\u7ED3\u675F\u540E\u5728\u539F\u5730\u7559\u4E0B\u5632\u8BBD\u5E7B\u8C61\uFF0C\u5438\u5F15\u5468\u56F4\u654C\u4EBA\u653B\u51FB\u5E7B\u8C61"
   lv2Right:
     behaviorId: 
     branchName: "\u653B\u51FB\u5E7B\u8C61"
-    icon: {fileID: -5743514602376443267, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
+    icon: {fileID: -6739525477993420851, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
     damage: 15
     cooldown: 2
     manaCost: 6
     range: 1.5
     duration: 0
+    slowZoneRadius: 2
+    slowZoneDuration: 5
+    slowFactor: 0.5
     description: "\u51B2\u523A\u7ED3\u675F\u843D\u70B9\u751F\u6210\u653B\u51FB\u5E7B\u8C61\uFF0C\u81EA\u52A8\u4E09\u8FDE\u51FB\uFF08\u5E26\u5F53\u524D\u5143\u7D20\uFF09"
   lv3Left:
     behaviorId: 
     branchName: "\u5927\u8303\u56F4\u5632\u8BBD\u5E7B\u8C61"
-    icon: {fileID: -3785442492447779331, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
+    icon: {fileID: -1289143293111609116, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
     damage: 5
     cooldown: 4
     manaCost: 15
     range: 5
     duration: 4
+    slowZoneRadius: 2
+    slowZoneDuration: 5
+    slowFactor: 0.5
     description: "\u5632\u8BBD\u8303\u56F4\u6269\u5927\uFF0C\u5E7B\u8C61\u6301\u7EED\u5BF9\u5468\u56F4\u654C\u4EBA\u9020\u6210\u5143\u7D20\u4F24\u5BB3\uFF08\u5E26\u5F53\u524D\u5143\u7D20\uFF09"
   lv3Right:
     behaviorId: 
     branchName: "\u6CBF\u9014\u653B\u51FB+\u8DDD\u79BB\u589E\u52A0"
-    icon: {fileID: -675955477173538400, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
+    icon: {fileID: 2072017630249256147, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
     damage: 20
     cooldown: 2.5
     manaCost: 10
     range: 1.5
     duration: 0
+    slowZoneRadius: 2
+    slowZoneDuration: 5
+    slowFactor: 0.5
     description: "\u51B2\u523A\u8DEF\u5F84\u6BCF\u683C\u4E00\u6B21\u653B\u51FB\uFF0C\u51B2\u523A\u8DDD\u79BB\u589E\u52A0"
+  unlockPassiveOnly: 1
