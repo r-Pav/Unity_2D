@@ -66,6 +66,14 @@ public class PlayerAttackState : EntityState
         float h = Input.GetAxisRaw("Horizontal");
         if (Mathf.Abs(h) > 0.1f) pc.UpdateFacing(h);
 
+        // [2026-08-21] 攻击中 Shift → 打断攻击冲刺(需求:攻击任意帧可按 Dash 冲刺)。
+        // ChangeState(DashState) 会先调本状态 OnExit(清 IsAttacking/推进 comboIndex/武器重生),与跳跃打断攻击同模式
+        if (Input.GetKeyDown(KeyCode.LeftShift) && pc.Dash != null && pc.Dash.CooldownReady)
+        {
+            stateMachine.ChangeState(pc.DashState);
+            return;
+        }
+
         // 输入检测：动画播放中 或 预输入缓冲期内 按攻击键 → 排队/直切
         if (Input.GetMouseButtonDown(0) && comboIndex < comboLimit)
         {

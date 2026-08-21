@@ -71,6 +71,13 @@ public class PlayerAirAttackState : EntityState
         float h = Input.GetAxisRaw("Horizontal");
         if (Mathf.Abs(h) > 0.1f) pc.UpdateFacing(h);
 
+        // [2026-08-21] 空中攻击中 Shift → 打断攻击冲刺(与地面攻击同款;ChangeState 先调 OnExit 清理)
+        if (Input.GetKeyDown(KeyCode.LeftShift) && pc.Dash != null && pc.Dash.CooldownReady)
+        {
+            stateMachine.ChangeState(pc.DashState);
+            return;
+        }
+
         // 落地 → 退出(方案三:AirAttack 退出条件 = 动画结束/落地)。
         // 需先滞空 MinHoverTime:低空攻击时贴地瞬间不立即退出,保留滞空/动画表现(原版事件驱动退出);
         // 动画事件正常时 OnAirAttackEnd 先触发(→FallState),此处仅作事件丢失/低空兜底
