@@ -37,7 +37,9 @@ public class PlayerDashState : EntityState
     {
         // IsDashing=true → Dash 动画(控制器参数存在但未用于路由,保持设置)
         base.OnEnter();
-        dashTimer = dashDuration;
+        // [2026-08-21] 每次冲刺读最新时长(树B SO 升级注入后实时生效,不用构造快照;
+        // 距离 = DashSpeed × DashDuration,时长由这里计时,速度由 PlayerDash.DoDash 设置)
+        dashTimer = dash != null ? dash.DashDuration : dashDuration;
         hitThisDash.Clear(); // 新一次冲刺重新计命中
         dashStartPos = owner.transform.position; // 记录冲刺起点(B-01 嘲讽幻象留原地,防与落点玩家重叠)
         dash?.DoDash((PlayerController)owner);

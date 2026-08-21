@@ -39,6 +39,11 @@ public class PlayerDash : MonoBehaviour
     [System.NonSerialized] private float dashDamage;                         // 冲刺伤害值(由 DashUpgradeExecutor 按 lv1Data.damage 注入;0 = 无伤害)
     [System.NonSerialized] private float dashDistanceMultiplier = 1f;        // 冲刺距离修饰(阶段 6 lv3B-02 右分支"距离增加";运行时注入,默认 1 = 原距离)
 
+    // [2026-08-21] 树B SO 注入的冲刺参数(0 = 未注入,回退序列化 dashSpeed/dashDuration):
+    // 冲刺距离 = 冲刺速度 × 冲刺时长,两值随树B 等级从 ActiveBranchData 读取(见 DashUpgradeExecutor)
+    [System.NonSerialized] private float dashSpeedOverride;
+    [System.NonSerialized] private float dashDurationOverride;
+
     private void Awake()
     {
         if (dashHitLayers == 0)
@@ -49,8 +54,11 @@ public class PlayerDash : MonoBehaviour
     /// <summary>是否可冲刺(充能 > 0;5 个状态类的 Shift 检测沿用此属性,语义自动变为"有充能",零代码改动)</summary>
     public bool CooldownReady => charges > 0;
 
-    /// <summary>冲刺时长(秒),注入 PlayerDashState 做超时退出</summary>
-    public float DashDuration => dashDuration;
+    /// <summary>冲刺时长(秒),注入 PlayerDashState 做超时退出;SO 注入值优先,0 回退序列化</summary>
+    public float DashDuration => dashDurationOverride > 0f ? dashDurationOverride : dashDuration;
+
+    /// <summary>冲刺速度(米/秒),DoDash 设速用;SO 注入值优先,0 回退序列化</summary>
+    public float DashSpeed => dashSpeedOverride > 0f ? dashSpeedOverride : dashSpeed;
 
     /// <summary>当前可用充能数(HUD 充能显示预留)</summary>
     public int Charges => charges;
@@ -84,7 +92,8 @@ public class PlayerDash : MonoBehaviour
         Rigidbody2D rb = owner.GetRigidbody();
         rb.velocity = Vector2.zero;
         // 冲刺距离修饰(阶段 6 lv3B-02):速度 × 倍率,dashDuration 不变 → 冲刺距离变长
-        rb.velocity = new Vector2(owner.GetFacing() * dashSpeed * dashDistanceMultiplier, 0);
+        // 速度优先用 SO 注入值(DashSpeed),未注入用序列化;距离 = DashSpeed × DashDuration(时长由状态类计时)
+        rb.velocity = new Vector2(owner.GetFacing() * DashSpeed * dashDistanceMultiplier, 0);
     }
 
     /// <summary>充能恢复(PlayerController.UpdateCooldowns 每帧调用):遍历所有恢复中的充能槽,恢复满则 charges++(上限 maxCharges)。
@@ -121,6 +130,16 @@ public class PlayerDash : MonoBehaviour
     public void SetDashDamage(float damage)
     {
         dashDamage = damage;
+    }
+
+    /// <summary>
+    /// [2026-08-21] 设置冲刺速度/时长(由 DashUpgradeExecutor 按树B 当前等级分支数据注入;
+    /// 冲刺距离 = 速度 × 时长,两值随技能升级变化;≤0 的值视为未配置,回退序列化 dashSpeed/dashDuration;幂等)
+    /// </summary>
+    public void SetDashParams(float speed, float duration)
+    {
+        dashSpeedOverride = speed > 0f ? speed : 0f;
+        dashDurationOverride = duration > 0f ? duration : 0f;
     }
 
     /// <summary>

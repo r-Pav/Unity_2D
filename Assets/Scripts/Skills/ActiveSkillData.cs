@@ -121,6 +121,11 @@ public class ActiveSkillData : SkillData
         [Tooltip("A02B02 减速比例(0.5 = 敌人移速减半)")]
         public float slowFactor = 0.5f;      // A02B02 减速比例(0.5 = 移速减半)
 
+        [Tooltip("冲刺速度(米/秒;树B冲刺用;冲刺距离 = 冲刺速度 × 冲刺时长;0 = 未配置回退 PlayerDash 序列化值)")]
+        public float dashSpeed;              // 树B 冲刺速度(0 = 未配置,回退 PlayerDash 序列化)
+        [Tooltip("冲刺时长(秒;树B冲刺用,随技能等级升级可调;0 = 未配置回退 PlayerDash 序列化值)")]
+        public float dashDuration;           // 树B 冲刺时长(0 = 未配置,回退 PlayerDash 序列化)
+
         [TextArea(2, 4)]
         [Tooltip("技能效果描述（分支选择弹窗中显示）")]
         public string description;

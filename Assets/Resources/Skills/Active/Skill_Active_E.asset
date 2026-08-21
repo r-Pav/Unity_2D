@@ -42,6 +42,8 @@ MonoBehaviour:
     slowZoneRadius: 2
     slowZoneDuration: 5
     slowFactor: 0.5
+    dashSpeed: 12
+    dashDuration: 0.15
     description: "\u671D\u524D\u65B9\u51B2\u523A 3 \u7C73\u8DDD\u79BB"
   defaultUnlocked: 0
   lv2Left:
@@ -56,6 +58,8 @@ MonoBehaviour:
     slowZoneRadius: 2
     slowZoneDuration: 5
     slowFactor: 0.5
+    dashSpeed: 12
+    dashDuration: 0.18
     description: "\u51B2\u523A\u7ED3\u675F\u540E\u5728\u539F\u5730\u7559\u4E0B\u5632\u8BBD\u5E7B\u8C61\uFF0C\u5438\u5F15\u5468\u56F4\u654C\u4EBA\u653B\u51FB\u5E7B\u8C61"
   lv2Right:
     behaviorId: 
@@ -69,6 +73,8 @@ MonoBehaviour:
     slowZoneRadius: 2
     slowZoneDuration: 5
     slowFactor: 0.5
+    dashSpeed: 12
+    dashDuration: 0.18
     description: "\u51B2\u523A\u7ED3\u675F\u843D\u70B9\u751F\u6210\u653B\u51FB\u5E7B\u8C61\uFF0C\u81EA\u52A8\u4E09\u8FDE\u51FB\uFF08\u5E26\u5F53\u524D\u5143\u7D20\uFF09"
   lv3Left:
     behaviorId: 
@@ -82,6 +88,8 @@ MonoBehaviour:
     slowZoneRadius: 2
     slowZoneDuration: 5
     slowFactor: 0.5
+    dashSpeed: 12
+    dashDuration: 0.22
     description: "\u5632\u8BBD\u8303\u56F4\u6269\u5927\uFF0C\u5E7B\u8C61\u6301\u7EED\u5BF9\u5468\u56F4\u654C\u4EBA\u9020\u6210\u5143\u7D20\u4F24\u5BB3\uFF08\u5E26\u5F53\u524D\u5143\u7D20\uFF09"
   lv3Right:
     behaviorId: 
@@ -95,5 +103,7 @@ MonoBehaviour:
     slowZoneRadius: 2
     slowZoneDuration: 5
     slowFactor: 0.5
+    dashSpeed: 12
+    dashDuration: 0.22
     description: "\u51B2\u523A\u8DEF\u5F84\u6BCF\u683C\u4E00\u6B21\u653B\u51FB\uFF0C\u51B2\u523A\u8DDD\u79BB\u589E\u52A0"
   unlockPassiveOnly: 1

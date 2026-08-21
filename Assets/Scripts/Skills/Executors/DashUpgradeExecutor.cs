@@ -33,13 +33,23 @@ public class DashUpgradeExecutor
         // 幂等:重复升级/读档恢复只是重新应用相同解锁,不会重复 +1 充能
         dash.UnlockExtraCharge();
         dash.EnableDashDamage();
-        dash.SetDashDamage(GetLv1Damage());
+        dash.SetDashDamage(GetBranchParam(b => b.damage, e.newLevel, 0f));
+        // [2026-08-21] 冲刺速度/时长随技能等级从分支数据注入(冲刺距离 = 速度 × 时长);
+        // 当前等级分支未配置(0)时回退 lv1Data,仍为 0 则回退 PlayerDash 序列化
+        dash.SetDashParams(
+            GetBranchParam(b => b.dashSpeed, e.newLevel, 0f),
+            GetBranchParam(b => b.dashDuration, e.newLevel, 0f));
     }
 
-    /// <summary>树 B lv1 分支伤害值(数值一律读 ActiveBranchData,手册 0.5.4)</summary>
-    private static float GetLv1Damage()
+    /// <summary>读树B 指定等级分支字段;分支缺失/未选分支时回退 lv1Data;再缺失返回 fallback</summary>
+    private static float GetBranchParam(System.Func<ActiveSkillData.ActiveBranchData, float> selector,
+        int level, float fallback)
     {
         var tree = Resources.Load<ActiveSkillData>(TreeBAssetPath);
-        return tree != null && tree.lv1Data != null ? tree.lv1Data.damage : 0f;
+        if (tree == null) return fallback;
+        var branch = tree.GetBranchData(level) ?? tree.lv1Data; // 未选分支(理论不出现)回退基础
+        if (branch == null) return fallback;
+        float v = selector(branch);
+        return v > 0f ? v : fallback;
     }
 }
