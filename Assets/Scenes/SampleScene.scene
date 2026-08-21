@@ -31692,12 +31692,11 @@ MonoBehaviour:
   weaponTemplate: {fileID: 952423015}
   attack1:
     pathPoints:
-    - {x: 1.14, y: 1, z: 0}
-    - {x: 1.8, y: 0, z: 0}
-    - {x: 2.45, y: -0.9, z: 0}
+    - {x: 0.85, y: 1.36, z: 0}
+    - {x: 2.93, y: -1.3, z: 0}
     rotationZ: 35
     scaleMultiplier: 0.08
-    travelDuration: 0.1
+    travelDuration: 0.066
     easeOutPower: 4
     dissolveInDuration: 0.3
     stickToWall: 1
@@ -31711,11 +31710,11 @@ MonoBehaviour:
     vfxDisplayDuration: 1
   attack2:
     pathPoints:
-    - {x: 0.78, y: -1.68, z: 0}
-    - {x: 2.14, y: 0.33, z: 0}
+    - {x: 0.9, y: -1.68, z: 0}
+    - {x: 2.2, y: 0.42, z: 0}
     rotationZ: 142
     scaleMultiplier: 0.08
-    travelDuration: 0.1
+    travelDuration: 0.066
     easeOutPower: 4
     dissolveInDuration: 0.4
     stickToWall: 0
@@ -31729,11 +31728,11 @@ MonoBehaviour:
     vfxDisplayDuration: 0
   attack3:
     pathPoints:
-    - {x: 0.84, y: 0, z: 0}
-    - {x: 2.9, y: 0, z: 0}
+    - {x: 0.57, y: 0, z: 0}
+    - {x: 3.06, y: -0.06, z: 0}
     rotationZ: 90
     scaleMultiplier: 0.09
-    travelDuration: 0.1
+    travelDuration: 0.3
     easeOutPower: 4
     dissolveInDuration: 0.4
     stickToWall: 1
@@ -47342,8 +47341,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 54ae83a45f2a9ba4cbf9fac9ca53306d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  dashSpeed: 12
-  dashDuration: 0.15
+  dashDistance: 3
+  dashDuration: 0.2
   maxCharges: 2
   chargeCooldown: 0.6
   dashHitLayers:
