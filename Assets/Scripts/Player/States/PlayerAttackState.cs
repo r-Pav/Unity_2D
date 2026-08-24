@@ -19,6 +19,11 @@ public class PlayerAttackState : EntityState
     private float _exitBufferTimer;    // 动画结束后的预输入缓冲（方案 7.4）
     private float _stateTimer;         // 状态存活时长:超 MaxAttackDuration 强制退出(防动画事件链断裂永久锁死)
 
+    /// <summary>输入门:攻击动画事件帧(OnAttackInputOpen)到达前 = false,此期间跳跃/冲刺输入只记录不执行</summary>
+    public bool InputOpen { get; private set; }
+    private bool _jumpQueued;   // 输入门前按下的跳跃意图(事件帧到达后自动执行)
+    private bool _dashQueued;   // 输入门前按下的冲刺意图(事件帧到达后自动执行)
+
     /// <summary>攻击状态最大存活时长(秒):动画事件丢失/Play 失败时兜底退出,防 LocksInput 永久锁死</summary>
     private const float MaxAttackDuration = 2.5f;
 
@@ -48,6 +53,9 @@ public class PlayerAttackState : EntityState
 
         comboQueued = false;   // 修复:中断后重进时清残留排队标记(否则 OnAnimEnd 误直切导致 Play 越界)
         _stateTimer = 0f;
+        InputOpen = false;     // 新一段攻击:输入门关闭,等事件帧打开
+        _jumpQueued = false;
+        _dashQueued = false;
 
         ResetComboIfNeeded();
         anim?.SetInteger(AnimParams.AttackIndex, comboIndex);
@@ -67,11 +75,18 @@ public class PlayerAttackState : EntityState
         if (Mathf.Abs(h) > 0.1f) pc.UpdateFacing(h);
 
         // [2026-08-21] 攻击中 Shift → 打断攻击冲刺(需求:攻击任意帧可按 Dash 冲刺)。
-        // ChangeState(DashState) 会先调本状态 OnExit(清 IsAttacking/推进 comboIndex/武器重生),与跳跃打断攻击同模式
+        // 输入门:事件帧前按 Shift 只记录意图,事件帧(OnAttackInputOpen)后自动执行
         if (Input.GetKeyDown(KeyCode.LeftShift) && pc.Dash != null && pc.Dash.CooldownReady)
         {
-            stateMachine.ChangeState(pc.DashState);
-            return;
+            if (!InputOpen)
+            {
+                _dashQueued = true;
+            }
+            else
+            {
+                stateMachine.ChangeState(pc.DashState);
+                return;
+            }
         }
 
         // 输入检测：动画播放中 或 预输入缓冲期内 按攻击键 → 排队/直切
@@ -83,6 +98,9 @@ public class PlayerAttackState : EntityState
                 isComboCut = true;
                 comboIndex++;
                 anim?.SetInteger(AnimParams.AttackIndex, comboIndex);
+                InputOpen = false;   // 切段 = 新一段攻击的前摇,输入门重新关闭
+                _jumpQueued = false;
+                _dashQueued = false;
                 anim?.Play("Attack" + comboIndex, 0, 0f);
                 _exitBufferTimer = 0f;
                 isComboCut = false;
@@ -149,6 +167,9 @@ public class PlayerAttackState : EntityState
             isComboCut = true;
             comboIndex++;
             anim?.SetInteger(AnimParams.AttackIndex, comboIndex);
+            InputOpen = false;   // 切段 = 新一段攻击的前摇,输入门重新关闭
+            _jumpQueued = false;
+            _dashQueued = false;
             anim?.Play("Attack" + comboIndex, 0, 0f);
             comboQueued = false;
             isComboCut = false;
@@ -168,6 +189,38 @@ public class PlayerAttackState : EntityState
     {
         combat?.OnMeleeHitFrame(comboIndex, comboLimit, isAirAttack: false);
     }
+
+    /// <summary>输入门事件帧(动画事件 OnAttackInputOpen):打开输入,消费门前记录的跳跃/冲刺意图</summary>
+    public void OnInputOpen()
+    {
+        InputOpen = true;
+
+        // 门前按下的冲刺:直接执行
+        if (_dashQueued)
+        {
+            _dashQueued = false;
+            var pc = (PlayerController)owner;
+            if (pc.Dash != null && pc.Dash.CooldownReady)
+            {
+                stateMachine.ChangeState(pc.DashState);
+                return;
+            }
+        }
+
+        // 门前按下的跳跃:直接执行
+        if (_jumpQueued)
+        {
+            _jumpQueued = false;
+            var pc = (PlayerController)owner;
+            if (pc.JumpComp != null && pc.JumpComp.TryJump(pc))
+            {
+                stateMachine.ChangeState(pc.JumpState);
+            }
+        }
+    }
+
+    /// <summary>输入门前按下跳跃:记录意图,事件帧到达后自动跳</summary>
+    public void QueueJump() => _jumpQueued = true;
 
     private void ResetComboIfNeeded()
     {

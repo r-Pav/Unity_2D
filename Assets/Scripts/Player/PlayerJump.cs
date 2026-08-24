@@ -21,13 +21,23 @@ public class PlayerJump : MonoBehaviour
     private CharacterBase _charBase;
     private Animator Anim => _charBase != null ? _charBase.Animator : null;
 
+    /// <summary>本次滞空是否已用过空中攻击(落地 ResetJumps 时清;空中攻击一滞空只能一次)</summary>
+    public bool AirAttackUsed { get; private set; }
+
     void Awake()
     {
         jumpsLeft = maxJumps;
         _charBase = GetComponent<CharacterBase>();
     }
 
-    public void ResetJumps() => jumpsLeft = maxJumps;
+    public void ResetJumps()
+    {
+        jumpsLeft = maxJumps;
+        AirAttackUsed = false;   // 落地重置:新滞空周期,空中攻击次数恢复
+    }
+
+    /// <summary>标记本次滞空已用过空中攻击(进入 AirAttackState 时调用)</summary>
+    public void MarkAirAttackUsed() => AirAttackUsed = true;
 
     /// <summary>锁定期间调用(PlayerController.IsActionLocked 分支):处理跳跃打断/缓冲。
     /// [2026-08-21 扩展] 所有锁定状态统一响应空格,不再只认攻击:
@@ -43,18 +53,33 @@ public class PlayerJump : MonoBehaviour
         var cur = owner.PlayerFsm != null ? owner.PlayerFsm.CurrentState : null;
         if (cur is PlayerDeadState || cur is PlayerAimingState || cur is WallClingState) return;
 
-        // 攻击类状态:jumpBreaksAttack=true 打断攻击直接跳(优先级:跳 > 攻击);false 走缓冲
-        bool inBreakableAttack = cur is PlayerAttackState || cur is PlayerAirAttackState;
-        if (inBreakableAttack && jumpBreaksAttack)
+        // 攻击类状态:输入门(事件帧前 = 只记录意图,事件帧后 = 打断/缓冲)
+        if (cur is PlayerAttackState atk)
         {
-            // 墙顶优先翻顶:TryVault(框+射线)成功 → 翻顶同样打断攻击(传送完成,状态由攻击自然收尾);
-            // 不进入跳跃状态(去重标记已置位,状态切换交给调用方)
-            if (owner.TryVault())
+            if (!atk.InputOpen) { atk.QueueJump(); return; }   // 门前:记意图,事件帧后自动跳
+            if (jumpBreaksAttack)
+            {
+                // 墙顶优先翻顶:TryVault(框+射线)成功 → 翻顶同样打断攻击(传送完成,状态由攻击自然收尾);
+                // 不进入跳跃状态(去重标记已置位,状态切换交给调用方)
+                if (owner.TryVault())
+                    return;
+                // 跳跃打断攻击(力由 TryJump 施加;攻击状态由 ChangeState 自动退出并清理)
+                if (TryJump(owner))
+                    owner.PlayerFsm.ChangeState(owner.JumpState);
                 return;
-            // 跳跃打断攻击(力由 TryJump 施加;攻击状态由 ChangeState 自动退出并清理)
-            if (TryJump(owner))
-                owner.PlayerFsm.ChangeState(owner.JumpState);
-            return;
+            }
+        }
+        else if (cur is PlayerAirAttackState air)
+        {
+            if (!air.InputOpen) { air.QueueJump(); return; }   // 门前:记意图,事件帧后自动跳
+            if (jumpBreaksAttack)
+            {
+                if (owner.TryVault())
+                    return;
+                if (TryJump(owner))
+                    owner.PlayerFsm.ChangeState(owner.JumpState);
+                return;
+            }
         }
 
         // 其他锁定状态(冲刺/下坠/施法/受击)及攻击缓冲态:记录跳跃意图,解锁后各状态 OnUpdate 窗口内补跳

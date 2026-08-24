@@ -25,12 +25,28 @@ public class AnimationRelay : MonoBehaviour
     public void OnDeathAnimationEnd()    => _health?.OnDeathAnimationEnd();
 
     // 武器投掷三连击(动画事件下拉里选这些,转发到 WeaponThrow)
-    public void OnWeaponAttack1() => _weaponThrow?.OnAttackStart1();
-    public void OnWeaponAttack2() => _weaponThrow?.OnAttackStart2();
-    public void OnWeaponAttack3() => _weaponThrow?.OnAttackStart3();
+    // 空中攻击复用地面 Attack1/2/3 clip 时会触发这些事件 → 空中屏蔽,不做投掷(2026-08-24)
+    public void OnWeaponAttack1()
+    {
+        if (_combat != null && _combat.IsAirAttacking) return;
+        _weaponThrow?.OnAttackStart1();
+    }
+    public void OnWeaponAttack2()
+    {
+        if (_combat != null && _combat.IsAirAttacking) return;
+        _weaponThrow?.OnAttackStart2();
+    }
+    public void OnWeaponAttack3()
+    {
+        if (_combat != null && _combat.IsAirAttacking) return;
+        _weaponThrow?.OnAttackStart3();
+    }
     public void OnWeaponAttackEnd() => _weaponThrow?.OnAttackEnd();
 
     // 空中攻击(动画事件下拉里选这些,转发到 PlayerCombat)
     public void OnAirAttackHitFrame() => _combat?.OnAirAttackHitFrame();
     public void OnAirAttackEnd() => _combat?.OnAirAttackEnd();
+
+    // 输入门事件帧(攻击动画命中帧之后挂,转发到 PlayerCombat → 当前攻击状态)
+    public void OnAttackInputOpen() => _combat?.OnAttackInputOpen();
 }

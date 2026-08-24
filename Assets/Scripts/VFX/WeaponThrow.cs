@@ -108,6 +108,10 @@ public class WeaponThrow : MonoBehaviour
     private WeaponBreath _breath;
     private Vector3 _breathOrigin;   // 呼吸位置(背后剑的原位,投掷瞬间的世界坐标)
 
+    /// <summary>投掷总开关(Inspector 配置):false = 所有投掷视觉不显示(本体不显示、不生成 clone、无溶解/重生)</summary>
+    [SerializeField, Tooltip("关闭 = 背后剑本体不显示,攻击不投掷剑(伤害判定不受影响)")]
+    private bool throwVisualEnabled = true;
+
     private int _activeClones;       // 当前在飞的 clone 数量
     private bool _breathHidden;      // 本体是否已隐藏(控制残影只在真正隐藏时生成一次)
     private Coroutine _respawnRoutine;  // 重生等待协程(可被新攻击打断)
@@ -151,6 +155,13 @@ public class WeaponThrow : MonoBehaviour
     {
         _sr = GetComponent<SpriteRenderer>();
         _breath = GetComponent<WeaponBreath>();
+
+        // 总开关关闭时:背后本体剑也不显示(连带呼吸浮动一起停)
+        if (!throwVisualEnabled)
+        {
+            if (_sr != null) _sr.enabled = false;
+            if (_breath != null) _breath.enabled = false;
+        }
     }
 
     private void Update()
@@ -193,6 +204,9 @@ public class WeaponThrow : MonoBehaviour
     /// <summary>攻击结束:启动重生判定,respawnDelay 秒内没有新的攻击 start 则剑重新出现</summary>
     public void OnAttackEnd()
     {
+        // 总开关:视觉关闭时本体从未隐藏,无需重生判定
+        if (!throwVisualEnabled) return;
+
         // 无条件启动重生计时(不依赖 clone 计数):
         // 若 clone 已飞完计数归零但动画 end 才到,直接 return 会导致剑永远不回来
         if (_respawnRoutine == null)
@@ -207,6 +221,9 @@ public class WeaponThrow : MonoBehaviour
 
     private void StartAttack(WeaponAttackConfig config)
     {
+        // 总开关:false = 投掷视觉不显示,整个链路不执行(伤害判定不受影响)
+        if (!throwVisualEnabled) return;
+
         // 新攻击打断待定的重生
         CancelRespawn();
 

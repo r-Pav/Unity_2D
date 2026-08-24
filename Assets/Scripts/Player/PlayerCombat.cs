@@ -208,32 +208,48 @@ public class PlayerCombat : MonoBehaviour
     // 动画事件薄转发 — 正式事件迁移在 P5,P2 先转发给 FSM 当前状态类
     // ============================================================
 
-    /// <summary>AttackN.anim 首帧触发 → 转发 AttackState.OnAnimStart（进入攻击表现:朝向）</summary>
+    /// <summary>AttackN.anim 首帧触发 → 转发当前攻击状态 OnAnimStart（进入攻击表现:朝向;地面/空中共用）</summary>
     public void OnAttackAnimationStart()
     {
-        if (_owner != null && _owner.PlayerFsm?.CurrentState is PlayerAttackState atk)
+        if (_owner == null || _owner.PlayerFsm?.CurrentState == null) return;
+        if (_owner.PlayerFsm.CurrentState is PlayerAttackState atk)
             atk.OnAnimStart();
+        else if (_owner.PlayerFsm.CurrentState is PlayerAirAttackState air)
+            air.OnAnimStart();
     }
 
-    /// <summary>AttackN.anim 末帧触发 → 转发 AttackState.OnAnimEnd（排队直切/预输入缓冲）</summary>
+    /// <summary>AttackN.anim 末帧触发 → 转发当前攻击状态 OnAnimEnd（排队直切/预输入缓冲;地面/空中共用）</summary>
     public void OnAttackAnimationEnd()
     {
-        if (_owner != null && _owner.PlayerFsm?.CurrentState is PlayerAttackState atk)
+        if (_owner == null || _owner.PlayerFsm?.CurrentState == null) return;
+        if (_owner.PlayerFsm.CurrentState is PlayerAttackState atk)
             atk.OnAnimEnd();
+        else if (_owner.PlayerFsm.CurrentState is PlayerAirAttackState air)
+            air.OnAnimEnd();
     }
 
-    /// <summary>AirAttack.anim 命中帧 → 转发 AirAttackState.OnAirAttackHitFrame（伤害+武器投掷）</summary>
+    /// <summary>旧 AirAttack.anim 命中帧(历史 clip,现空中复用 Attack1/2/3 → 实际走 OnMeleeHitFrame)。
+    /// 保留转发:旧 clip 若仍触发,安全落到空中伤害判定</summary>
     public void OnAirAttackHitFrame()
     {
         if (_owner != null && _owner.PlayerFsm?.CurrentState is PlayerAirAttackState air)
-            air.OnAirAttackHitFrame();
+            air.OnHitFrame();
     }
 
-    /// <summary>AirAttack.anim 结束 → 转发 AirAttackState.OnAirAttackEnd（退回下落）</summary>
+    /// <summary>旧 AirAttack.anim 结束(历史 clip)。保留转发:旧 clip 若仍触发,落到动画结束逻辑</summary>
     public void OnAirAttackEnd()
     {
         if (_owner != null && _owner.PlayerFsm?.CurrentState is PlayerAirAttackState air)
-            air.OnAirAttackEnd();
+            air.OnAnimEnd();
+    }
+
+    /// <summary>攻击动画输入门事件帧 → 转发当前攻击状态 OnInputOpen（打开输入+消费门前预输入）</summary>
+    public void OnAttackInputOpen()
+    {
+        if (_owner != null && _owner.PlayerFsm?.CurrentState is PlayerAttackState atk)
+            atk.OnInputOpen();
+        else if (_owner != null && _owner.PlayerFsm?.CurrentState is PlayerAirAttackState air)
+            air.OnInputOpen();
     }
 
     /// <summary>AnimationEvent 入口（P2 动画事件仍经 Relay 调用）：从 FSM 当前状态读取连击参数后走伤害核心</summary>
@@ -241,9 +257,15 @@ public class PlayerCombat : MonoBehaviour
     {
         // 兜底:非攻击状态收到命中帧(切换竞态/延迟事件),按第 1 段处理
         int idx = 1;
+        bool isAir = false;
         if (_owner != null && _owner.PlayerFsm?.CurrentState is PlayerAttackState atk)
             idx = atk.ComboIndex;
-        OnMeleeHitFrame(idx, 3, false);
+        else if (_owner != null && _owner.PlayerFsm?.CurrentState is PlayerAirAttackState air)
+        {
+            idx = air.ComboIndex;
+            isAir = true;
+        }
+        OnMeleeHitFrame(idx, 3, isAir);
     }
 
     /// <summary>攻击朝向：优先当前输入,否则取玩家朝向（供状态类/伤害核心读取）</summary>
@@ -257,6 +279,9 @@ public class PlayerCombat : MonoBehaviour
             return _owner != null ? _owner.GetFacing() : 1;
         }
     }
+
+    /// <summary>当前是否处于空中攻击(供 AnimationRelay 屏蔽空中投剑事件)</summary>
+    public bool IsAirAttacking => _owner != null && _owner.PlayerFsm?.CurrentState is PlayerAirAttackState;
 
     // ============================================================
     // 近战伤害判定核心（保留,由 AttackState.OnHitFrame / 动画事件调用）

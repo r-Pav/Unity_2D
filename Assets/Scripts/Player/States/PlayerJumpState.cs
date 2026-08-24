@@ -64,8 +64,9 @@ public class PlayerJumpState : EntityState
             return;
         }
 
-        // 空中左键 → 空中攻击(带冷却判断;原 TryAttack 空中分支)
-        if (Input.GetMouseButtonDown(0) && pc.Combat != null && pc.Combat.AttackCooldownReady)
+        // 空中左键 → 空中攻击(带冷却判断 + 一滞空一次限制;原 TryAttack 空中分支)
+        if (Input.GetMouseButtonDown(0) && pc.Combat != null && pc.Combat.AttackCooldownReady
+            && !jump.AirAttackUsed)
         {
             stateMachine.ChangeState(pc.AirAttackState);
             return;

@@ -1,62 +1,115 @@
 using UnityEngine;
 
 /// <summary>
-/// 空中攻击状态 — 进入时滞空(水平速度半速 + 垂直速度归零 + 重力 0.3 倍),退出恢复重力
-/// 退出条件(方案三):动画结束(OnAirAttackEnd 事件) / 落地
-/// 动画事件经 PlayerCombat 薄转发:OnAirAttackHitFrame / OnAirAttackEnd
+/// 空中攻击状态 — 三连击单状态(与地面 PlayerAttackState 同构,复用 Attack1/2/3 动画 clip)。
+/// 连段期间悬停(垂直速度归零 + 重力 0),连段结束(预输入超时 / 一套打完 / 受击)恢复重力下坠。
+/// 一滞空一套:AirAttackUsed 标记(落地 ResetJumps 清),COMBO-CUT 不重进 OnEnter → 只标一次。
+/// 动画事件经 PlayerCombat 薄转发:OnAnimStart / OnAnimEnd / OnHitFrame / OnInputOpen
 /// </summary>
 public class PlayerAirAttackState : EntityState
 {
     private readonly PlayerCombat combat;
-    private readonly WeaponThrow weaponThrow;
     private readonly PlayerJump jump;
 
-    private float _airAttackOriginalGravity = 1f;   // 空中攻击前的重力(结束时恢复)
+    private int comboIndex = 1;
+    private const int comboLimit = 3;
+    private float timeLastExit;
+    private bool comboQueued;          // 动画播放中按下攻击键 → 标记排队
+    private bool isComboCut;           // 是否为 COMBO-CUT 直切（跳过子机 Exit）
+    private float _exitBufferTimer;    // 动画结束后的预输入缓冲（方案 7.4,同地面）
+    private float _stateTimer;         // 状态存活时长:超 MaxAttackDuration 强制退出(防动画事件链断裂永久锁死)
+
+    /// <summary>输入门:攻击动画事件帧(OnAttackInputOpen)到达前 = false,此期间跳跃/冲刺输入只记录不执行</summary>
+    public bool InputOpen { get; private set; }
+    private bool _jumpQueued;   // 输入门前按下的跳跃意图(事件帧到达后自动执行)
+    private bool _dashQueued;   // 输入门前按下的冲刺意图(事件帧到达后自动执行)
+
+    private float _airAttackOriginalGravity = 1f;   // 空中攻击前的重力(连段结束/退出时恢复)
     private bool _airAttackGravityRestored = true;  // 重力是否已恢复(防重复恢复)
     private float _hoverTimer;                      // 滞空计时:落地退出需先滞空最小时间(防低空攻击瞬间退出)
 
-    /// <summary>最小滞空时长(秒):进入后至少悬浮这么久才允许落地退出,与 AirAttack 动画时长同量级</summary>
+    /// <summary>最小滞空时长(秒):进入后至少悬浮这么久才允许落地退出,与攻击动画时长同量级</summary>
     private const float MinHoverTime = 0.25f;
+
+    /// <summary>输入门事件帧兜底超时(秒):动画事件未挂/丢失时自动开门+恢复重力,防永久悬空</summary>
+    private const float InputOpenTimeout = 0.5f;
+
+    /// <summary>空中攻击状态最大存活时长(秒):动画事件丢失/Play 失败时兜底退出,防 LocksInput 永久锁死</summary>
+    private const float MaxAttackDuration = 2.5f;
+
+    // 配置(与地面同源:连击重置 0.6s / 后摇缓冲 0.12s,由 PlayerController 注入)
+    private readonly float comboResetTimer;
+    private readonly float comboExitWindow;
+
+    /// <summary>当前连击段(伤害判定核心读取)</summary>
+    public int ComboIndex => comboIndex;
 
     public override bool LocksInput => true;
 
     public PlayerAirAttackState(CharacterBase owner, StateMachine stateMachine, Animator anim,
-        PlayerCombat combat, WeaponThrow weaponThrow, PlayerJump jump)
+        PlayerCombat combat, PlayerJump jump, float comboResetTimer, float comboExitWindow)
         : base(owner, stateMachine, anim, new[] { AnimParams.IsAirAttacking })
     {
         this.combat = combat;
-        this.weaponThrow = weaponThrow;
         this.jump = jump;
+        this.comboResetTimer = comboResetTimer;
+        this.comboExitWindow = comboExitWindow;
     }
 
     public override void OnEnter()
     {
-        // IsAirAttacking=true → Entry→AirAttack
+        // IsAirAttacking=true → Jump/Fall 普通过渡进 AirAttack 子机
         base.OnEnter();
 
         var pc = (PlayerController)owner;
 
-        // 强制直切 AirAttack 动画:跳过 Jump/Fall→AirAttack 的过渡竞争
-        // (OnExit 清 IsJumping/IsFalling 与 OnEnter 设 IsAirAttacking 同帧,动画层 Exit 过渡优先
-        // 会落回 Locomotion 显示 idle/walk,且 Locomotion 无到 AirAttack 的过渡 → 卡住。Play 强制切绕过)
-        anim?.Play("AirAttack", 0, 0f);
+        comboQueued = false;   // 中断后重进时清残留排队标记
+        _stateTimer = 0f;
+        InputOpen = false;     // 新一套空中攻击:输入门关闭,等事件帧打开
+        _jumpQueued = false;
+        _dashQueued = false;
 
-        // 攻击朝向跟随当前输入(原 ExecuteAirAttack)
+        ResetComboIfNeeded();
+        anim?.SetInteger(AnimParams.AttackIndex, comboIndex);
+
+        // [2026-08-24 兜底] 强制直切 AirAttack 子机内对应段:绕过 Jump/Fall 的 Exit 过渡竞争
+        // (坑 39 同款:Jump 的 IsJumping==false→Exit 优先于 IsAirAttacking→子机,动画层回 Entry 后
+        //  Entry 无 IsAirAttacking 过渡 → 落 Locomotion 卡住。子机内状态名:Attack/Attack2/Attack3)
+        if (anim != null)
+        {
+            string stateName = comboIndex == 1 ? "Attack" : "Attack" + comboIndex;
+            string clipName = "Base Layer.AirAttack." + stateName;
+            anim.Play(clipName, 0, 0f);
+            var st = anim.GetCurrentAnimatorStateInfo(0);
+            string clip = "?";
+            if (anim.GetCurrentAnimatorClipInfo(0).Length > 0)
+                clip = anim.GetCurrentAnimatorClipInfo(0)[0].clip != null ? anim.GetCurrentAnimatorClipInfo(0)[0].clip.name : "null";
+            bool isLoc = st.IsName("Base Layer.Locomotion");
+            bool isJump = st.IsName("Base Layer.Jump");
+            bool isAir = st.IsName("Base Layer.AirAttack");
+            bool isAtt = st.IsName("Base Layer.Attack");
+            Debug.Log($"[AirAttack] OnEnter Play={clipName} IsName={st.IsName(clipName)} clip={clip} time={st.normalizedTime} | Loc={isLoc} Jump={isJump} Air={isAir} Att={isAtt}");
+        }
+
+        // 攻击朝向跟随当前输入
         if (combat != null)
             pc.UpdateFacing(combat.AttackDir);
 
-        // 滞空:水平速度减半 + 垂直速度归零 + 重力减小(原 ExecuteAirAttack)
+        // 悬停:水平速度减半 + 垂直速度归零 + 重力归零(连段结束才恢复,期间不下坠)
         Rigidbody2D rb = pc.GetRigidbody();
         if (rb != null)
         {
             rb.velocity = new Vector2(rb.velocity.x * 0.5f, 0f);
             _airAttackOriginalGravity = rb.gravityScale;
-            rb.gravityScale = Mathf.Max(0.3f, _airAttackOriginalGravity * 0.3f);
+            rb.gravityScale = 0f;
             _airAttackGravityRestored = false;
         }
         _hoverTimer = 0f;
 
-        // 记录攻击起始:消耗冷却 + 战斗态锁定(原 ExecuteAirAttack)
+        // 一滞空一套:标记本次滞空已用过空中攻击(落地 ResetJumps 时清)
+        jump?.MarkAirAttackUsed();
+
+        // 记录攻击起始:消耗冷却 + 战斗态锁定
         combat?.ConsumeAttackCooldown();
         combat?.OnAttack?.Invoke();
     }
@@ -66,60 +119,189 @@ public class PlayerAirAttackState : EntityState
         var pc = (PlayerController)owner;
         _hoverTimer += Time.deltaTime;
 
-        // [2026-08-21] 空中攻击中朝向跟随输入(转向灵敏;伤害判定读 AttackDir 同步新方向)。
-        // OnEnter 的转向保留,同值无害
+        // 空中攻击中朝向跟随输入(与地面一致)
         float h = Input.GetAxisRaw("Horizontal");
         if (Mathf.Abs(h) > 0.1f) pc.UpdateFacing(h);
 
-        // [2026-08-21] 空中攻击中 Shift → 打断攻击冲刺(与地面攻击同款;ChangeState 先调 OnExit 清理)
+        // 空中攻击中 Shift → 打断攻击冲刺(与地面同款;ChangeState 先调 OnExit 恢复重力)
+        // 输入门:事件帧前按 Shift 只记录意图,事件帧(OnAttackInputOpen)后自动执行
         if (Input.GetKeyDown(KeyCode.LeftShift) && pc.Dash != null && pc.Dash.CooldownReady)
         {
-            stateMachine.ChangeState(pc.DashState);
-            return;
+            if (!InputOpen)
+            {
+                _dashQueued = true;
+            }
+            else
+            {
+                stateMachine.ChangeState(pc.DashState);
+                return;
+            }
         }
 
-        // 落地 → 退出(方案三:AirAttack 退出条件 = 动画结束/落地)。
-        // 需先滞空 MinHoverTime:低空攻击时贴地瞬间不立即退出,保留滞空/动画表现(原版事件驱动退出);
-        // 动画事件正常时 OnAirAttackEnd 先触发(→FallState),此处仅作事件丢失/低空兜底
-        if (pc.IsGrounded() && _hoverTimer >= MinHoverTime)
+        // 输入检测:动画播放中 或 预输入缓冲期内 按攻击键 → 排队/直切(与地面同款)
+        if (Input.GetMouseButtonDown(0) && comboIndex < comboLimit)
         {
-            jump?.ResetJumps();   // 修复:空中攻击落地后不重置跳跃次数 → 之后按空格跳不了
-            stateMachine.ChangeState(Mathf.Abs(h) > 0.1f ? pc.MoveState : pc.IdleState);
+            if (_exitBufferTimer > 0f)
+            {
+                // 缓冲窗口内点击:立即直切下一段(COMBO-CUT,无 idle 间隙)
+                isComboCut = true;
+                comboIndex++;
+                anim?.SetInteger(AnimParams.AttackIndex, comboIndex);
+                InputOpen = false;   // 切段 = 新一段攻击的前摇,输入门重新关闭
+                _jumpQueued = false;
+                _dashQueued = false;
+                anim?.Play("Attack" + comboIndex, 0, 0f);
+                _exitBufferTimer = 0f;
+                isComboCut = false;
+            }
+            else
+            {
+                comboQueued = true;  // 动画播放中 → 排队,末帧处理
+            }
+        }
+
+        // 输入门事件帧兜底:动画事件未挂/丢失时,超时自动开门+恢复重力,防永久悬空锁输入
+        if (!InputOpen && _hoverTimer > InputOpenTimeout)
+            OnInputOpen();
+
+        // 预输入缓冲超时 → 连段结束:恢复重力下坠退出
+        if (_exitBufferTimer > 0f)
+        {
+            _exitBufferTimer -= Time.deltaTime;
+            if (_exitBufferTimer <= 0f)
+            {
+                EndComboAndFall(pc, h);
+            }
+        }
+
+        // 兜底:状态存活超时强制退出(动画事件链断裂/Play 失败时防止 LocksInput 永久锁死)
+        _stateTimer += Time.deltaTime;
+        if (_stateTimer > MaxAttackDuration)
+        {
+            Debug.LogWarning("[Combat] AirAttackState 超时兜底退出(动画事件可能丢失)");
+            EndComboAndFall(pc, h);
         }
     }
 
     public override void OnExit()
     {
-        // IsAirAttacking=false → AirAttack→Exit,回 Locomotion
+        // IsAirAttacking=false → 子机 Attack1/2/3 → Exit,回 Locomotion
         base.OnExit();
 
-        var pc = (PlayerController)owner;
+        // 恢复重力(连段结束/打断/受击退出都会走到这里;已恢复时防重跳过)
+        RestoreGravity();
+    }
 
-        // 恢复重力(原 OnAirAttackEnd / CancelAttackForJump)
-        Rigidbody2D rb = pc.GetRigidbody();
-        if (rb != null && !_airAttackGravityRestored)
+    // ── AnimationEvent 回调(经 PlayerCombat 薄转发) ──
+
+    /// <summary>动画事件:进入攻击表现 — 朝向跟随当前输入(与地面 OnAnimStart 同义)</summary>
+    public void OnAnimStart()
+    {
+        var pc = (PlayerController)owner;
+        if (combat != null)
+            pc.UpdateFacing(combat.AttackDir);
+    }
+
+    /// <summary>动画事件:comboQueued → 直切下一段;否则开 _exitBufferTimer 预输入缓冲(与地面同款)</summary>
+    public void OnAnimEnd()
+    {
+        if (comboQueued && comboIndex < comboLimit)
+        {
+            // 排队命中 → 直切下一段(与现 COMBO-CUT 同步推进)
+            isComboCut = true;
+            comboIndex++;
+            anim?.SetInteger(AnimParams.AttackIndex, comboIndex);
+            InputOpen = false;   // 切段 = 新一段攻击的前摇,输入门重新关闭
+            _jumpQueued = false;
+            _dashQueued = false;
+            anim?.Play("Attack" + comboIndex, 0, 0f);
+            comboQueued = false;
+            isComboCut = false;
+            _exitBufferTimer = 0f;
+            return;
+        }
+        comboQueued = false;
+
+        // 无排队 → 打开预输入缓冲窗口:窗口内点击直切下一段,窗口超时 = 连段结束下坠
+        _exitBufferTimer = comboExitWindow;
+    }
+
+    /// <summary>动画命中帧:伤害判定 — 空中按当前连击段结算</summary>
+    public void OnHitFrame()
+    {
+        combat?.OnMeleeHitFrame(comboIndex, comboLimit, isAirAttack: true);
+    }
+
+    /// <summary>输入门事件帧(动画事件 OnAttackInputOpen):打开输入,消费门前记录的跳跃/冲刺意图。
+    /// 注意:空中不在此处恢复重力——悬停要持续到连段结束(EndComboAndFall),否则第二三段在下坠中打</summary>
+    public void OnInputOpen()
+    {
+        InputOpen = true;
+
+        // 门前按下的冲刺:直接执行(打断空中攻击 → OnExit 恢复重力)
+        if (_dashQueued)
+        {
+            _dashQueued = false;
+            var pc = (PlayerController)owner;
+            if (pc.Dash != null && pc.Dash.CooldownReady)
+            {
+                stateMachine.ChangeState(pc.DashState);
+                return;
+            }
+        }
+
+        // 门前按下的跳跃:直接执行(打断空中攻击 → OnExit 恢复重力)
+        if (_jumpQueued)
+        {
+            _jumpQueued = false;
+            var pc = (PlayerController)owner;
+            if (jump != null && jump.TryJump(pc))
+            {
+                stateMachine.ChangeState(pc.JumpState);
+            }
+        }
+    }
+
+    /// <summary>输入门前按下跳跃:记录意图,事件帧到达后自动跳</summary>
+    public void QueueJump() => _jumpQueued = true;
+
+    // ============================================================
+    // 内部
+    // ============================================================
+
+    /// <summary>连段结束统一出口:恢复重力开始下坠 + 退出空中攻击状态。</summary>
+    private void EndComboAndFall(PlayerController pc, float h)
+    {
+        RestoreGravity();   // 开始下坠
+
+        // 空中 → 落 FallState;已贴地(低空攻击)→ 直接落 Idle/Move
+        if (pc.IsGrounded())
+        {
+            jump?.ResetJumps();
+            stateMachine.ChangeState(Mathf.Abs(h) > 0.1f ? pc.MoveState : pc.IdleState);
+        }
+        else
+        {
+            stateMachine.ChangeState(pc.FallState);
+        }
+    }
+
+    /// <summary>恢复重力(带防重标志):连段结束/打断/受击/超时统一入口</summary>
+    private void RestoreGravity()
+    {
+        if (_airAttackGravityRestored) return;
+        var pc = (PlayerController)owner;
+        Rigidbody2D rb = pc != null ? pc.GetRigidbody() : null;
+        if (rb != null)
         {
             rb.gravityScale = _airAttackOriginalGravity;
             _airAttackGravityRestored = true;
         }
-
-        // 武器投掷重生判定:空中攻击结束(原 OnAirAttackEnd)
-        weaponThrow?.OnAttackEnd();
     }
 
-    // ── AnimationEvent 回调(经 PlayerCombat.OnAirAttackHitFrame/OnAirAttackEnd 薄转发) ──
-
-    /// <summary>空中攻击命中帧:伤害判定(复用近战命中核心) + 触发空中武器投掷(原 OnAirAttackHitFrame)</summary>
-    public void OnAirAttackHitFrame()
+    private void ResetComboIfNeeded()
     {
-        // 空中攻击按第 1 段结算(不参与地面连击推进)
-        combat?.OnMeleeHitFrame(comboIndex: 1, comboLimit: 3, isAirAttack: true);
-        weaponThrow?.OnAirAttackStart();
-    }
-
-    /// <summary>空中攻击结束(动画事件):退回下落状态(重力恢复在 OnExit)</summary>
-    public void OnAirAttackEnd()
-    {
-        stateMachine.ChangeState(((PlayerController)owner).FallState);
+        if (Time.time > timeLastExit + comboResetTimer) comboIndex = 1;
+        if (comboIndex > comboLimit) comboIndex = 1;
     }
 }

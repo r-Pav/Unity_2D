@@ -194,7 +194,9 @@ public class PlayerController : PlayerCharacterBase
         AttackState = new PlayerAttackState(this, PlayerFsm, _animator, combat, GetComponentInChildren<WeaponThrow>(),
             combat != null ? combat.ComboResetTimer : 0.6f,
             combat != null ? combat.ComboExitWindow : 0.12f);
-        AirAttackState = new PlayerAirAttackState(this, PlayerFsm, _animator, combat, GetComponentInChildren<WeaponThrow>(), jump);
+        AirAttackState = new PlayerAirAttackState(this, PlayerFsm, _animator, combat, jump,
+            combat != null ? combat.ComboResetTimer : 0.6f,
+            combat != null ? combat.ComboExitWindow : 0.12f);
         BlockState = new PlayerBlockState(this, PlayerFsm, _animator, combat, jump,
             combat != null ? combat.ParryMaxWindow : 0.2f);
         GroundPoundState = new PlayerGroundPoundState(this, PlayerFsm, _animator, groundPound, jump);
@@ -411,6 +413,8 @@ public class PlayerController : PlayerCharacterBase
 
     public PlayerCombat Combat => combat;
     public PlayerGroundPound GroundPound => groundPound;
+    /// <summary>跳跃执行器(供 FSM 状态类/输入门查询跳跃次数/执行跳跃)</summary>
+    public PlayerJump JumpComp => jump;
     /// <summary>冲刺执行器(供 FSM 状态类查询冷却/调 DoDash;P3b 起状态由 PlayerDashState 表达)</summary>
     public PlayerDash Dash => dash;
     public StatModifierManager StatModManager => statModManager;
