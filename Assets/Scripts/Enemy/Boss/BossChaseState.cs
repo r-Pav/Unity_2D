@@ -1,9 +1,8 @@
 using UnityEngine;
 
 /// <summary>
-/// Boss 追击状态 — 完全对齐普通 enemy MeleeChaseState:
-/// CanSeePlayer(检测矩形) → PlayerInAttackRange(attackWidth×0.5,自身为中心)停住防左右闪 → CanAttack → 攻击。
-/// 区别:Boss 无巡逻,视野外继续追击(玩家在 Boss 房内总会再进视野)。
+/// Boss 追击状态 — 无 AI 检测矩形/视野判断(detectionWidth/Height 不参与)。
+/// 激活后一直朝玩家移动;玩家进入攻击范围子物体(BossAttackRange) → 停住 + 攻击。
 /// </summary>
 public class BossChaseState : EntityState
 {
@@ -24,30 +23,19 @@ public class BossChaseState : EntityState
         var boss = (FirstBoss)owner;
         if (boss.IsDead) return;
 
-        if (boss.CanSeePlayer())
+        // 玩家在攻击范围(子 obj)内:停住 + 触发攻击(CanAttack 检查激活/存活/技能/冷却)
+        if (boss.IsPlayerInBossAttackRange())
         {
-            // 玩家已在攻击范围内:停住等待攻击(防重叠后 DirectionToPlayer 抖动导致左右闪)
-            if (boss.PlayerInAttackRange())
-            {
-                boss.moveInput = 0f;
-            }
-            else
-            {
-                boss.moveInput = boss.DirectionToPlayer();
-            }
-
+            boss.moveInput = 0f;
             if (boss.CanAttack())
             {
-                boss.moveInput = 0f;
                 boss.Fsm.ChangeState(new BossAttackState(owner, stateMachine, anim));
-                return;
             }
+            return;
         }
-        else
-        {
-            // 视野外:Boss 无巡逻,继续追击
-            boss.moveInput = boss.DirectionToPlayer();
-        }
+
+        // 玩家不在攻击范围:持续追击
+        boss.moveInput = boss.DirectionToPlayer();
     }
 
     public override void OnExit()

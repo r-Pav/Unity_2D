@@ -18,7 +18,8 @@ public class FirstBoss : BossControllerBase
     [Header("基础属性（倍率）")]
     [SerializeField] private float hpMultiplier = 12f;
     [SerializeField] private float moveSpeedMultiplier = 0.5f;
-    [SerializeField] private float attackRangeMultiplier = 1.5f;
+    // [废弃 2026-08-25] attackRangeMultiplier 攻击范围倍率 — 攻击触发已改为攻击范围子物体(BossAttackRange)判定,
+    // 不再用 attackWidth×attackRangeMultiplier 数值矩形。仅旧 Gizmos 引用,保留字段防序列化丢失,逻辑不读取。
 
     // ============================================================
     // Inspector — 阶段移速倍率
@@ -192,6 +193,49 @@ public class FirstBoss : BossControllerBase
     /// <summary>当前移动速度</summary>
     public float CurrentMoveSpeed => baseMoveSpeed * moveSpeedMultiplier * currentMoveSpeedMult;
 
+    /// <summary>
+    /// 玩家是否在攻击范围内 — 按攻击范围子物体(BossAttackRange)实际视觉大小判定。
+    /// 参考系 = 子物体世界位置(跟随 Boss 和朝向,朝左自动翻转);
+    /// 大小 = MeleeRangeIndicator.Size(SpriteRenderer bounds = 视觉显示大小,看到多大就是多大)。
+    /// 伤害范围同源:EnemyMeleeAttack.rangeIndicator 拖同一个子物体,攻击触发与伤害判定范围一致。
+    /// 无子物体时不做攻击判定(返回 false)。
+    /// </summary>
+    public bool IsPlayerInBossAttackRange()
+    {
+        if (PlayerTarget == null) return false;
+
+        var indicator = GetAttackRangeIndicator();
+        if (indicator == null) return false;
+
+        Vector2 size = indicator.Size;  // SpriteRenderer bounds = 视觉大小
+        if (size.x <= 0f || size.y <= 0f) return false;
+        Vector2 center = indicator.transform.position;  // 子 obj 世界位置,跟随 Boss+朝向
+        return Mathf.Abs(PlayerTarget.position.x - center.x) <= size.x * 0.5f
+            && Mathf.Abs(PlayerTarget.position.y - center.y) <= size.y * 0.5f;
+    }
+
+    /// <summary>获取攻击范围指示器(EnemyMeleeAttack 拖入的子物体,与伤害判定同源)</summary>
+    private MeleeRangeIndicator GetAttackRangeIndicator()
+    {
+        var melee = GetComponent<EnemyMeleeAttack>();
+        return melee != null ? melee.RangeIndicator : null;
+    }
+
+    /// <summary>
+    /// 攻击检测 — 覆写基类 CanAttack:范围判断 = 攻击范围子物体(玩家进入子 obj → 攻击),其余条件走基类链。
+    /// 注意:不含 CanSeePlayer(AI 检测矩形) — Boss 不检测视野,激活后玩家在场景就追。
+    /// </summary>
+    public override bool CanAttack()
+    {
+        if (!isActivated) return false;
+        if (isDead) return false;
+        if (skillSlots != null && skillSlots.IsExecuting) return false;
+        if (PlayerTarget == null) return false;
+        if (attackCooldownTimer > 0f) return false;
+
+        return IsPlayerInBossAttackRange();
+    }
+
     // ============================================================
     // 移动覆写 — 使用 Boss 当前速度
     // ============================================================
@@ -205,19 +249,13 @@ public class FirstBoss : BossControllerBase
     // Gizmos
     // ============================================================
 
+    // [废弃 2026-08-25] 数值检测/攻击矩形 — Boss 不再用 detectionWidth/attackWidth 数值检测,
+    // 覆写 OnDrawGizmosSelected 且不调 base,隐藏基类的检测矩形(黄)和攻击矩形(红)。
+    // 攻击范围子物体(BossAttackRange)的 MeleeRangeIndicator 在 Scene 视图直接可见。
 #if UNITY_EDITOR
     protected override void OnDrawGizmosSelected()
     {
-        base.OnDrawGizmosSelected();
-
-        // 扩展后的攻击范围
-        float rangeX = attackWidth * attackRangeMultiplier;
-        float rangeY = attackHeight * attackRangeMultiplier;
-
-        Gizmos.color = new Color(1f, 0f, 0f, 0.3f);
-        Gizmos.DrawWireCube(transform.position, new Vector3(rangeX, rangeY, 0.01f));
-        Gizmos.color = new Color(1f, 0f, 0f, 0.06f);
-        Gizmos.DrawCube(transform.position, new Vector3(rangeX, rangeY, 0.01f));
+        // 空实现:不画数值矩形(基类 OnDrawGizmosSelected 被隐藏)
     }
 #endif
 }

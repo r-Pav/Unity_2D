@@ -18226,7 +18226,7 @@ Transform:
   m_GameObject: {fileID: 519420028}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 8.770026, y: -14.037143, z: -9.878557}
+  m_LocalPosition: {x: 8.771121, y: -14.194833, z: -9.878557}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -34527,8 +34527,8 @@ PolygonCollider2D:
       - {x: -26.93874, y: 11.853881}
       - {x: -26.842178, y: 2.9824557}
       - {x: -52.08906, y: 3.0461912}
-      - {x: -52.552372, y: -14.509995}
-      - {x: 50.470516, y: -14.2807}
+      - {x: -52.11617, y: -16.472925}
+      - {x: 50.36147, y: -16.897942}
   m_UseDelaunayMesh: 0
 --- !u!1 &1062433636
 GameObject:
@@ -72407,14 +72407,14 @@ MonoBehaviour:
   directionalHitVFXPrefab: {fileID: 0}
   deathVFXPrefab: {fileID: 0}
   hitVFXVariants: []
-  detectionWidth: 6.2
-  detectionHeight: 2.25
-  attackWidth: 2.29
-  attackHeight: 1.38
+  detectionWidth: 7.29
+  detectionHeight: 4.14
+  attackWidth: 4.01
+  attackHeight: 2.75
   attackCooldownDuration: 1
   rangedKnockbackForce: 5
-  cliffCheckForward: 0.8
-  cliffCheckDown: 0.8
+  cliffCheckForward: 1.88
+  cliffCheckDown: 0.75
   channelLayer:
     serializedVersion: 2
     m_Bits: 0
@@ -72438,7 +72438,6 @@ MonoBehaviour:
   bossDeathVFXPrefab: {fileID: 0}
   hpMultiplier: 12
   moveSpeedMultiplier: 0.5
-  attackRangeMultiplier: 1.5
   p2MoveSpeedMult: 1.2
   p3MoveSpeedMult: 1.5
   p1Weights:
@@ -75768,7 +75767,7 @@ Transform:
   m_GameObject: {fileID: 6828421819435083014}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 30.13, y: -2.48, z: 0}
+  m_LocalPosition: {x: 30.68, y: -2.48, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []

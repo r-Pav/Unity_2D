@@ -31,8 +31,8 @@ public class BossAttackState : EntityState
         var boss = (FirstBoss)owner;
         if (boss.IsDead) return;
 
-        // 玩家不在攻击范围内 → 回追击;范围内保持攻击状态(Attack 动画循环播放 = 持续攻击)
-        if (!boss.PlayerInAttackRange())
+        // 玩家不在攻击范围(子 obj)内 → 回追击;范围内保持攻击状态(Attack 动画循环播放 = 持续攻击)
+        if (!boss.IsPlayerInBossAttackRange())
         {
             ReturnToChase(boss);
         }

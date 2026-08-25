@@ -171,18 +171,9 @@ public abstract class BossControllerBase : EnemyControllerBase
         currentPhase = 0;
     }
 
-    // [临时排查] 低频状态日志(每 2s 一条):确认 Boss 实际卡在哪个状态
-    private float _lastStateLogTime;
-
     protected override void OnUpdate()
     {
         base.OnUpdate();
-        if (BossDebugFlow.Enabled && Time.time - _lastStateLogTime > 2f)
-        {
-            _lastStateLogTime = Time.time;
-            Debug.Log($"[BossFSM] 状态={fsm?.CurrentState?.GetType().Name} moveInput={moveInput} " +
-                      $"target={PlayerTarget?.name} dist={(PlayerTarget != null ? Vector2.Distance(PlayerTarget.position, transform.position) : -1f):F2}");
-        }
     }
 
     protected override void OnEnable()
@@ -219,9 +210,6 @@ public abstract class BossControllerBase : EnemyControllerBase
     {
         if (isActivated) return;
         isActivated = true;
-
-        if (BossDebugFlow.Enabled)
-            Debug.Log($"[BossFSM] ActivateBoss → Chase");
 
         EventBus.Trigger(new BossActivatedEvent(this, maxHealth, currentHealth));
 
@@ -281,8 +269,6 @@ public abstract class BossControllerBase : EnemyControllerBase
     /// </summary>
     private void HandleHitCommon(bool faceSource, Vector2 sourcePosition)
     {
-        if (BossDebugFlow.Enabled)
-            Debug.Log($"[BossFSM] 受击 HandleHitCommon hp={currentHealth}/{maxHealth} state={fsm?.CurrentState?.GetType().Name}");
         skillSlots?.Interrupt();
         EventBus.Trigger(new BossHpChangedEvent(this, currentHealth, maxHealth));
 
