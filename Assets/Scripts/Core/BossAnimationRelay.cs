@@ -1,24 +1,26 @@
 using UnityEngine;
 
 /// <summary>
-/// Boss 动画事件转发（预留）— Boss 接入动画时挂到 Boss 的 Anim 子物体上（与 Animator 同物体）。
-/// 结构已就位，转发方法注释保留：接入时取消注释、按实际动画事件调整方法名（Boss 前缀），
-/// 转发目标统一是 EnemyControllerBase 的通用方法（OnAttackHitFrame / OnAttackAnimationEnd / OnDeathAnimationEnd）。
-///
-/// 示例（接入时用）：
-///   public void OnBossAttackHitFrame() => _enemy?.OnAttackHitFrame();
-///   public void OnBossMagicFrame()     => _enemy?.OnAttackHitFrame();   // 魔法/技能命中帧
-///   public void OnBossAttackEnd()      => _enemy?.OnAttackAnimationEnd();
-///   public void OnBossDeathEnd()       => _enemy?.OnDeathAnimationEnd();
+/// Boss 动画事件转发（独立,不混 EnemyControllerBase 的通用动画事件链）。
+/// 挂在 Boss 的 Anim 子物体上(与 Animator 同物体),动画 clip 的事件帧直接调这里,
+/// 由本类按当前 FSM 状态转发给 Boss 自己的状态类。
 /// </summary>
 public class BossAnimationRelay : MonoBehaviour
 {
-    private EnemyControllerBase _enemy;
+    private FirstBoss _boss;
 
     void Awake()
     {
-        _enemy = GetComponentInParent<EnemyControllerBase>();
+        _boss = GetComponentInParent<FirstBoss>();
     }
 
-    // 预留：Boss 接入动画时在这里加转发方法（见类注释示例）
+    /// <summary>Attack 动画结束帧事件 — 转发给 BossAttackState.OnAnimEnd(回追击)。</summary>
+    public void OnBossAttackEnd()
+    {
+        if (_boss != null && _boss.Fsm.CurrentState is BossAttackState atk)
+            atk.OnAnimEnd();
+    }
+
+    // 后续接入伤害/技能时在这里加独立事件(如 OnBossAttackActiveStart/End → BossSkillSlots),
+    // 与普通 enemy 的 AnimationRelay 保持隔离。
 }

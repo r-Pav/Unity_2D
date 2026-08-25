@@ -171,6 +171,20 @@ public abstract class BossControllerBase : EnemyControllerBase
         currentPhase = 0;
     }
 
+    // [临时排查] 低频状态日志(每 2s 一条):确认 Boss 实际卡在哪个状态
+    private float _lastStateLogTime;
+
+    protected override void OnUpdate()
+    {
+        base.OnUpdate();
+        if (BossDebugFlow.Enabled && Time.time - _lastStateLogTime > 2f)
+        {
+            _lastStateLogTime = Time.time;
+            Debug.Log($"[BossFSM] 状态={fsm?.CurrentState?.GetType().Name} moveInput={moveInput} " +
+                      $"target={PlayerTarget?.name} dist={(PlayerTarget != null ? Vector2.Distance(PlayerTarget.position, transform.position) : -1f):F2}");
+        }
+    }
+
     protected override void OnEnable()
     {
         base.OnEnable();
@@ -206,7 +220,8 @@ public abstract class BossControllerBase : EnemyControllerBase
         if (isActivated) return;
         isActivated = true;
 
-        // Debug.Log($"[{name}] Boss 激活！");
+        if (BossDebugFlow.Enabled)
+            Debug.Log($"[BossFSM] ActivateBoss → Chase");
 
         EventBus.Trigger(new BossActivatedEvent(this, maxHealth, currentHealth));
 
@@ -231,18 +246,7 @@ public abstract class BossControllerBase : EnemyControllerBase
         // 委托基类处理：扣血 + 受伤反馈 + 硬直 + 死亡检测 + VFX
         base.TakeDamage(amount, attackType);
 
-        // 受击时中断当前技能
-        skillSlots?.Interrupt();
-
-        // 触发 Boss 血量变化事件
-        EventBus.Trigger(new BossHpChangedEvent(this, currentHealth, maxHealth));
-
-        // Boss 不被硬直打断，立即切回追击
-        if (!isDead)
-        {
-            fsm.ChangeState(CreateChaseState());
-            CheckPhaseTransition();
-        }
+        HandleHitCommon(false, Vector2.zero);
     }
 
     public override void TakeDamageFrom(float amount, Vector2 attackSource, string attackType = "")
@@ -257,32 +261,43 @@ public abstract class BossControllerBase : EnemyControllerBase
         // 委托基类处理核心逻辑：扣血 + 受伤反馈 + 硬直 + 死亡检测 + VFX
         base.TakeDamage(amount, attackType);
 
-        // 受击时中断当前技能
-        skillSlots?.Interrupt();
+        // 击退（带抵抗系数）：resistance=1 时完全不吃击退
+        float knockMultiplier = 1f - knockbackResistance;
+        if (knockMultiplier > 0.001f)
+        {
+            Vector2 knockDir = ((Vector2)transform.position - attackSource).normalized;
+            knockDir.y = 0f;
+            if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
+            rb.AddForce(knockDir * 3f * knockMultiplier, ForceMode2D.Impulse);
+        }
 
-        // 触发 Boss 血量变化事件
+        HandleHitCommon(true, attackSource);
+    }
+
+    /// <summary>
+    /// 受击统一处理（状态机入口）：中断技能 + 血量事件 + 回追击 + 阶段检测。
+    /// TakeDamage / TakeDamageFrom / OnHitBy 共用，状态切换只经 fsm.ChangeState(状态机 API)。
+    /// 受击清攻击冷却 → ChaseState.OnUpdate 的 CanAttack 立即可用 → 状态机自动切 Attack 反击(不额外写攻击代码)。
+    /// </summary>
+    private void HandleHitCommon(bool faceSource, Vector2 sourcePosition)
+    {
+        if (BossDebugFlow.Enabled)
+            Debug.Log($"[BossFSM] 受击 HandleHitCommon hp={currentHealth}/{maxHealth} state={fsm?.CurrentState?.GetType().Name}");
+        skillSlots?.Interrupt();
         EventBus.Trigger(new BossHpChangedEvent(this, currentHealth, maxHealth));
 
-        if (!isDead)
+        if (isDead) return;
+
+        attackCooldownTimer = 0f;  // 受击立即反击:清冷却,CanAttack 不再被冷却拦截
+
+        if (faceSource)
         {
-            // 击退（带抵抗系数）：resistance=1 时完全不吃击退
-            float knockMultiplier = 1f - knockbackResistance;
-            if (knockMultiplier > 0.001f)
-            {
-                Vector2 knockDir = ((Vector2)transform.position - attackSource).normalized;
-                knockDir.y = 0f;
-                if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
-                rb.AddForce(knockDir * 3f * knockMultiplier, ForceMode2D.Impulse);
-            }
-
-            // 朝攻击源方向追击
-            float dir = (attackSource.x > transform.position.x) ? 1f : -1f;
+            float dir = (sourcePosition.x > transform.position.x) ? 1f : -1f;
             moveInput = dir;
-            fsm.ChangeState(CreateChaseState());
-
-            // 阶段检测
-            CheckPhaseTransition();
         }
+
+        fsm.ChangeState(CreateChaseState());
+        CheckPhaseTransition();
     }
 
     // ============================================================
@@ -294,27 +309,14 @@ public abstract class BossControllerBase : EnemyControllerBase
     /// <summary>可受击：非死亡 + 已激活 + 非阶段切换无敌</summary>
     public override bool CanBeDamaged => !isDead && isActivated && !isPhaseTransitioning;
 
-    /// <summary>受击状态推送：中断当前技能 + 血量事件 + 立即切回追击（原 TakeDamageFrom 尾部逻辑）</summary>
+    /// <summary>受击状态推送：中断技能 + 血量事件 + 回追击 + 阶段检测（统一走 HandleHitCommon）。</summary>
     public override void OnHitBy(DamageInfo info)
     {
-        // 与原 TakeDamageFrom 一致：受击时中断当前技能 + 血量事件（死亡后也触发）
         if (!isActivated) return;
         if (isPhaseTransitioning) return;
 
-        skillSlots?.Interrupt();
-        EventBus.Trigger(new BossHpChangedEvent(this, currentHealth, maxHealth));
-
-        if (isDead) return;
-
-        // Boss 不被硬直打断，立即切回追击
-        EnterStunState();
-
-        float dir = (info.sourcePosition.x > transform.position.x) ? 1f : -1f;
-        moveInput = dir;
-        fsm.ChangeState(CreateChaseState());
-
-        // 阶段检测
-        CheckPhaseTransition();
+        // Boss 不吃硬直(不进入 EnemyStunState),统一回追击;击退抵抗已在 ApplyKnockback 处理
+        HandleHitCommon(true, info.sourcePosition);
     }
 
     /// <summary>施加击退（带抵抗系数）：resistance=1 时完全不吃击退</summary>
@@ -338,9 +340,11 @@ public abstract class BossControllerBase : EnemyControllerBase
     protected virtual void CheckPhaseTransition()
     {
         if (isDead || isPhaseTransitioning) return;
-        if (initialMaxHealth <= 0f) return;
+        if (maxHealth <= 0f) return;
 
-        float hpRatio = currentHealth / initialMaxHealth;
+        // 用 maxHealth 作基准:OnStatModifiersChanged 会等比缩放 currentHealth/maxHealth,
+        // 比例不受装备修饰器影响;用 initialMaxHealth 会在缩放后产生 96/1200 类错比导致无限切阶段
+        float hpRatio = currentHealth / maxHealth;
 
         // 从当前阶段开始向后检查，一次只切一个阶段（防止连续跳过）
         for (int i = currentPhase; i < hpThresholds.Length; i++)
@@ -391,38 +395,23 @@ public abstract class BossControllerBase : EnemyControllerBase
     protected override void Die()
     {
         if (isDead) return;
-        isDead = true;
-        OnExitCombatState();
+        base.Die();  // isDead + 清冻结/停顿 + moveInput=0 + 切 EnemyDeadState(死亡动画) + 超时兜底
+    }
 
-        // 本地冻结中死亡 → 立即解除（死亡动画/特效必须正常播放）
-        ForceEndLocalFreeze();
+    /// <summary>
+    /// 死亡动画播完 — Boss 专属结算 + 基类结算(死亡 VFX / 掉落 / EnemyDeathEvent / Destroy)。
+    /// 由 Death.anim 末帧事件或基类死亡超时兜底触发,状态机统一走 EnemyDeadState。
+    /// </summary>
+    public override void OnDeathAnimationEnd()
+    {
+        if (!isDead) return;
 
-        // Boss 死亡 VFX — 多段粒子序列（由 Prefab 自身脚本控制）
+        // Boss 专属结算(基类结算之前)
         if (bossDeathVFXPrefab != null)
             VFXSpawner.SpawnOnBoss(bossDeathVFXPrefab, transform.position);
         EventBus.Trigger(new BossDefeatedEvent(this));
 
-        // 掉落装备（复用基类 EnemyEquipment 逻辑）
-        GetComponent<EnemyEquipment>()?.DropOnDeath();
-
-        // 触发敌人死亡事件（经验/任务系统等）
-        EventBus.Trigger(new EnemyDeathEvent(this, (Vector2)transform.position));
-
-        // 延迟销毁：先播死亡效果
-        StartCoroutine(DeathRoutine());
-    }
-
-    /// <summary>死亡协程：延迟 → 销毁</summary>
-    protected virtual IEnumerator DeathRoutine()
-    {
-        // 死亡动画/特效持续期间
-        // 禁用碰撞体，防止继续交互
-        if (col != null) col.enabled = false;
-        if (rb != null) rb.simulated = false;
-
-        yield return new WaitForSeconds(deathDelay);
-
-        Destroy(gameObject);
+        base.OnDeathAnimationEnd();
     }
 
     // ============================================================
@@ -461,6 +450,16 @@ public abstract class BossControllerBase : EnemyControllerBase
     }
 
     /// <summary>
+    /// 外部触发魔法技能(绕过自动选择) — 预留给 BGM 重音系统。
+    /// 后续 RhythmClock.OnBeat(重音到达) 时调用,由 BossSkillSlots.TriggerMagic 执行魔法技能 SO。
+    /// </summary>
+    public void TriggerMagicSkill(int index)
+    {
+        if (skillSlots == null) return;
+        skillSlots.TriggerMagic(index);
+    }
+
+    /// <summary>
     /// Boss 攻击循环协程：选择可用技能 → 执行 → fallback 普攻。
     /// 供 FirstBoss.BossAttackState 调用（提升独立文件后需 public）。
     /// </summary>
@@ -485,11 +484,15 @@ public abstract class BossControllerBase : EnemyControllerBase
         }
         else
         {
-            // 全部冷却中：打一次普攻
+            // 全部冷却中/无自动技能：打一次普攻
             if (defaultMelee != null)
                 defaultMelee.PerformAttack(this);
             yield return new WaitForSeconds(0.5f);
         }
+
+        // 攻击冷却：一次攻击(技能/普攻)结束后进入冷却，对齐普通 enemy(MeleeAttackState.OnExit 设 attackCooldownTimer)
+        // → CanBossAttack 的 attackCooldownTimer 检查生效,攻击节奏规整
+        attackCooldownTimer = AttackCooldownDuration;
     }
 
     // ============================================================

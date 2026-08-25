@@ -22,6 +22,9 @@ public class EnemyMeleeAttack : MonoBehaviour, IEnemyAttack
     private StatModifierManager statModManager;
     private EnemyControllerBase _owner;
 
+    /// <summary>攻击范围指示器(拖入的子物体)— 供 Boss 攻击触发检测复用同一范围</summary>
+    public MeleeRangeIndicator RangeIndicator => rangeIndicator;
+
     /// <summary>最终攻击力（管线终值；Inspector 运行时调试显示用）</summary>
     public float FinalDamage => statModManager != null
         ? statModManager.GetFinalValue(damage, StatId.EnemyDamage)

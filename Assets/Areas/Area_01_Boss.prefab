@@ -325,7 +325,7 @@ MonoBehaviour:
   knockbackResistance: 0.8
   deathDelay: 2
   combatAreaTrigger: {fileID: 1078518361268059669}
-  skillSlots: {fileID: 0}
+  skillSlots: {fileID: 207735709510986330}
   defaultMelee: {fileID: 5928079618181773097}
   bossDeathVFXPrefab: {fileID: 0}
   hpMultiplier: 12

@@ -1,19 +1,22 @@
 using UnityEngine;
 
 /// <summary>
-/// Boss 攻击状态 — 启动攻击循环协程（技能选择+执行），结束后回追击。
+/// Boss 攻击状态 — 动画驱动（独立于普通 enemy 的事件链）。
+/// 进入:IsAttacking=true → 动画器 Entry 路由进 Attack 状态播放动画。
+/// 保持:玩家在攻击范围内 → 保持攻击状态,Attack 动画循环播放(持续攻击,无冷却站桩)。
+/// 退出:玩家离开攻击范围 → 回追击。受击/死亡由外部状态切换接管。
+/// 不做伤害判定(当前阶段只验证状态动画流转;伤害/技能后续接入)。
 /// </summary>
 public class BossAttackState : EntityState
 {
-    private Coroutine attackCoroutine;
-
     public BossAttackState(CharacterBase owner, StateMachine stateMachine, Animator anim = null)
-        : base(owner, stateMachine, anim)
+        : base(owner, stateMachine, anim, new[] { AnimParams.IsAttacking })
     {
     }
 
     public override void OnEnter()
     {
+        base.OnEnter(); // IsAttacking=true → 动画器 Entry 路由进 Attack
         var boss = (FirstBoss)owner;
         boss.moveInput = 0f;
 
@@ -21,28 +24,38 @@ public class BossAttackState : EntityState
         float dir = boss.DirectionToPlayer();
         if (dir != 0f)
             boss.UpdateFacing(dir);
-
-        // 启动攻击循环（由 BossControllerBase.ExecuteBossSkillCycle 处理选择+执行）
-        attackCoroutine = boss.StartCoroutine(AttackFlow(boss));
     }
 
-    private System.Collections.IEnumerator AttackFlow(FirstBoss boss)
+    public override void OnUpdate()
     {
-        // 执行技能循环（技能选择 → SO驱动执行 → 或 fallback 普攻）
-        yield return boss.ExecuteBossSkillCycle();
+        var boss = (FirstBoss)owner;
+        if (boss.IsDead) return;
 
-        // 攻击结束后切回追击
-        if (!boss.IsDead)
-            boss.Fsm.ChangeState(boss.CreateChaseState());
+        // 玩家不在攻击范围内 → 回追击;范围内保持攻击状态(Attack 动画循环播放 = 持续攻击)
+        if (!boss.PlayerInAttackRange())
+        {
+            ReturnToChase(boss);
+        }
     }
 
-    public override void OnUpdate() { }
+    /// <summary>Boss 独立动画事件(经 BossAnimationRelay 转发):Attack 动画结束帧 → 回追击(事件未挂时不影响,由 OnUpdate 范围判断接管)</summary>
+    public void OnAnimEnd()
+    {
+        var boss = (FirstBoss)owner;
+        if (boss.IsDead) return;
+        ReturnToChase(boss);
+    }
+
+    /// <summary>攻击结束统一出口:回追击(不设冷却 — 范围内持续攻击由 Attack 动画循环控制)</summary>
+    private void ReturnToChase(FirstBoss boss)
+    {
+        boss.Fsm.ChangeState(boss.CreateChaseState());
+    }
 
     public override void OnExit()
     {
+        base.OnExit(); // IsAttacking=false → 动画器 Exit,Entry 重判
         var boss = (FirstBoss)owner;
-        if (attackCoroutine != null)
-            boss.StopCoroutine(attackCoroutine);
         boss.moveInput = 0f;
     }
 }

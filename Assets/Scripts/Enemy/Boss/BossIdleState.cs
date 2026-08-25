@@ -14,6 +14,8 @@ public class BossIdleState : EntityState
     {
         var boss = (FirstBoss)owner;
         boss.moveInput = 0f;
+        if (BossDebugFlow.Enabled)
+            Debug.Log($"[BossFSM] IdleState.OnEnter activated={boss.IsActivated}");
         // boss.ApplyStateColor(new Color(0.5f, 0.5f, 0.5f));  // [状态色已移除]
     }
 
@@ -21,7 +23,11 @@ public class BossIdleState : EntityState
     {
         var boss = (FirstBoss)owner;
         if (boss.IsActivated)
+        {
+            if (BossDebugFlow.Enabled)
+                Debug.Log($"[BossFSM] IdleState.OnUpdate activated=true → 切 Chase");
             boss.Fsm.ChangeState(boss.CreateChaseState());
+        }
     }
 
     public override void OnExit() { }

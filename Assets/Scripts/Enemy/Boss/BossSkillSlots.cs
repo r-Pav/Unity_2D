@@ -166,17 +166,30 @@ public class BossSkillSlots : MonoBehaviour
         return so.IsUnlockedInPhase(currentPhase);
     }
 
-    /// <summary>获取当前阶段已解锁 + 冷却完毕的技能 index 数组</summary>
+    /// <summary>获取当前阶段已解锁 + 冷却完毕 + 非魔法的技能 index 数组(自动攻击循环用,魔法由 TriggerMagic 外部触发)</summary>
     public int[] GetAvailableSkills()
     {
         if (allSkills == null) return Array.Empty<int>();
         var list = new List<int>();
         for (int i = 0; i < allSkills.Length; i++)
         {
+            var so = allSkills[i];
+            if (so == null || so.isMagic) continue;   // 魔法技能排除自动选择
             if (IsUnlocked(i) && !IsOnCooldown(i))
                 list.Add(i);
         }
         return list.ToArray();
+    }
+
+    /// <summary>
+    /// 外部触发魔法技能(绕过自动选择,不走 GetAvailableSkills) — 预留给 BGM 重音系统调用。
+    /// 后续 RhythmClock.OnBeat(重音到达) → BossControllerBase.TriggerMagicSkill(index) → 本方法。
+    /// </summary>
+    public void TriggerMagic(int index)
+    {
+        if (logSkillExecutions)
+            Debug.Log($"[BossSkillSlots] 外部触发魔法技能 [{index}]");
+        Execute(index);
     }
 
     /// <summary>获取指定 index 的剩余冷却秒数（0=冷却完毕）</summary>
@@ -206,8 +219,11 @@ public class BossSkillSlots : MonoBehaviour
             if (logSkillExecutions)
                 Debug.Log($"[BossSkillSlots] 中断技能 [{currentExecutingIndex}]");
 
+            var so = GetSkill(currentExecutingIndex);
             StopCoroutine(currentCoroutine);
             currentCoroutine = null;
+
+            SetSkillAnimBool(so, false);   // 中断时复位动画 bool(Exit → Entry 重判)
 
             DisableAllHitboxes();
             OnActiveFrameEnd?.Invoke();
@@ -227,9 +243,8 @@ public class BossSkillSlots : MonoBehaviour
 
     private IEnumerator WrapSkill(BossAttackSO so, int index)
     {
-        // 播放动画
-        if (owner != null && !string.IsNullOrEmpty(so.animTrigger))
-            owner.GetComponent<Animator>()?.SetTrigger(so.animTrigger);
+        // 播放动画(bool 参数: Enter=true, Entry 路由进对应状态)
+        SetSkillAnimBool(so, true);
 
         // 按类型分发
         yield return so.skillType switch
@@ -245,10 +260,19 @@ public class BossSkillSlots : MonoBehaviour
 
         currentCoroutine = null;
         currentExecutingIndex = -1;
+        SetSkillAnimBool(so, false);   // 动画结束复位(Exit → Entry 重判)
         OnSkillFinished?.Invoke(index);
 
         if (logSkillExecutions)
             Debug.Log($"[BossSkillSlots] 技能 [{index}] {so.skillName} 执行完毕");
+    }
+
+    /// <summary>设置技能动画 bool 参数(Enter=true / Exit=false)。参数名=SO.animParamName,Animator 取子物体(挂 anim 子物体上)</summary>
+    private void SetSkillAnimBool(BossAttackSO so, bool value)
+    {
+        if (so == null || string.IsNullOrEmpty(so.animParamName)) return;
+        if (owner == null) return;
+        owner.GetComponentInChildren<Animator>()?.SetBool(so.animParamName, value);
     }
 
     // ============================================================

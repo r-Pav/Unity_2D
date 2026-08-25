@@ -192,22 +192,6 @@ public class FirstBoss : BossControllerBase
     /// <summary>当前移动速度</summary>
     public float CurrentMoveSpeed => baseMoveSpeed * moveSpeedMultiplier * currentMoveSpeedMult;
 
-    /// <summary>检查是否可以对玩家发起攻击</summary>
-    public bool CanBossAttack()
-    {
-        if (!isActivated) return false;
-        if (IsAttacking) return false;
-        if (isDead) return false;
-        if (player == null) return false;
-
-        float dx = Mathf.Abs(player.position.x - transform.position.x);
-        float dy = Mathf.Abs(player.position.y - transform.position.y);
-        float rangeX = attackWidth * attackRangeMultiplier * 0.5f;
-        float rangeY = attackHeight * attackRangeMultiplier * 0.5f;
-
-        return dx <= rangeX && dy <= rangeY;
-    }
-
     // ============================================================
     // 移动覆写 — 使用 Boss 当前速度
     // ============================================================

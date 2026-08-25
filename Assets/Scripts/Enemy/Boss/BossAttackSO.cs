@@ -60,8 +60,11 @@ public class BossAttackSO : ScriptableObject
     public float knockbackForce = 5f;
 
     [Header("── 表现 ──")]
-    [Tooltip("Animator trigger 名称")]
-    public string animTrigger;
+    [Tooltip("Animator bool 参数名 — Enter 设 true / Exit 设 false。普通攻击=IsAttacking，魔法=IsMagic/IsMagic2")]
+    public string animParamName;
+
+    [Tooltip("是否魔法技能 — 魔法不参与自动攻击选择(GetAvailableSkills 排除)，由外部(BGM 重音)触发 TriggerMagic")]
+    public bool isMagic;
 
     [Tooltip("音效 key（可选）")]
     public string sfxKey;

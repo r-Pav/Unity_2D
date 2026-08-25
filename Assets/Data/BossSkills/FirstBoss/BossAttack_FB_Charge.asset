@@ -29,7 +29,8 @@ MonoBehaviour:
   parryWindowStart: -0.05
   parryWindowEnd: 0.05
   knockbackForce: 5
-  animTrigger: 
+  animParamName: 
+  isMagic: 1
   sfxKey: 
   hitVFXPrefab: {fileID: 0}
   icon: {fileID: 0}

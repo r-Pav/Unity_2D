@@ -3,7 +3,7 @@ using System.Collections;
 
 /// <summary>
 /// Boss 房间触发器 — 挂在场景静态 Trigger 上。
-/// Player 进入时：锁输入 → 自动走向 Boss → 启用空气墙+过场 → 激活 Boss。
+/// 空气墙默认关闭;Player 进入 Boss 房 Trigger 时:开启空气墙(锁门) + 激活 Boss(直接进入追击,不过场)。
 /// 此 GameObject 独立放置，不跟随 Boss。
 /// </summary>
 public class BossRoomTrigger : MonoBehaviour
@@ -27,49 +27,20 @@ public class BossRoomTrigger : MonoBehaviour
         if (boss == null) return;
 
         _triggered = true;
-        StartCoroutine(BossEntrySequence(other.transform));
+        StartCoroutine(BossEntrySequence());
     }
 
-    private IEnumerator BossEntrySequence(Transform player)
+    private IEnumerator BossEntrySequence()
     {
-        PlayerController pc = player.GetComponent<PlayerController>();
-        Rigidbody2D playerRb = player.GetComponent<Rigidbody2D>();
-
-        // 1. 锁输入
-        if (pc != null) pc.InputEnabled = false;
-
-        // 2. 自动走向 Boss
-        float dir = boss.transform.position.x > player.position.x ? 1f : -1f;
-        player.localScale = new Vector3(dir, 1f, 1f);
-        float t = 0f;
-        while (t < 1f)
-        {
-            t += Time.deltaTime;
-            player.position += Vector3.right * dir * 3f * Time.deltaTime;
-            yield return null;
-        }
-        if (playerRb != null) playerRb.velocity = Vector2.zero;
-
-        // 3. 过场：空气墙 + 相机聚焦
+        // 开启空气墙(锁门)
         foreach (var wall in airWalls)
         {
             if (wall != null) wall.enabled = true;
         }
 
-        if (cameraFollow != null && boss != null)
-        {
-            Vector2 midpoint = (player.position + boss.transform.position) * 0.5f;
-            cameraFollow.FocusOnPoint(midpoint, cutsceneZoom);
-        }
-
-        yield return new WaitForSeconds(1.5f);
-
-        if (cameraFollow != null)
-            cameraFollow.RestoreFollow();
-
-        // 4. 恢复 + 激活
-        if (pc != null) pc.InputEnabled = true;
+        // 激活 Boss — 立即进入追击状态(不过场、不锁输入、不自动走)
         boss.ActivateBoss();
+        yield break;
     }
 
     private void OnDisable()
