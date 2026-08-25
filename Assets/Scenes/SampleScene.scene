@@ -995,14 +995,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 0.54901963, g: 0.54901963, b: 0.54901963, a: 1}
+  m_Color: {r: 0.22352941, g: 0.24313726, b: 0.27450982, a: 1}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: 2e6b4226241182c4e8804a75c0988a6c, type: 3}
+  m_Sprite: {fileID: 10911, guid: 0000000000000000f000000000000000, type: 0}
   m_Type: 1
   m_PreserveAspect: 0
   m_FillCenter: 1
@@ -1011,7 +1011,7 @@ MonoBehaviour:
   m_FillClockwise: 1
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
-  m_PixelsPerUnitMultiplier: 8
+  m_PixelsPerUnitMultiplier: 0.5
 --- !u!222 &22551916
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -39975,7 +39975,7 @@ RectTransform:
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
   m_AnchoredPosition: {x: -0.000030517578, y: -0.000005722046}
-  m_SizeDelta: {x: -0.00010681, y: 0.0001}
+  m_SizeDelta: {x: -0.0001, y: 0.000038147}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1244404448
 MonoBehaviour:
@@ -39990,14 +39990,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 0.735849, g: 0.735849, b: 0.735849, a: 1}
+  m_Color: {r: 0.24313726, g: 1, b: 0.84313726, a: 1}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: 3a19109cdf1f135459ad60864ff194f6, type: 3}
+  m_Sprite: {fileID: 10911, guid: 0000000000000000f000000000000000, type: 0}
   m_Type: 1
   m_PreserveAspect: 0
   m_FillCenter: 1
@@ -40006,7 +40006,7 @@ MonoBehaviour:
   m_FillClockwise: 1
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
-  m_PixelsPerUnitMultiplier: 8
+  m_PixelsPerUnitMultiplier: 0.5
 --- !u!222 &1244404449
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -46941,7 +46941,7 @@ MonoBehaviour:
   groundLayer:
     serializedVersion: 2
     m_Bits: 8
-  groundCheckDist: 0.8
+  groundCheckDist: 0.47
   groundCheckColor: {r: 0, g: 1, b: 0, a: 1}
   speedMultiplier: 1
   jumpForce: 22
@@ -47263,7 +47263,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   wallCheckFootHeight: -0.53
-  wallCheckHeadHeight: 0.53
+  wallCheckHeadHeight: -0.04
   wallCheckDistance: 0.25
   wallCheckFootColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
   wallCheckHeadColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
@@ -47273,7 +47273,7 @@ MonoBehaviour:
     m_Bits: 2048
   wallGapRayDistance: 0.25
   wallGapRayColor: {r: 1, g: 0, b: 1, a: 1}
-  wallClimbCheckOffset: 0.16
+  wallClimbCheckOffset: -0.2
   vaultUpOffset: 1.01
   vaultForwardOffset: 0.4
   wallCheckVerticalOffsetX: 0
@@ -65792,15 +65792,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 0.7075472, g: 0.7075472, b: 0.7075472, a: 1}
+  m_Color: {r: 0.5087451, g: 0.5372549, b: 0.40392157, a: 1}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: 4bba41d3ec4758943a48df533787e6fd, type: 3}
-  m_Type: 0
+  m_Sprite: {fileID: 10911, guid: 0000000000000000f000000000000000, type: 0}
+  m_Type: 1
   m_PreserveAspect: 0
   m_FillCenter: 1
   m_FillMethod: 4
