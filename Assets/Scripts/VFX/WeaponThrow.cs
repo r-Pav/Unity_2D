@@ -86,6 +86,13 @@ public class WeaponThrow : MonoBehaviour
     [Tooltip("空中攻击第三段(击退/位移独立;路径/视觉暂共用 airAttack,留空 = 用 airAttack)")]
     [SerializeField] private WeaponAttackConfig airAttack3;
 
+    [Header("空中第三击击退倍率")]
+    [Tooltip("空中第三击击退力度倍率(编辑器手动调;实际速度 = airAttack3.knockbackForce × 此值 ÷ 敌人质量)")]
+    [SerializeField] private float airFinisherKnockbackMultiplier = 1f;
+
+    /// <summary>空中第三击击退力度倍率(PlayerCombat 命中时通过 GetKnockbackBonus 生效)</summary>
+    public float AirFinisherKnockbackMultiplier => airFinisherKnockbackMultiplier;
+
     [Header("重生")]
     [Tooltip("攻击 end 后,若此秒数内没有新的攻击 start,剑才重新出现(连击中断判定)")]
     [SerializeField] private float respawnDelay = 1f;
@@ -136,7 +143,8 @@ public class WeaponThrow : MonoBehaviour
             switch (comboIndex)
             {
                 case 2: return airAttack2 != null ? airAttack2.knockbackForce : (airAttack != null ? airAttack.knockbackForce : Vector2.zero);
-                case 3: return airAttack3 != null ? airAttack3.knockbackForce : (airAttack != null ? airAttack.knockbackForce : Vector2.zero);
+                // 第三击:击退力度 × 倍率(编辑器调,实际速度 = 此值 ÷ 敌人质量)
+                case 3: return (airAttack3 != null ? airAttack3.knockbackForce : (airAttack != null ? airAttack.knockbackForce : Vector2.zero)) * airFinisherKnockbackMultiplier;
                 default: return airAttack != null ? airAttack.knockbackForce : Vector2.zero;
             }
         }
