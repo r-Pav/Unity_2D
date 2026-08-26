@@ -102,6 +102,10 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     [SerializeField] protected float airHitHangDuration = 0.3f;
     [Tooltip("空中受击吸附玩家速度(向玩家检测矩形中心拉 x,保持连段距离;0 = 关闭)")]
     [SerializeField] protected float airHitPullSpeed = 8f;
+    [Tooltip("空中击退撞管道反弹系数(动漫撞墙:横向速度反向×此系数;0 = 撞上停住)")]
+    [SerializeField] protected float airHitWallBounce = 0.6f;
+    [Tooltip("撞墙形变强度(动漫挤压:水平压扁垂直拉长;0 = 关闭)")]
+    [SerializeField] protected float airHitWallSquash = 0.2f;
 
     [Header("落地冲击")]
     [Tooltip("落地冲击触发速度阈值(y 速度低于此值触发,负值;如 -8。自然落地/走路不触发)")]
@@ -537,8 +541,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         _lastFrameVy = curVy;
         _wasGrounded = groundedNow;
 
-        // 空中击退横向撞管道:向 x 方向射线检测 Channel 层(复用巡逻 channelLayer),
-        // 命中截断横向速度(垂直落下),防敌人被斜向击退打进管道
+        // 空中击退撞管道:向 x 方向射线检测 Channel 层(复用巡逻 channelLayer),
+        // 命中动漫反弹(横向速度反向×系数 + 挤压形变),y 保留继续下落,防敌人被打进管道
         if (_airKnockbackActive && rb != null && channelLayer != 0 && Mathf.Abs(rb.velocity.x) > 0.1f)
         {
             float dir = Mathf.Sign(rb.velocity.x);
@@ -546,9 +550,10 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
             RaycastHit2D hit = Physics2D.Raycast(rb.position, Vector2.right * dir, checkDist, channelLayer);
             if (hit.collider != null)
             {
-                Debug.Log($"[AirSlam] {name} 空中击退撞管道,截断x");
-                rb.velocity = new Vector2(0f, rb.velocity.y);
-                _airKnockbackActive = false;
+                rb.velocity = new Vector2(-rb.velocity.x * airHitWallBounce, rb.velocity.y);
+                if (airHitWallSquash > 0f)
+                    StartCoroutine(WallBounceSquashRoutine(transform, airHitWallSquash));
+                Debug.Log($"[AirSlam] {name} 空中击退撞管道,反弹 x={rb.velocity.x}");
             }
         }
 
@@ -1027,6 +1032,35 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
             return;
         }
         rb.AddForce(knockDir * knockback.force, ForceMode2D.Impulse);
+    }
+
+    /// <summary>撞墙形变:水平压扁 + 垂直拉长,再恢复(动漫撞墙挤压,与落地形变反向)</summary>
+    private System.Collections.IEnumerator WallBounceSquashRoutine(Transform t, float amount)
+    {
+        Vector3 original = t.localScale;
+        int dir = original.x >= 0f ? 1 : -1;   // 保留朝向符号
+        float duration = 0.12f;
+        float half = duration * 0.5f;
+
+        for (float timer = 0f; timer < half; timer += Time.deltaTime)
+        {
+            float p = timer / half;
+            t.localScale = new Vector3(
+                Mathf.Abs(original.x) * dir * (1f - p * amount),
+                original.y * (1f + p * amount),
+                original.z);
+            yield return null;
+        }
+        for (float timer = 0f; timer < half; timer += Time.deltaTime)
+        {
+            float p = timer / half;
+            t.localScale = new Vector3(
+                Mathf.Abs(original.x) * dir * (1f - (1f - p) * amount),
+                original.y * (1f + (1f - p) * amount),
+                original.z);
+            yield return null;
+        }
+        t.localScale = original;
     }
 
     /// <summary>
