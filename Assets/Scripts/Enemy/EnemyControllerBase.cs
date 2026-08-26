@@ -978,10 +978,12 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         Vector2 knockDir = knockback.direction;
         if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
         _lastKnockbackDirX = Mathf.Sign(knockDir.x);   // 记录击退水平方向(落地弹跳用)
-        if (!IsGrounded)
+        // 空中/下落中击退:直接赋值速度(替代 AddForce 物理步延迟),立即生效无静止帧。
+        // 判断用"下落中"(velocity.y 明显为负)而非 IsGrounded——grounded 射线会提前命中,
+        // 敌人离地还有距离时 IsGrounded 已 true,会误走地面分支导致间歇性 x 被清。
+        // 移动系统让位(不清 x),斜向击退速度自由飞。
+        if (!IsGrounded || rb.velocity.y < -0.5f)
         {
-            // 空中击退:直接赋值速度(替代 AddForce 物理步延迟),立即生效无静止帧,
-            // 滞空冻结清除后立刻按击退方向砸地,衔接流畅。移动系统让位(不清 x),斜向速度自由飞。
             float targetX = rb.velocity.x + knockDir.x * (knockback.force / Mathf.Max(0.01f, rb.mass));
             float targetY = rb.velocity.y + knockDir.y * (knockback.force / Mathf.Max(0.01f, rb.mass));
             rb.velocity = new Vector2(targetX, targetY);
