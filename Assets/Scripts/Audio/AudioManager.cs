@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -16,8 +17,9 @@ public class GameSettingsData
 
 /// <summary>
 /// 音频管理器（轻量框架）— 单例，管理主音量/BGM/SFX 三路 AudioSource 组。
-/// - masterSources / bgmSources / sfxSources：Inspector 可拖可留空（空数组不报错，遍历 null 安全）
-/// - SetVolumes(master,bgm,sfx)：遍历各数组应用 volume
+/// - masterSources / bgmSources / sfxSources：自动注册制，场景音源通过 RegisterSource 上报，
+///   不再手动拖引用（100 场景零拖拽）。空列表/空引用安全。
+/// - SetVolumes(master,bgm,sfx)：遍历各组应用音量
 /// - Awake 单例防重 + DontDestroyOnLoad 常驻跨场景（TitleScene 常驻、SampleScene 的重复实例自动销毁）
 /// - Awake 从 PlayerPrefs("GameSettings") 读初始值应用（跨场景生效）
 /// </summary>
@@ -35,13 +37,21 @@ public class AudioManager : MonoBehaviour
         }
     }
 
-    [Header("音频源组（可留空）")]
+    /// <summary>音量分组(RegisterSource/UnregisterSource 用)</summary>
+    public enum AudioGroup { Master, Bgm, Sfx }
+
+    [Header("音频源组(自动注册,可留空)")]
     [Tooltip("主音量源：全局 master 音量（UI/混音）")]
-    [SerializeField] private AudioSource[] masterSources;
+    [SerializeField] private List<AudioSource> masterSources = new List<AudioSource>();
     [Tooltip("BGM 源：背景音乐，随 bgm 音量")]
-    [SerializeField] private AudioSource[] bgmSources;
+    [SerializeField] private List<AudioSource> bgmSources = new List<AudioSource>();
     [Tooltip("SFX 源：音效，随 sfx 音量")]
-    [SerializeField] private AudioSource[] sfxSources;
+    [SerializeField] private List<AudioSource> sfxSources = new List<AudioSource>();
+
+    /// <summary>最近一次音量值(注册新源时应用,不重新读档)</summary>
+    private float _masterVol = 1f;
+    private float _bgmVol = 1f;
+    private float _sfxVol = 1f;
 
     /// <summary>PlayerPrefs 持久化 key（与 SettingsPanel 共用）</summary>
     private const string SettingsKey = "GameSettings";
@@ -60,18 +70,64 @@ public class AudioManager : MonoBehaviour
         SetVolumes(data.master, data.bgm, data.sfx);
     }
 
-    /// <summary>应用三路音量（遍历各数组；null 源 / 空数组自动跳过）</summary>
+    /// <summary>应用三路音量（遍历各组；null 源 / 空列表自动跳过）</summary>
     public void SetVolumes(float master, float bgm, float sfx)
     {
+        _masterVol = master;
+        _bgmVol = bgm;
+        _sfxVol = sfx;
         ApplyVolume(masterSources, master);
         ApplyVolume(bgmSources, bgm);
         ApplyVolume(sfxSources, sfx);
     }
 
-    private void ApplyVolume(AudioSource[] sources, float volume)
+    /// <summary>当前 BGM 音量(切换协程缩放基准,避免覆盖用户设置)</summary>
+    public float BgmVolume => _bgmVol;
+
+    /// <summary>音源自动注册(场景播放器 Awake 调用):加入对应组并立即应用当前音量</summary>
+    public void RegisterSource(AudioGroup group, AudioSource source)
+    {
+        if (source == null) return;
+        var list = GetList(group);
+        if (list == null || list.Contains(source)) return;
+        list.Add(source);
+        ApplyVolume(list, GetCurrentVolume(group));
+    }
+
+    /// <summary>音源注销(场景播放器 OnDestroy 调用):跨场景不残留引用</summary>
+    public void UnregisterSource(AudioGroup group, AudioSource source)
+    {
+        if (source == null) return;
+        var list = GetList(group);
+        if (list != null) list.Remove(source);
+    }
+
+    private List<AudioSource> GetList(AudioGroup group)
+    {
+        switch (group)
+        {
+            case AudioGroup.Master: return masterSources;
+            case AudioGroup.Bgm: return bgmSources;
+            case AudioGroup.Sfx: return sfxSources;
+            default: return null;
+        }
+    }
+
+    private float GetCurrentVolume(AudioGroup group)
+    {
+        switch (group)
+        {
+            case AudioGroup.Master: return _masterVol;
+            case AudioGroup.Bgm: return _bgmVol;
+            case AudioGroup.Sfx: return _sfxVol;
+            default: return 1f;
+        }
+    }
+
+    private void ApplyVolume(List<AudioSource> sources, float volume)
     {
         if (sources == null) return;
-        for (int i = 0; i < sources.Length; i++)
+        for (int i = 0; i < sources.Count; i++)
         {
             if (sources[i] != null)
                 sources[i].volume = volume;

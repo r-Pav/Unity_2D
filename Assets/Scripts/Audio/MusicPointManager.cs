@@ -123,6 +123,25 @@ public class MusicPointManager : MonoBehaviour
     {
         if (initialTrack != null)
             PlayTrack(initialTrack);
+        // 音量自动注册(替代手动拖 AudioManager.bgmSources):挂上即生效,场景销毁自动注销
+        RegisterAudioSources();
+    }
+
+    /// <summary>把本播放器的两个音源注册进 AudioManager 的 BGM 组(音量面板统一控制)</summary>
+    private void RegisterAudioSources()
+    {
+        var am = AudioManager.Instance;
+        if (am == null) return;
+        if (audioSourceA != null) am.RegisterSource(AudioManager.AudioGroup.Bgm, audioSourceA);
+        if (audioSourceB != null) am.RegisterSource(AudioManager.AudioGroup.Bgm, audioSourceB);
+    }
+
+    private void OnDestroy()
+    {
+        var am = AudioManager.Instance;
+        if (am == null) return;
+        if (audioSourceA != null) am.UnregisterSource(AudioManager.AudioGroup.Bgm, audioSourceA);
+        if (audioSourceB != null) am.UnregisterSource(AudioManager.AudioGroup.Bgm, audioSourceB);
     }
 
     /// <summary>切曲重播:换 clip 从头播,主源 = A(场景模式,普通循环),点表重新排程</summary>
@@ -211,6 +230,9 @@ public class MusicPointManager : MonoBehaviour
             yield break;
         }
 
+        // 音量基准 = AudioManager 当前 BGM 音量,淡入目标跟随用户设置,不覆盖
+        float targetVol = AudioManager.Instance != null ? AudioManager.Instance.BgmVolume : 1f;
+
         fadeIn.clip = track.clip;
         fadeIn.loop = true;              // 场景模式:播完重复
         fadeIn.time = 0f;
@@ -225,15 +247,15 @@ public class MusicPointManager : MonoBehaviour
         {
             elapsed += Time.unscaledDeltaTime;
             float k = Mathf.Clamp01(elapsed / crossFadeDuration);
-            fadeOut.volume = 1f - k;
-            fadeIn.volume = k;
+            fadeOut.volume = Mathf.Lerp(targetVol, 0f, k);
+            fadeIn.volume = Mathf.Lerp(0f, targetVol, k);
             yield return null;
         }
 
         fadeOut.Stop();
         fadeOut.clip = null;
-        fadeOut.volume = 1f;             // 恢复默认,下次作 fadeIn 时强制 0
-        fadeIn.volume = 1f;
+        fadeOut.volume = targetVol;      // 恢复默认,下次作 fadeIn 时强制 0
+        fadeIn.volume = targetVol;
         _crossFadeRoutine = null;
         RestartSchedule();
     }
@@ -252,6 +274,7 @@ public class MusicPointManager : MonoBehaviour
     {
         AudioSource fadeOut = _activeSource;   // 场景曲主源(可能 null)
         AudioSource fadeIn = audioSourceA;
+        float targetVol = AudioManager.Instance != null ? AudioManager.Instance.BgmVolume : 1f;
         fadeIn.clip = bossTrack.clip;
         fadeIn.loop = false;                   // Boss 曲:交叠循环由 BossLoopRoutine 控制
         fadeIn.time = 0f;
@@ -269,15 +292,15 @@ public class MusicPointManager : MonoBehaviour
             {
                 elapsed += Time.unscaledDeltaTime;
                 float k = Mathf.Clamp01(elapsed / crossFadeDuration);
-                fadeOut.volume = 1f - k;
-                fadeIn.volume = k;
+                fadeOut.volume = Mathf.Lerp(targetVol, 0f, k);
+                fadeIn.volume = Mathf.Lerp(0f, targetVol, k);
                 yield return null;
             }
             fadeOut.Stop();
             fadeOut.clip = null;
-            fadeOut.volume = 1f;
+            fadeOut.volume = targetVol;
         }
-        fadeIn.volume = 1f;
+        fadeIn.volume = targetVol;
         _crossFadeRoutine = null;
     }
 
