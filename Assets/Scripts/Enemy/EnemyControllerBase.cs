@@ -1055,8 +1055,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     /// <summary>撞墙形变:水平压扁 + 垂直拉长,再恢复(动漫撞墙挤压,与落地形变反向)</summary>
     private System.Collections.IEnumerator WallBounceSquashRoutine(Transform t, float amount)
     {
-        Vector3 original = t.localScale;
-        int dir = original.x >= 0f ? 1 : -1;   // 保留朝向符号
+        Vector3 original = _originalLocalScale;
+        int dir = t.localScale.x >= 0f ? 1 : -1;   // 保留当前朝向符号
         float duration = 0.12f;
         float half = duration * 0.5f;
 
@@ -1078,7 +1078,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
                 original.z);
             yield return null;
         }
-        t.localScale = original;
+        t.localScale = new Vector3(Mathf.Abs(original.x) * dir, original.y, original.z);
     }
 
     /// <summary>
@@ -1115,8 +1115,10 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     /// <summary>落地形变:水平拉宽 + 垂直压扁,再恢复(参考 PlayerGroundPound.PoundSquash,动漫挤压拉伸)</summary>
     private System.Collections.IEnumerator GroundImpactSquashRoutine(Transform t, float amount)
     {
-        Vector3 original = t.localScale;
-        int dir = original.x >= 0f ? 1 : -1;   // 保留朝向符号
+        // 基准用原始 scale(Awake 记录),不能用形变开始时的 localScale——
+        // 连续触发/中断时开始值可能是压扁中间态,恢复会停在压扁
+        Vector3 original = _originalLocalScale;
+        int dir = t.localScale.x >= 0f ? 1 : -1;   // 保留当前朝向符号
         float duration = 0.15f;
         float half = duration * 0.5f;
 
@@ -1138,7 +1140,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
                 original.z);
             yield return null;
         }
-        t.localScale = original;
+        t.localScale = new Vector3(Mathf.Abs(original.x) * dir, original.y, original.z);
     }
 
     /// <summary>
