@@ -1047,10 +1047,12 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
             Debug.Log($"[AirSlam] {name} 收到标记, 空中={!IsGrounded}, 冻结中={IsLocallyFrozen}");
         }
 
-        // 空中受击:滞空冻结(停住),结束恢复击退速度继续正常击退轨迹。
-        // 冻结期间 FSM 停更,结束后下方近战/远程状态推送照常执行,落地自然转态。
+        // 空中受击:普通攻击走滞空冻结(停住),结束恢复击退速度继续正常击退轨迹。
+        // 空中第三击(下砸)例外:不走滞空,直接按击退设置砸向地面(速度与力度相关),
+        // 落地冲击/形变/弹跳全部等落地后再执行(标记触发)。
         bool airborne = !IsGrounded;
-        if (airborne && airHitHangDuration > 0f)
+        bool isAirSlam = info.attackLabel == AirSlamLabel;
+        if (airborne && airHitHangDuration > 0f && !isAirSlam)
             ApplyAirHangFreeze(airHitHangDuration);
 
         // 落雷（Thunder_Strike）：强制硬直，不区分近战/远程路径（决策 D8）。
