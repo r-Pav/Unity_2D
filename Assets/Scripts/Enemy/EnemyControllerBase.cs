@@ -271,6 +271,10 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     private float _lastFrameVy;
     /// <summary>落地弹跳滑行计时(弹跳后短暂滑行,到时停住,防持续滑动)</summary>
     private float _bounceSlideTimer;
+    /// <summary>形变协程句柄(防重:新形变停旧的,避免多个协程抢 localScale 停在压扁态)</summary>
+    private Coroutine _squashRoutine;
+    /// <summary>原始 localScale(Awake 记录,形变中断/禁用时恢复,防停在压扁态)</summary>
+    private Vector3 _originalLocalScale = Vector3.one;
     /// <summary>最后击退的水平方向(落地弹跳方向;0 = 无记录)</summary>
     private float _lastKnockbackDirX;
     /// <summary>受击标记:被空中第三段(下砸)命中,落地时必触发落地冲击(不依赖速度阈值)</summary>
@@ -396,6 +400,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     {
         base.Awake();
 
+        _originalLocalScale = transform.localScale;   // 形变中断/禁用时恢复用
+
         // [移动范围] 出生锚点兜底：OnValidate 未跑过（动态生成 / 运行时实例化）时同步为当前摆放位置。
         // 已初始化（编辑器 OnValidate 同步过）则保留序列化值，允许手动改 homeX。
         if (!homeXInitialized)
@@ -476,6 +482,14 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
             hitPauseTimer = 0f;
             if (_animator != null) _animator.speed = 1f;
         }
+
+        // 形变清理：禁用/回收时停形变协程并恢复 localScale,防停在压扁态
+        if (_squashRoutine != null)
+        {
+            StopCoroutine(_squashRoutine);
+            _squashRoutine = null;
+            transform.localScale = _originalLocalScale;
+        }
     }
 
     /// <summary>销毁兜底：恢复动画速度，防场景切换/销毁时 animator.speed=0 残留冻结</summary>
@@ -528,12 +542,18 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         _lastFrameVy = curVy;
         _wasGrounded = groundedNow;
 
-        // 落地弹跳滑行计时:到时停住,防持续滑动
+        // 落地弹跳滑行计时:速度逐渐衰减(不硬停),到时归零,防持续滑动也防突然急停
         if (_bounceSlideTimer > 0f)
         {
             _bounceSlideTimer -= Time.deltaTime;
-            if (_bounceSlideTimer <= 0f && rb != null)
-                rb.velocity = new Vector2(0f, rb.velocity.y);
+            if (rb != null)
+            {
+                float vx = rb.velocity.x;
+                if (Mathf.Abs(vx) > 0.05f)
+                    rb.velocity = new Vector2(vx * 0.85f, rb.velocity.y);   // 每帧衰减
+                else
+                    rb.velocity = new Vector2(0f, rb.velocity.y);
+            }
         }
 
         // 空中击退撞管道:向 x 方向射线检测 Channel 层(复用巡逻 channelLayer),
@@ -547,7 +567,10 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
             {
                 rb.velocity = new Vector2(-rb.velocity.x * airHitWallBounce, rb.velocity.y);
                 if (airHitWallSquash > 0f)
-                    StartCoroutine(WallBounceSquashRoutine(transform, airHitWallSquash));
+                {
+                    if (_squashRoutine != null) StopCoroutine(_squashRoutine);
+                    _squashRoutine = StartCoroutine(WallBounceSquashRoutine(transform, airHitWallSquash));
+                }
                 Debug.Log($"[AirSlam] {name} 空中击退撞管道,反弹 x={rb.velocity.x}");
             }
         }
@@ -1081,9 +1104,12 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
             _bounceSlideTimer = 0.2f;
         }
 
-        // 动漫形变:落地压扁 → 恢复(player 快速落地同款 squash & stretch)
+        // 动漫形变:落地压扁 → 恢复(player 快速落地同款 squash & stretch;防重,新形变停旧)
         if (groundImpactSquash > 0f)
-            StartCoroutine(GroundImpactSquashRoutine(transform, groundImpactSquash));
+        {
+            if (_squashRoutine != null) StopCoroutine(_squashRoutine);
+            _squashRoutine = StartCoroutine(GroundImpactSquashRoutine(transform, groundImpactSquash));
+        }
     }
 
     /// <summary>落地形变:水平拉宽 + 垂直压扁,再恢复(参考 PlayerGroundPound.PoundSquash,动漫挤压拉伸)</summary>
