@@ -276,7 +276,11 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         if (_airHangFreeze)
         {
             // 滞空模式:不恢复击飞速度,清 x、仅 y 用独立数值,重力接管自然落下
-            if (rb != null) rb.velocity = new Vector2(0f, airHitKnockbackY);
+            if (rb != null)
+            {
+                rb.velocity = new Vector2(0f, airHitKnockbackY);
+                rb.gravityScale = 1f;   // 恢复重力,开始落下
+            }
             _airHangFreeze = false;
         }
         else if (rb != null)
@@ -301,7 +305,11 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         _localFreezeRemaining = duration;
         _airHangFreeze = true;
         if (_animator != null) _animator.speed = 0f;
-        if (rb != null) rb.velocity = Vector2.zero;
+        if (rb != null)
+        {
+            rb.velocity = Vector2.zero;
+            rb.gravityScale = 0f;   // 无全局卡帧时也必须定住:关重力防自然下落,结束再恢复
+        }
     }
 
     /// <summary>强制解除本地冻结 — 子类覆写 Die() 等场景调用，保证死亡动画/结算不被冻结卡住</summary>
