@@ -100,8 +100,10 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     [Header("空中受击")]
     [Tooltip("空中受击滞空时长(秒):击飞中再受击停住后继续击退轨迹;0 = 关闭")]
     [SerializeField] protected float airHitHangDuration = 0.3f;
-    [Tooltip("空中受击吸附玩家速度(向玩家检测矩形中心拉 x,保持连段距离;0 = 关闭)")]
+    [Tooltip("空中受击吸附玩家速度(向玩家前方拉 x,保持连段距离;0 = 关闭)")]
     [SerializeField] protected float airHitPullSpeed = 8f;
+    [Tooltip("空中吸附偏移(玩家前方距离,编辑器可调;目标 x = 玩家位置 + 朝向 × 此值)")]
+    [SerializeField] protected float airHitPullOffset = 1.5f;
     [Tooltip("空中击退撞管道反弹系数(动漫撞墙:横向速度反向×此系数;0 = 撞上停住)")]
     [SerializeField] protected float airHitWallBounce = 0.6f;
     [Tooltip("撞墙形变强度(动漫挤压:水平压扁垂直拉长;0 = 关闭)")]
@@ -575,14 +577,14 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
             }
         }
 
-        // 空中吸附:玩家空中连段时把敌人往检测矩形中心拉 x(只吸水平,不碰 y 下落,仅空中),
-        // 防止玩家前冲移动超过敌人导致错位/判定丢失。落地/死亡自动解除。
+        // 空中吸附:玩家空中连段时把敌人往玩家前方拉 x(目标 = 玩家位置 + 朝向 × airHitPullOffset,
+        // 只吸水平,不碰 y 下落,仅空中),防止玩家前冲移动超过敌人导致错位/判定丢失。落地/死亡自动解除。
         if (_pullToPlayer && airHitPullSpeed > 0f && !isDead && rb != null && !IsGrounded)
         {
             var pc = PlayerController.Instance;
-            if (pc != null && pc.Combat != null)
+            if (pc != null)
             {
-                float targetX = pc.transform.position.x + pc.GetFacing() * pc.Combat.MeleeRangeOffset;
+                float targetX = pc.transform.position.x + pc.GetFacing() * airHitPullOffset;
                 Vector2 pos = rb.position;
                 pos.x = Mathf.Lerp(pos.x, targetX, airHitPullSpeed * Time.deltaTime);
                 rb.position = pos;

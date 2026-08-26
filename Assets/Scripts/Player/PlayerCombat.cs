@@ -42,9 +42,6 @@ public class PlayerCombat : MonoBehaviour
     [Tooltip("攻击范围中心在 Player 前方的距离")]
     [SerializeField] private float meleeRangeOffset = 1.5f;
 
-    /// <summary>攻击范围中心在 Player 前方的距离(敌人空中吸附目标用)</summary>
-    public float MeleeRangeOffset => meleeRangeOffset;
-
     [Tooltip("剑的 BoxCollider2D（挂在武器模板上,本体保持 disabled,clone 投掷时自动启用）。命中帧用 clone 的 bounds 做检测,不开物理碰撞")]
     [SerializeField] private BoxCollider2D swordCollider;
 
