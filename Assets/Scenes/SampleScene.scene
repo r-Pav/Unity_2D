@@ -11864,11 +11864,11 @@ Transform:
   m_GameObject: {fileID: 334569177}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: -14.183628, y: 1.569647, z: -0.043334093}
+  m_LocalPosition: {x: -30.69, y: 10.02, z: -0.043334093}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 1011273028189577110}
+  m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!82 &334569179
 AudioSource:
@@ -32087,7 +32087,7 @@ MonoBehaviour:
     stickToWall: 0
     stickHoldDuration: 0.6
     stickDepth: 0.2
-    knockbackForce: {x: 10, y: 40}
+    knockbackForce: {x: 10, y: 0}
     attackShift: {x: 5, y: 0}
     attackVFX: {fileID: 0}
     landingVFX: {fileID: 0}
@@ -32105,7 +32105,7 @@ MonoBehaviour:
     stickToWall: 1
     stickHoldDuration: 0.6
     stickDepth: 0.2
-    knockbackForce: {x: 24, y: 0}
+    knockbackForce: {x: 20, y: 40}
     attackShift: {x: 5, y: 0}
     attackVFX: {fileID: 0}
     landingVFX: {fileID: 0}
@@ -71588,7 +71588,6 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 334569178}
   - {fileID: 1060817308}
   - {fileID: 162984226}
   - {fileID: 565418131193751144}
@@ -77920,6 +77919,7 @@ SceneRoots:
   - {fileID: 2888013800174442583}
   - {fileID: 2109862877}
   - {fileID: 488318800}
+  - {fileID: 334569178}
   - {fileID: 1429523399}
   - {fileID: 1077523741}
   - {fileID: 2115359258}
