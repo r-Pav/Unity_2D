@@ -263,6 +263,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     private Vector2 _pendingKnockbackVelocity;
     /// <summary>上一帧是否在地面(落地上升沿检测用)</summary>
     private bool _wasGrounded;
+    /// <summary>上一帧 y 速度(真正落地判定:下落快→落地瞬间速度归零)</summary>
+    private float _lastFrameVy;
     /// <summary>最后击退的水平方向(落地弹跳方向;0 = 无记录)</summary>
     private float _lastKnockbackDirX;
     /// <summary>受击标记:被空中第三段(下砸)命中,落地时必触发落地冲击(不依赖速度阈值)</summary>
@@ -503,25 +505,24 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         }
 
         // 落地冲击。
-        // 被空中第三段(下砸)标记的:只要落地(grounded)且不在滞空冻结中即触发(不依赖上升沿,
-        // 滞空冻结时可能已贴地,grounded 早已 true,上升沿检测会漏)。
-        // 其余按高速落地速度阈值兜底。
+        // "真正落地"判定:grounded 且落地瞬间速度被地面处理(vy 接近 0)。
+        // 不用 grounded 本身:基类是射线检测,落地前一段距离就提前 true,直接用它会在下落中途误触发。
         bool groundedNow = IsGrounded;
-        if (!isDead && _pendingGroundImpact && groundedNow && !IsLocallyFrozen)
+        float curVy = rb != null ? rb.velocity.y : 0f;
+        bool landed = groundedNow && !IsLocallyFrozen && curVy > -1.5f;
+
+        if (!isDead && _pendingGroundImpact && landed)
         {
             _pendingGroundImpact = false;
-            Debug.Log($"[AirSlam] {name} 落地触发(标记), vy={(rb != null ? rb.velocity.y : 0f)}");
+            Debug.Log($"[AirSlam] {name} 落地触发(标记), vy={curVy}");
             TriggerGroundImpact();
         }
-        else if (groundedNow && !_wasGrounded && !isDead && !IsLocallyFrozen)
+        else if (!isDead && groundedNow && !_wasGrounded && _lastFrameVy < groundImpactSpeedThreshold && curVy > -1.5f)
         {
-            float impactY = rb != null ? rb.velocity.y : 0f;
-            if (impactY < groundImpactSpeedThreshold)
-            {
-                Debug.Log($"[AirSlam] {name} 落地触发(速度阈值), vy={impactY}");
-                TriggerGroundImpact();
-            }
+            Debug.Log($"[AirSlam] {name} 落地触发(速度阈值), 上帧vy={_lastFrameVy}, 当前vy={curVy}");
+            TriggerGroundImpact();
         }
+        _lastFrameVy = curVy;
         _wasGrounded = groundedNow;
 
         if (hitFlashTimer > 0f)
