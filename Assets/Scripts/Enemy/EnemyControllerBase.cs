@@ -969,9 +969,15 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         Vector2 knockDir = knockback.direction;
         if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
         _lastKnockbackDirX = Mathf.Sign(knockDir.x);   // 记录击退水平方向(落地弹跳用)
-        // AddForce(Impulse) 延迟到物理步应用:提前算好目标速度,滞空冻结恢复时用它,避免击退被旧速度吞掉
-        _pendingKnockbackVelocity = rb.velocity + knockDir * (knockback.force / Mathf.Max(0.01f, rb.mass));
-        Debug.Log($"[AirSlam] {name} ApplyKnockback dir={knockDir} force={knockback.force} vel前={rb.velocity} 目标速度={_pendingKnockbackVelocity}");
+        if (!IsGrounded)
+        {
+            // 空中击退:直接赋值速度(替代 AddForce 物理步延迟),立即生效无静止帧,
+            // 滞空冻结清除后立刻按击退方向砸地,衔接流畅
+            float targetX = rb.velocity.x + knockDir.x * (knockback.force / Mathf.Max(0.01f, rb.mass));
+            float targetY = rb.velocity.y + knockDir.y * (knockback.force / Mathf.Max(0.01f, rb.mass));
+            rb.velocity = new Vector2(targetX, targetY);
+            return;
+        }
         rb.AddForce(knockDir * knockback.force, ForceMode2D.Impulse);
     }
 
