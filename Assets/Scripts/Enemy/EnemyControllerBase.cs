@@ -269,6 +269,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     private float _lastKnockbackDirX;
     /// <summary>受击标记:被空中第三段(下砸)命中,落地时必触发落地冲击(不依赖速度阈值)</summary>
     private bool _pendingGroundImpact;
+    /// <summary>空中击退中:移动系统完全让位(不清 x),让斜向击退速度自由飞,落地才恢复</summary>
+    private bool _airKnockbackActive;
 
     /// <summary>是否正在本地冻结中</summary>
     public bool IsLocallyFrozen => _localFreezeRemaining > 0f;
@@ -511,6 +513,9 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         float curVy = rb != null ? rb.velocity.y : 0f;
         bool landed = groundedNow && !IsLocallyFrozen && curVy > -1.5f;
 
+        if (landed && _airKnockbackActive)
+            _airKnockbackActive = false;   // 落地:移动系统接管(空中击退结束)
+
         if (!isDead && _pendingGroundImpact && landed)
         {
             _pendingGroundImpact = false;
@@ -597,6 +602,9 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     {
         // 命中本地冻结：跳过全部移动 — moveInput 残留旧值，不拦会继续 Move() 滑步
         if (_localFreezeRemaining > 0f) return;
+
+        // 空中击退中:移动系统完全让位,不清 x,让斜向击退速度自由飞(落地时清标志恢复)
+        if (_airKnockbackActive) return;
 
         // [移动范围] 数学拦截：已在边界(|x-homeX| >= homeRange)且仍朝边界外走 → 停。
         // 朝范围中心方向（返回）不拦；homeRange=0 不限制。
@@ -973,10 +981,11 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         if (!IsGrounded)
         {
             // 空中击退:直接赋值速度(替代 AddForce 物理步延迟),立即生效无静止帧,
-            // 滞空冻结清除后立刻按击退方向砸地,衔接流畅
+            // 滞空冻结清除后立刻按击退方向砸地,衔接流畅。移动系统让位(不清 x),斜向速度自由飞。
             float targetX = rb.velocity.x + knockDir.x * (knockback.force / Mathf.Max(0.01f, rb.mass));
             float targetY = rb.velocity.y + knockDir.y * (knockback.force / Mathf.Max(0.01f, rb.mass));
             rb.velocity = new Vector2(targetX, targetY);
+            _airKnockbackActive = true;
             return;
         }
         rb.AddForce(knockDir * knockback.force, ForceMode2D.Impulse);
