@@ -80,6 +80,12 @@ public class WeaponThrow : MonoBehaviour
     [Tooltip("空中攻击轨迹(独立于三连击,空中攻击动画事件调用)")]
     [SerializeField] private WeaponAttackConfig airAttack = new WeaponAttackConfig();
 
+    [Tooltip("空中攻击第二段(击退/位移独立;路径/视觉暂共用 airAttack,留空 = 用 airAttack)")]
+    [SerializeField] private WeaponAttackConfig airAttack2;
+
+    [Tooltip("空中攻击第三段(击退/位移独立;路径/视觉暂共用 airAttack,留空 = 用 airAttack)")]
+    [SerializeField] private WeaponAttackConfig airAttack3;
+
     [Header("重生")]
     [Tooltip("攻击 end 后,若此秒数内没有新的攻击 start,剑才重新出现(连击中断判定)")]
     [SerializeField] private float respawnDelay = 1f;
@@ -120,12 +126,20 @@ public class WeaponThrow : MonoBehaviour
     public BoxCollider2D ActiveCloneCollider { get; private set; }
 
     /// <summary>
-    /// 按当前攻击段取武器击退向量(每击独立配置,airAttack 走空中)。PlayerCombat 命中时调用,
+    /// 按当前攻击段取武器击退向量(每击独立配置,空中 1/2/3 段独立)。PlayerCombat 命中时调用,
     /// x 分量由调用方按朝向镜像。返回 (0,0) 表示该击不附加击退。
     /// </summary>
     public Vector2 GetKnockbackBonus(int comboIndex, bool isAir)
     {
-        if (isAir) return airAttack != null ? airAttack.knockbackForce : Vector2.zero;
+        if (isAir)
+        {
+            switch (comboIndex)
+            {
+                case 2: return airAttack2 != null ? airAttack2.knockbackForce : (airAttack != null ? airAttack.knockbackForce : Vector2.zero);
+                case 3: return airAttack3 != null ? airAttack3.knockbackForce : (airAttack != null ? airAttack.knockbackForce : Vector2.zero);
+                default: return airAttack != null ? airAttack.knockbackForce : Vector2.zero;
+            }
+        }
         switch (comboIndex)
         {
             case 1: return attack1 != null ? attack1.knockbackForce : Vector2.zero;
@@ -136,12 +150,20 @@ public class WeaponThrow : MonoBehaviour
     }
 
     /// <summary>
-    /// 按当前攻击段取玩家自身攻击位移向量(每击独立配置,airAttack 走空中)。
+    /// 按当前攻击段取玩家自身攻击位移向量(每击独立配置,空中 1/2/3 段独立)。
     /// PlayerCombat 命中帧调用,x 分量由调用方按朝向镜像。返回 (0,0) 表示该击无位移。
     /// </summary>
     public Vector2 GetAttackShift(int comboIndex, bool isAir)
     {
-        if (isAir) return airAttack != null ? airAttack.attackShift : Vector2.zero;
+        if (isAir)
+        {
+            switch (comboIndex)
+            {
+                case 2: return airAttack2 != null ? airAttack2.attackShift : (airAttack != null ? airAttack.attackShift : Vector2.zero);
+                case 3: return airAttack3 != null ? airAttack3.attackShift : (airAttack != null ? airAttack.attackShift : Vector2.zero);
+                default: return airAttack != null ? airAttack.attackShift : Vector2.zero;
+            }
+        }
         switch (comboIndex)
         {
             case 1: return attack1 != null ? attack1.attackShift : Vector2.zero;
