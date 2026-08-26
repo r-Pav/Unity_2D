@@ -18226,7 +18226,7 @@ Transform:
   m_GameObject: {fileID: 519420028}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 8.771121, y: -14.194833, z: -9.878557}
+  m_LocalPosition: {x: 16.341122, y: -14.774833, z: -9.878557}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -31824,8 +31824,8 @@ MonoBehaviour:
     stickToWall: 0
     stickHoldDuration: 0.6
     stickDepth: 0.2
-    knockbackForce: {x: 10, y: 24}
-    attackShift: {x: 3, y: 0}
+    knockbackForce: {x: 10, y: 40}
+    attackShift: {x: 5, y: 0}
     attackVFX: {fileID: 0}
     landingVFX: {fileID: 0}
     stickVFX: {fileID: 0}
@@ -31843,7 +31843,7 @@ MonoBehaviour:
     stickHoldDuration: 0.6
     stickDepth: 0.2
     knockbackForce: {x: 24, y: 0}
-    attackShift: {x: -4, y: 0}
+    attackShift: {x: 5, y: 0}
     attackVFX: {fileID: 0}
     landingVFX: {fileID: 0}
     stickVFX: {fileID: 0}
@@ -46275,7 +46275,7 @@ Transform:
   m_GameObject: {fileID: 1404874482}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 8.771121, y: -14.194833, z: -9.878557}
+  m_LocalPosition: {x: 16.341122, y: -14.774833, z: -9.878557}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -46949,7 +46949,7 @@ Transform:
   m_GameObject: {fileID: 1427529632}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -12.58, y: -10.46, z: 0}
+  m_LocalPosition: {x: -5.01, y: -11.04, z: 0}
   m_LocalScale: {x: 1.1, y: 1.1, z: 1.1}
   m_ConstrainProportionsScale: 1
   m_Children:
@@ -50013,7 +50013,7 @@ SpriteRenderer:
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 0
-  m_Size: {x: 2.0625, y: 2.0625}
+  m_Size: {x: 4.5, y: 4.5}
   m_AdaptiveModeThreshold: 0.5
   m_SpriteTileMode: 0
   m_WasSpriteAssigned: 1
@@ -74075,7 +74075,7 @@ MonoBehaviour:
   chargeFlashBaseFreq: 4
   chargeFlashAccel: 6
   chargeFlashMaxFreq: 20
-  hitVFXPrefab: {fileID: 5392022945574161087, guid: e8f48248225df154585da36eafed2bf4, type: 3}
+  hitVFXPrefab: {fileID: 6622059578729823616, guid: ace3fc8887a8d9a45932855e0372f331, type: 3}
   directionalHitVFXPrefab: {fileID: 0}
   deathVFXPrefab: {fileID: 0}
   hitVFXVariants: []
