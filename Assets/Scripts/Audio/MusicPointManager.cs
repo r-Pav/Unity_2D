@@ -27,9 +27,6 @@ public class MusicPointManager : MonoBehaviour
     [Tooltip("场景初始曲(场景加载自动播)")]
     [SerializeField] private MusicTrackData initialTrack;
 
-    [Tooltip("Boss 曲(进 Boss 房切入,P5 用)")]
-    [SerializeField] private MusicTrackData bossTrack;
-
     [Header("音频源")]
     [Tooltip("BGM 源 A(场景模式主源;两源都拖进 AudioManager.bgmSources 走音量)")]
     [SerializeField] private AudioSource audioSourceA;
@@ -241,17 +238,17 @@ public class MusicPointManager : MonoBehaviour
         RestartSchedule();
     }
 
-    /// <summary>进入 Boss 战:场景曲缓出,bossTrack 双源交叠循环缓入(进 Boss 房调用)</summary>
-    public void EnterBossMusic()
+    /// <summary>进入 Boss 战:场景曲缓出,指定曲目双源交叠循环缓入(进 Boss 房调用,曲目由触发处传入)</summary>
+    public void EnterBossMusic(MusicTrackData bossTrack)
     {
         if (_bossMode || bossTrack == null || bossTrack.clip == null) return;
         _sceneTrack = _currentTrack;   // 保存场景曲(可能为 null,退 Boss 时直接停)
         _bossMode = true;
         if (_crossFadeRoutine != null) StopCoroutine(_crossFadeRoutine);
-        _crossFadeRoutine = StartCoroutine(EnterBossRoutine());
+        _crossFadeRoutine = StartCoroutine(EnterBossRoutine(bossTrack));
     }
 
-    private IEnumerator EnterBossRoutine()
+    private IEnumerator EnterBossRoutine(MusicTrackData bossTrack)
     {
         AudioSource fadeOut = _activeSource;   // 场景曲主源(可能 null)
         AudioSource fadeIn = audioSourceA;
