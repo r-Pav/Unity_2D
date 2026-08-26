@@ -114,10 +114,10 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     [SerializeField] protected float groundImpactShakeMagnitude = 0.1f;
     [Tooltip("落地硬直时长(秒;0 = 关闭,落地直接恢复行动)")]
     [SerializeField] protected float groundImpactStun = 0.3f;
-    [Tooltip("落地弹跳力度(垂直弹起,向上;0 = 不弹)")]
+    [Tooltip("落地弹跳力度(沿击退方向弹出去;0 = 不弹)")]
     [SerializeField] protected float groundBounceForce = 3f;
-    [Tooltip("落地弹跳水平分量(往击退方向滑;0 = 只垂直弹)")]
-    [SerializeField] protected float groundBounceSide = 1f;
+    [Tooltip("落地形变强度(动漫挤压拉伸,0.3 = 压扁30%;0 = 关闭)")]
+    [SerializeField] protected float groundImpactSquash = 0.3f;
 
     [Header("巡逻悬崖检测")]
     [Tooltip("前方偏移（X 轴）：前方多远处探脚下地面（0.8 = 角色前方约一个身位）")]
@@ -994,9 +994,42 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         {
             float dir = _lastKnockbackDirX != 0f ? _lastKnockbackDirX
                       : (rb.velocity.x >= 0f ? 1f : -1f);
-            // 弹跳:垂直弹起(力度=groundBounceForce)+ 往击退方向水平带一点(groundBounceSide)
-            rb.velocity = new Vector2(dir * groundBounceSide, groundBounceForce);
+            // 弹跳:沿击退方向水平弹出去(落地后垂直速度归零,y 交给重力)
+            rb.velocity = new Vector2(dir * groundBounceForce, 0f);
         }
+
+        // 动漫形变:落地压扁 → 恢复(player 快速落地同款 squash & stretch)
+        if (groundImpactSquash > 0f)
+            StartCoroutine(GroundImpactSquashRoutine(transform, groundImpactSquash));
+    }
+
+    /// <summary>落地形变:水平拉宽 + 垂直压扁,再恢复(参考 PlayerGroundPound.PoundSquash,动漫挤压拉伸)</summary>
+    private System.Collections.IEnumerator GroundImpactSquashRoutine(Transform t, float amount)
+    {
+        Vector3 original = t.localScale;
+        int dir = original.x >= 0f ? 1 : -1;   // 保留朝向符号
+        float duration = 0.15f;
+        float half = duration * 0.5f;
+
+        for (float timer = 0f; timer < half; timer += Time.deltaTime)
+        {
+            float p = timer / half;
+            t.localScale = new Vector3(
+                Mathf.Abs(original.x) * dir * (1f + p * amount),
+                original.y * (1f - p * amount),
+                original.z);
+            yield return null;
+        }
+        for (float timer = 0f; timer < half; timer += Time.deltaTime)
+        {
+            float p = timer / half;
+            t.localScale = new Vector3(
+                Mathf.Abs(original.x) * dir * (1f + (1f - p) * amount),
+                original.y * (1f - (1f - p) * amount),
+                original.z);
+            yield return null;
+        }
+        t.localScale = original;
     }
 
     /// <summary>
