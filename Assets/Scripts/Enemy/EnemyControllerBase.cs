@@ -114,8 +114,10 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     [SerializeField] protected float groundImpactShakeMagnitude = 0.1f;
     [Tooltip("落地硬直时长(秒;0 = 关闭,落地直接恢复行动)")]
     [SerializeField] protected float groundImpactStun = 0.3f;
-    [Tooltip("落地弹跳力度(往击退方向水平弹一下;0 = 不弹)")]
-    [SerializeField] protected float groundBounceForce = 2.5f;
+    [Tooltip("落地弹跳力度(垂直弹起,向上;0 = 不弹)")]
+    [SerializeField] protected float groundBounceForce = 3f;
+    [Tooltip("落地弹跳水平分量(往击退方向滑;0 = 只垂直弹)")]
+    [SerializeField] protected float groundBounceSide = 1f;
 
     [Header("巡逻悬崖检测")]
     [Tooltip("前方偏移（X 轴）：前方多远处探脚下地面（0.8 = 角色前方约一个身位）")]
@@ -992,7 +994,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         {
             float dir = _lastKnockbackDirX != 0f ? _lastKnockbackDirX
                       : (rb.velocity.x >= 0f ? 1f : -1f);
-            rb.velocity = new Vector2(dir * groundBounceForce, rb.velocity.y);
+            // 弹跳:垂直弹起(力度=groundBounceForce)+ 往击退方向水平带一点(groundBounceSide)
+            rb.velocity = new Vector2(dir * groundBounceSide, groundBounceForce);
         }
     }
 
