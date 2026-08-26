@@ -23,6 +23,9 @@ public class AreaChannelTrigger : MonoBehaviour
     [Tooltip("对侧 trigger:管道另一端的 AreaChannelTrigger(移动终点 = 它的射线终点)")]
     [SerializeField] private AreaChannelTrigger otherTrigger;
 
+    [Tooltip("目标地区音乐:进管道时缓入缓出切换(可不拖,不拖则音乐不变)")]
+    [SerializeField] private MusicTrackData targetMusic;
+
     [Tooltip("管道内自动移动速度(默认 6:PlayerAnimation 的 runSpeedThreshold=5,若用 5 会卡在 Walk/Run 分档边界上导致动画闪烁)")]
     [SerializeField] private float channelMoveSpeed = 6f;
 
@@ -192,6 +195,9 @@ public class AreaChannelTrigger : MonoBehaviour
         //     (若到达后才 ShowArea,原场景先关 → 原侧 trigger 失效 → 回程碰不到,场景不加载)
         var zm = ZoneManager.Instance;
         zm?.ShowArea(targetArea);
+        // 进管道音乐切换:缓出当前地区音乐、缓入目标地区音乐(与地区显示同时触发)
+        if (targetMusic != null)
+            MusicPointManager.Instance?.CrossFadeTo(targetMusic);
         // 2. 移动终点 = 对侧 trigger 的射线终点(管道外);空引用时降级(不移动,直接切地区+恢复)
         if (otherTrigger != null)
         {

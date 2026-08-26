@@ -397,6 +397,9 @@ public abstract class BossControllerBase : EnemyControllerBase
             VFXSpawner.SpawnOnBoss(bossDeathVFXPrefab, transform.position);
         EventBus.Trigger(new BossDefeatedEvent(this));
 
+        // 音乐:Boss 战结束,缓回场景曲
+        MusicPointManager.Instance?.ExitBossMusic();
+
         base.OnDeathAnimationEnd();
     }
 
