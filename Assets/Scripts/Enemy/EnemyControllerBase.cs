@@ -485,22 +485,21 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
             }
         }
 
-        // 落地冲击:grounded 上升沿触发。
-        // 被空中第三段(下砸)标记的必触发;其余按高速落地速度阈值兜底。
+        // 落地冲击。
+        // 被空中第三段(下砸)标记的:只要落地(grounded)且不在滞空冻结中即触发(不依赖上升沿,
+        // 滞空冻结时可能已贴地,grounded 早已 true,上升沿检测会漏)。
+        // 其余按高速落地速度阈值兜底。
         bool groundedNow = IsGrounded;
-        if (groundedNow && !_wasGrounded && !isDead)
+        if (!isDead && _pendingGroundImpact && groundedNow && !IsLocallyFrozen)
         {
-            if (_pendingGroundImpact)
-            {
-                _pendingGroundImpact = false;
+            _pendingGroundImpact = false;
+            TriggerGroundImpact();
+        }
+        else if (groundedNow && !_wasGrounded && !isDead)
+        {
+            float impactY = rb != null ? rb.velocity.y : 0f;
+            if (impactY < groundImpactSpeedThreshold)
                 TriggerGroundImpact();
-            }
-            else
-            {
-                float impactY = rb != null ? rb.velocity.y : 0f;
-                if (impactY < groundImpactSpeedThreshold)
-                    TriggerGroundImpact();
-            }
         }
         _wasGrounded = groundedNow;
 
