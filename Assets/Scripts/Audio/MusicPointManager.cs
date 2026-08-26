@@ -57,6 +57,7 @@ public class MusicPointManager : MonoBehaviour
     private Coroutine _scheduleRoutine;  // 点表排程协程
     private Coroutine _crossFadeRoutine; // 缓入缓出协程
     private Coroutine _bossLoopRoutine;  // Boss 双源交叠循环协程
+    private Coroutine _fadeRoutine;      // 界面静音淡入淡出协程
     private bool _inWindow;              // 当前是否在触发窗口内
     private float _activePointTime;      // 当前窗口对应的点时刻
     private bool _bossMode;              // Boss 战模式(双源交叠)
@@ -130,10 +131,19 @@ public class MusicPointManager : MonoBehaviour
     /// <summary>把本播放器的两个音源注册进 AudioManager 的 BGM 组(音量面板统一控制)</summary>
     private void RegisterAudioSources()
     {
-        var am = AudioManager.Instance;
+        var am = EnsureAudioManager();
         if (am == null) return;
         if (audioSourceA != null) am.RegisterSource(AudioManager.AudioGroup.Bgm, audioSourceA);
         if (audioSourceB != null) am.RegisterSource(AudioManager.AudioGroup.Bgm, audioSourceB);
+    }
+
+    /// <summary>确保 AudioManager 存在:任意场景直接测试(未经过 TitleScene)时自动补一个常驻实例,音量系统不失效</summary>
+    private static AudioManager EnsureAudioManager()
+    {
+        var am = AudioManager.Instance;
+        if (am != null) return am;
+        var go = new GameObject("AudioManager");
+        return go.AddComponent<AudioManager>();
     }
 
     private void OnDestroy()
@@ -353,6 +363,40 @@ public class MusicPointManager : MonoBehaviour
                 oldSource.clip = null;
             }
         }
+    }
+
+    /// <summary>
+    /// 设置面板等界面打开时淡出 BGM,关闭时恢复(只渐变音量,不暂停播放,音频时钟照走)。
+    /// </summary>
+    public void SetBgmMuted(bool muted)
+    {
+        float target = muted ? 0f : (AudioManager.Instance != null ? AudioManager.Instance.BgmVolume : 1f);
+        if (_fadeRoutine != null) StopCoroutine(_fadeRoutine);
+        _fadeRoutine = StartCoroutine(FadeVolumeRoutine(target));
+    }
+
+    private IEnumerator FadeVolumeRoutine(float target)
+    {
+        float from = audioSourceA != null && audioSourceA.isPlaying ? audioSourceA.volume
+                   : audioSourceB != null && audioSourceB.isPlaying ? audioSourceB.volume
+                   : target;
+        float elapsed = 0f;
+        while (elapsed < crossFadeDuration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float k = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, crossFadeDuration));
+            ApplyVolumeToActive(Mathf.Lerp(from, target, k));
+            yield return null;
+        }
+        ApplyVolumeToActive(target);
+        _fadeRoutine = null;
+    }
+
+    /// <summary>对当前在播的源统一设音量(A/B 都可能响:CrossFade 交叠期 / Boss 双源)</summary>
+    private void ApplyVolumeToActive(float v)
+    {
+        if (audioSourceA != null && audioSourceA.isPlaying) audioSourceA.volume = v;
+        if (audioSourceB != null && audioSourceB.isPlaying) audioSourceB.volume = v;
     }
 
     /// <summary>停用源并清 clip(切换前清理)</summary>

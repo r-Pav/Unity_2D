@@ -96,10 +96,16 @@ public class SettingsPanel : MonoBehaviour, IPanel, ISlideClose
         StartSlideIn();
 
         LoadFromPrefs();
+
+        // 打开设置:背景音乐淡出(静音渐变,不暂停)
+        MusicPointManager.Instance?.SetBgmMuted(true);
     }
 
     private void OnDisable()
     {
+        // 关闭设置:背景音乐淡入恢复
+        MusicPointManager.Instance?.SetBgmMuted(false);
+
         if (btnVolume != null) btnVolume.onClick.RemoveListener(OnVolumeTabClicked);
         if (btnVideo != null) btnVideo.onClick.RemoveListener(OnVideoTabClicked);
         if (masterSlider != null) masterSlider.onValueChanged.RemoveListener(OnMasterChanged);
