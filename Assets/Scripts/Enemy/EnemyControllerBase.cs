@@ -98,10 +98,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     [SerializeField] protected float rangedKnockbackForce = 0f;
 
     [Header("空中受击")]
-    [Tooltip("空中受击滞空时长(秒):击飞中再受击停住后落下;0 = 关闭")]
+    [Tooltip("空中受击滞空时长(秒):击飞中再受击停住后继续击退轨迹;0 = 关闭")]
     [SerializeField] protected float airHitHangDuration = 0.3f;
-    [Tooltip("滞空结束垂直速度(空中击退独立数值,与三连击配置分开):x 清零,仅 y 用此值;0 = 直接重力落下")]
-    [SerializeField] protected float airHitKnockbackY = 0f;
 
     [Header("巡逻悬崖检测")]
     [Tooltip("前方偏移（X 轴）：前方多远处探脚下地面（0.8 = 角色前方约一个身位）")]
@@ -241,10 +239,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     private float _localFreezeRemaining;
     /// <summary>冻结前暂存的速度（解除时恢复，保证击退速度不在冻结期间衰减）</summary>
     private Vector2 _localFreezeSavedVelocity;
-    /// <summary>空中滞空冻结模式：结束不恢复击飞速度,清 x 按 airHitKnockbackY 落下</summary>
+    /// <summary>空中滞空冻结模式：结束恢复击退速度(正常击退轨迹),重力恢复</summary>
     private bool _airHangFreeze;
-    /// <summary>空中受击暂存的玩家 y 击退(ApplyKnockback 空中分支写入,滞空结束用它挑飞;0 = 用 airHitKnockbackY 兜底)</summary>
-    private float _pendingAirKnockbackY;
 
     /// <summary>是否正在本地冻结中</summary>
     public bool IsLocallyFrozen => _localFreezeRemaining > 0f;
@@ -277,25 +273,17 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         if (_animator != null) _animator.speed = 1f;
         if (_airHangFreeze)
         {
-            // 滞空模式:不恢复击飞速度,清 x、仅 y 用击退(优先玩家该击的 y 击退,其次 airHitKnockbackY),重力接管自然落下
-            if (rb != null)
-            {
-                float y = _pendingAirKnockbackY != 0f ? _pendingAirKnockbackY : airHitKnockbackY;
-                rb.velocity = new Vector2(0f, y);
-                rb.gravityScale = 1f;   // 恢复重力,开始落下
-            }
+            // 滞空模式:恢复重力(冻结期间关闭定身)
+            if (rb != null) rb.gravityScale = 1f;
             _airHangFreeze = false;
-            _pendingAirKnockbackY = 0f;
         }
-        else if (rb != null)
-        {
-            rb.velocity = _localFreezeSavedVelocity;
-        }
+        // 恢复击退速度(滞空 = 停住后继续正常击退轨迹;普通冻结 = 恢复原行为)
+        if (rb != null) rb.velocity = _localFreezeSavedVelocity;
         _localFreezeSavedVelocity = Vector2.zero;
     }
 
     /// <summary>
-    /// 空中滞空冻结 — 击飞中的敌人再受击:停住(动画/速度/FSM 停),结束清 x 按 airHitKnockbackY 独立数值落下。
+    /// 空中滞空冻结 — 击飞中的敌人再受击:停住(动画/速度/FSM 停、关重力定身),结束恢复击退速度继续正常击退轨迹。
     /// 只对空中生效;地面受击走原硬直逻辑。冻结中再次调用取更长的剩余时长(空中连段滞空)。
     /// </summary>
     public void ApplyAirHangFreeze(float duration)
@@ -311,8 +299,9 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         if (_animator != null) _animator.speed = 0f;
         if (rb != null)
         {
+            _localFreezeSavedVelocity = rb.velocity;   // 存击退速度,结束恢复(不叠加不双给)
             rb.velocity = Vector2.zero;
-            rb.gravityScale = 0f;   // 无全局卡帧时也必须定住:关重力防自然下落,结束再恢复
+            rb.gravityScale = 0f;   // 无全局卡帧时也必须定身:关重力防下落,结束恢复
         }
     }
 
@@ -911,18 +900,10 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
     /// <summary>施加击退（CombatResolver 在霸体判定通过后调用；方向/力度由攻击方构造进 Knockback）
     /// 2026-08-18：放开 y 水平化 — 敌人统一按攻击方构造的完整 x/y 向量击退（武器每击配置的 y 生效，可上挑/击飞）。
-    /// 空中受击例外:不施加攻击方击退(不要 x),滞空冻结接管,结束按 airHitKnockbackY 独立数值落下。</summary>
+    /// 空中受击不特殊处理:正常击退,滞空冻结只做短暂停住,结束恢复击退速度继续轨迹。</summary>
     public virtual void ApplyKnockback(Knockback knockback)
     {
         if (rb == null || knockback.force <= 0f) return;
-        // 空中受击:不施加 x 击退,只施加 y(玩家该击的 y 数值立即生效,滞空冻结会清速度,结束再按暂存值给一次)
-        if (!IsGrounded)
-        {
-            float y = knockback.direction.y * knockback.force;
-            _pendingAirKnockbackY = y;
-            rb.AddForce(new Vector2(0f, y), ForceMode2D.Impulse);
-            return;
-        }
         Vector2 knockDir = knockback.direction;
         if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
         rb.AddForce(knockDir * knockback.force, ForceMode2D.Impulse);
