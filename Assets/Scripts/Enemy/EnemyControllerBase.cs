@@ -537,6 +537,21 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         _lastFrameVy = curVy;
         _wasGrounded = groundedNow;
 
+        // 空中击退横向撞管道:向 x 方向射线检测 Channel 层(复用巡逻 channelLayer),
+        // 命中截断横向速度(垂直落下),防敌人被斜向击退打进管道
+        if (_airKnockbackActive && rb != null && channelLayer != 0 && Mathf.Abs(rb.velocity.x) > 0.1f)
+        {
+            float dir = Mathf.Sign(rb.velocity.x);
+            float checkDist = Mathf.Abs(rb.velocity.x) * Time.deltaTime + 0.2f;
+            RaycastHit2D hit = Physics2D.Raycast(rb.position, Vector2.right * dir, checkDist, channelLayer);
+            if (hit.collider != null)
+            {
+                Debug.Log($"[AirSlam] {name} 空中击退撞管道,截断x");
+                rb.velocity = new Vector2(0f, rb.velocity.y);
+                _airKnockbackActive = false;
+            }
+        }
+
         // 空中吸附:玩家空中连段时把敌人往检测矩形中心拉 x(只吸水平,不碰 y 下落),
         // 防止玩家前冲移动超过敌人导致错位/判定丢失。落地/死亡自动解除。
         if (_pullToPlayer && airHitPullSpeed > 0f && !isDead && rb != null)
