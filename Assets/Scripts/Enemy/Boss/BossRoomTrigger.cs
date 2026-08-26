@@ -40,6 +40,9 @@ public class BossRoomTrigger : MonoBehaviour
 
         // 激活 Boss — 立即进入追击状态(不过场、不锁输入、不自动走)
         boss.ActivateBoss();
+
+        // 音乐:进 Boss 房,切换器切 Boss 曲(同物体挂 MusicSwitchTrigger 时自动调用)
+        GetComponent<MusicSwitchTrigger>()?.TriggerSwitch();
         yield break;
     }
 

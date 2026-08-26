@@ -154,6 +154,9 @@ public class AreaChannelTrigger : MonoBehaviour
         //    FSM 不再跑 → 不再写 velocity,协程独享控制权。无需 player.enabled=false。
         player.InputEnabled = false;
 
+        // 音乐:进管道,切换器换曲(缓入缓出)。同物体挂 MusicSwitchTrigger 时自动调用
+        GetComponent<MusicSwitchTrigger>()?.TriggerSwitch();
+
         // 1a. 强制归位玩家状态:跳跃/攻击/受击等非 walk 状态进管道时,
         //     InputEnabled=false 只短路 Update,FSM 状态与 Animator 参数残留
         //     (卡在跳跃帧滑行过管道)。必须主动复位:
