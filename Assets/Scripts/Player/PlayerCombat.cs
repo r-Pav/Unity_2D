@@ -346,10 +346,7 @@ public class PlayerCombat : MonoBehaviour
 
                 string atkType;
                 if (isAirAttack && isFinisher)
-                {
                     atkType = airFinisherAttackType;   // 空中第三击:独立标签,敌人据此触发落地冲击
-                    Debug.Log($"[AirSlam] PlayerCombat 空中第三击命中 {col.name}, 标签={atkType}");
-                }
                 else if (isFinisher)
                     atkType = meleeFinisherAttackType;
                 else
