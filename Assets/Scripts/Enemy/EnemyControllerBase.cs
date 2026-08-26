@@ -915,10 +915,12 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     public virtual void ApplyKnockback(Knockback knockback)
     {
         if (rb == null || knockback.force <= 0f) return;
-        // 空中受击:不施加 x 击退,暂存玩家该击的 y 击退,滞空冻结结束按它挑飞(空中三连击各段 y 数值生效)
+        // 空中受击:不施加 x 击退,只施加 y(玩家该击的 y 数值立即生效,滞空冻结会清速度,结束再按暂存值给一次)
         if (!IsGrounded)
         {
-            _pendingAirKnockbackY = knockback.direction.y * knockback.force;
+            float y = knockback.direction.y * knockback.force;
+            _pendingAirKnockbackY = y;
+            rb.AddForce(new Vector2(0f, y), ForceMode2D.Impulse);
             return;
         }
         Vector2 knockDir = knockback.direction;
