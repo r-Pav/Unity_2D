@@ -101,6 +101,22 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     [Tooltip("空中受击滞空时长(秒):击飞中再受击停住后继续击退轨迹;0 = 关闭")]
     [SerializeField] protected float airHitHangDuration = 0.3f;
 
+    [Header("落地冲击")]
+    [Tooltip("落地冲击触发速度阈值(y 速度低于此值触发,负值;如 -8。自然落地/走路不触发)")]
+    [SerializeField] protected float groundImpactSpeedThreshold = -8f;
+    [Tooltip("落地尘土/冲击特效 prefab(留空 = 无)")]
+    [SerializeField] protected GameObject groundImpactVFX;
+    [Tooltip("落地卡帧时长(秒;0 = 无)")]
+    [SerializeField] protected float groundImpactHitStop = 0.05f;
+    [Tooltip("落地震屏时长(秒;0 = 无)")]
+    [SerializeField] protected float groundImpactShakeDuration = 0.1f;
+    [Tooltip("落地震屏幅度(0 = 无;参考 0.1)")]
+    [SerializeField] protected float groundImpactShakeMagnitude = 0.1f;
+    [Tooltip("落地硬直时长(秒;0 = 关闭,落地直接恢复行动)")]
+    [SerializeField] protected float groundImpactStun = 0.3f;
+    [Tooltip("落地弹跳力度(往击退方向水平弹一下;0 = 不弹)")]
+    [SerializeField] protected float groundBounceForce = 2.5f;
+
     [Header("巡逻悬崖检测")]
     [Tooltip("前方偏移（X 轴）：前方多远处探脚下地面（0.8 = 角色前方约一个身位）")]
     [SerializeField] private float cliffCheckForward = 0.8f;
@@ -241,6 +257,10 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     private Vector2 _localFreezeSavedVelocity;
     /// <summary>空中滞空冻结模式：结束恢复击退速度(正常击退轨迹),重力恢复</summary>
     private bool _airHangFreeze;
+    /// <summary>上一帧是否在地面(落地上升沿检测用)</summary>
+    private bool _wasGrounded;
+    /// <summary>最后击退的水平方向(落地弹跳方向;0 = 无记录)</summary>
+    private float _lastKnockbackDirX;
 
     /// <summary>是否正在本地冻结中</summary>
     public bool IsLocallyFrozen => _localFreezeRemaining > 0f;
@@ -462,6 +482,16 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
                 EndLocalFreeze();
             }
         }
+
+        // 落地冲击:被击退高速落地(grounded 上升沿 + 下落速度超阈值)→ VFX/卡帧震屏/硬直/往击退方向弹跳
+        bool groundedNow = IsGrounded;
+        if (groundedNow && !_wasGrounded && !isDead)
+        {
+            float impactY = rb != null ? rb.velocity.y : 0f;
+            if (impactY < groundImpactSpeedThreshold)
+                TriggerGroundImpact();
+        }
+        _wasGrounded = groundedNow;
 
         if (hitFlashTimer > 0f)
         {
@@ -906,7 +936,30 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         if (rb == null || knockback.force <= 0f) return;
         Vector2 knockDir = knockback.direction;
         if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
+        _lastKnockbackDirX = Mathf.Sign(knockDir.x);   // 记录击退水平方向(落地弹跳用)
         rb.AddForce(knockDir * knockback.force, ForceMode2D.Impulse);
+    }
+
+    /// <summary>
+    /// 落地冲击 — 被击退高速落地:尘土 VFX + 短卡帧震屏 + 落地硬直 + 往击退方向轻微弹跳。
+    /// </summary>
+    private void TriggerGroundImpact()
+    {
+        if (groundImpactVFX != null)
+            VFXSpawner.SpawnInWorld(groundImpactVFX, transform.position);
+
+        if (groundImpactHitStop > 0f)
+            HitStopController.Instance?.Trigger(groundImpactHitStop, groundImpactShakeDuration, groundImpactShakeMagnitude, Vector2.down);
+
+        if (groundImpactStun > 0f && !isDead)
+            EnterStunState();
+
+        if (groundBounceForce > 0f && rb != null)
+        {
+            float dir = _lastKnockbackDirX != 0f ? _lastKnockbackDirX
+                      : (rb.velocity.x >= 0f ? 1f : -1f);
+            rb.velocity = new Vector2(dir * groundBounceForce, rb.velocity.y);
+        }
     }
 
     /// <summary>

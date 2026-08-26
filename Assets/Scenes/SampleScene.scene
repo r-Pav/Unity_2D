@@ -18489,7 +18489,7 @@ Transform:
   m_GameObject: {fileID: 519420028}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 1.1411228, y: -2.9048328, z: -9.878557}
+  m_LocalPosition: {x: 30.341122, y: -3.094833, z: -9.878557}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -21404,7 +21404,6 @@ MonoBehaviour:
   attackCooldownDuration: 3
   rangedKnockbackForce: 5
   airHitHangDuration: 0.3
-  airHitKnockbackY: 0
   cliffCheckForward: 1
   cliffCheckDown: 0.5
   channelLayer:
@@ -32162,7 +32161,7 @@ MonoBehaviour:
     stickToWall: 0
     stickHoldDuration: 0.6
     stickDepth: 0.2
-    knockbackForce: {x: 10, y: 40}
+    knockbackForce: {x: 10, y: -40}
     attackShift: {x: 0, y: 0}
     attackVFX: {fileID: 0}
     landingVFX: {fileID: 0}
@@ -46576,7 +46575,7 @@ Transform:
   m_GameObject: {fileID: 1404874482}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 1.1411228, y: -2.9048328, z: -9.878557}
+  m_LocalPosition: {x: 30.341122, y: -3.094833, z: -9.878557}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -47250,7 +47249,7 @@ Transform:
   m_GameObject: {fileID: 1427529632}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -20.21, y: 0.83, z: 0}
+  m_LocalPosition: {x: 8.99, y: 0.64, z: 0}
   m_LocalScale: {x: 1.1, y: 1.1, z: 1.1}
   m_ConstrainProportionsScale: 1
   m_Children:
@@ -72731,7 +72730,6 @@ MonoBehaviour:
   attackCooldownDuration: 1
   rangedKnockbackForce: 5
   airHitHangDuration: 0.3
-  airHitKnockbackY: 0
   cliffCheckForward: 1.88
   cliffCheckDown: 0.75
   channelLayer:
@@ -74405,7 +74403,6 @@ MonoBehaviour:
   attackCooldownDuration: 3
   rangedKnockbackForce: 5
   airHitHangDuration: 0.3
-  airHitKnockbackY: 0
   cliffCheckForward: 1
   cliffCheckDown: 0.5
   channelLayer:
@@ -76908,7 +76905,6 @@ MonoBehaviour:
   attackCooldownDuration: 1
   rangedKnockbackForce: 5
   airHitHangDuration: 0.3
-  airHitKnockbackY: 0
   cliffCheckForward: 1
   cliffCheckDown: 0.6
   channelLayer:
