@@ -1044,6 +1044,18 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         if (info.attackLabel == AirSlamLabel)
         {
             _pendingGroundImpact = true;
+            // 结束进行中的滞空冻结(如空中第二击遗留):不恢复旧保存速度,
+            // 第三击击退(已 ApplyKnockback/AddForce)独立生效,直接砸向地面
+            if (_airHangFreeze)
+            {
+                _airHangFreeze = false;
+                _localFreezeRemaining = 0f;
+                _localFreezeSavedVelocity = Vector2.zero;
+                _pendingKnockbackVelocity = Vector2.zero;
+                if (_animator != null) _animator.speed = 1f;
+                if (rb != null) rb.gravityScale = 1f;
+                Debug.Log($"[AirSlam] {name} 清除遗留滞空,第三击击退独立生效");
+            }
             Debug.Log($"[AirSlam] {name} 收到标记, 空中={!IsGrounded}, 冻结中={IsLocallyFrozen}");
         }
 
