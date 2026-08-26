@@ -100,6 +100,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     [Header("空中受击")]
     [Tooltip("空中受击滞空时长(秒):击飞中再受击停住后继续击退轨迹;0 = 关闭")]
     [SerializeField] protected float airHitHangDuration = 0.3f;
+    [Tooltip("空中受击吸附玩家速度(向玩家检测矩形中心拉 x,保持连段距离;0 = 关闭)")]
+    [SerializeField] protected float airHitPullSpeed = 8f;
 
     [Header("落地冲击")]
     [Tooltip("落地冲击触发速度阈值(y 速度低于此值触发,负值;如 -8。自然落地/走路不触发)")]
@@ -271,6 +273,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     private bool _pendingGroundImpact;
     /// <summary>空中击退中:移动系统完全让位(不清 x),让斜向击退速度自由飞,落地才恢复</summary>
     private bool _airKnockbackActive;
+    /// <summary>空中吸附玩家中:向玩家检测矩形中心拉 x,保持连段距离(落地/死亡清除)</summary>
+    private bool _pullToPlayer;
 
     /// <summary>是否正在本地冻结中</summary>
     public bool IsLocallyFrozen => _localFreezeRemaining > 0f;
@@ -333,6 +337,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         }
         _localFreezeRemaining = duration;
         _airHangFreeze = true;
+        _pullToPlayer = true;   // 空中受击:吸附玩家检测矩形中心,保持连段距离
         if (_animator != null) _animator.speed = 0f;
         if (rb != null)
         {
@@ -515,6 +520,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
         if (landed && _airKnockbackActive)
             _airKnockbackActive = false;   // 落地:移动系统接管(空中击退结束)
+        if (landed)
+            _pullToPlayer = false;         // 落地:空中吸附解除
 
         if (!isDead && _pendingGroundImpact && landed)
         {
@@ -529,6 +536,20 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         }
         _lastFrameVy = curVy;
         _wasGrounded = groundedNow;
+
+        // 空中吸附:玩家空中连段时把敌人往检测矩形中心拉 x(只吸水平,不碰 y 下落),
+        // 防止玩家前冲移动超过敌人导致错位/判定丢失。落地/死亡自动解除。
+        if (_pullToPlayer && airHitPullSpeed > 0f && !isDead && rb != null)
+        {
+            var pc = PlayerController.Instance;
+            if (pc != null && pc.Combat != null)
+            {
+                float targetX = pc.transform.position.x + pc.GetFacing() * pc.Combat.MeleeRangeOffset;
+                Vector2 pos = rb.position;
+                pos.x = Mathf.Lerp(pos.x, targetX, airHitPullSpeed * Time.deltaTime);
+                rb.position = pos;
+            }
+        }
 
         if (hitFlashTimer > 0f)
         {
@@ -1062,6 +1083,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         if (info.attackLabel == AirSlamLabel)
         {
             _pendingGroundImpact = true;
+            _pullToPlayer = true;   // 空中第三击:吸附玩家检测矩形中心,保持连段距离
             // 结束进行中的滞空冻结(如空中第二击遗留):不恢复旧保存速度,
             // 第三击击退(已 ApplyKnockback/AddForce)独立生效,直接砸向地面
             if (_airHangFreeze)
