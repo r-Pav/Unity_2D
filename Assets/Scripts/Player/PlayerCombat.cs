@@ -351,26 +351,16 @@ public class PlayerCombat : MonoBehaviour
 
                 // P4b:统一走 CombatResolver 结算(不再直接 enemy.TakeDamageFrom + enemyRb.AddForce)。
                 // 击退向量(含 facing 镜像/上挑)构造进 Knockback,由敌人侧 ApplyKnockback 施加;
-                // source = 玩家 ICombatant 实现(P4c PlayerHealth 接入后 GetComponent 自动取到;当前为 null 不影响敌人侧结算)
-                ICombatant source = GetComponent<ICombatant>();
-                DamageInfo info = new DamageInfo
+                // DamageInfo 由 BuildDamageInfo 统一构造(source = 玩家 ICombatant 实现)
+                Knockback knock = new Knockback
                 {
-                    amount = dmg,
-                    source = source,
-                    sourcePosition = (Vector2)transform.position,
-                    attackLabel = atkType,
-                    knockback = new Knockback
-                    {
-                        direction = totalForce.sqrMagnitude > 0.0001f ? totalForce.normalized : Vector2.right * AttackDir,
-                        force = totalForce.sqrMagnitude > 0.0001f ? totalForce.magnitude : 0f,
-                        duration = 0f,
-                        ignoreResistance = false
-                    },
-                    element = elementModule != null ? elementModule.CurrentElement : ElementType.None, // 按触发时刻读取（决策 N5）
-                    canTriggerElementProc = true,   // player 攻击默认可触发元素 proc（C#9 结构体无字段默认值，显式设置）
-                    critMultiplier = _lastCritMultiplier   // 暴击仲裁结果透传（0=未暴击）
+                    direction = totalForce.sqrMagnitude > 0.0001f ? totalForce.normalized : Vector2.right * AttackDir,
+                    force = totalForce.sqrMagnitude > 0.0001f ? totalForce.magnitude : 0f,
+                    duration = 0f,
+                    ignoreResistance = false
                 };
-                CombatResolver.Resolve(source, enemy, info);
+                var info = BuildDamageInfo(dmg, atkType, knock);
+                CombatResolver.Resolve(info.source, enemy, info);
                 hitAnything = true;
 
                 // 命中本地冻结（独立卡帧）：只冻被命中的这只敌人，普通怪/Boss 各自配置；0 = 关闭
@@ -401,6 +391,24 @@ public class PlayerCombat : MonoBehaviour
         }
 
         rangeIndicator.Flash();
+    }
+
+    /// <summary>
+    /// 构造玩家攻击 DamageInfo(普通命中/弹反重击两处路径共用;source/元素/暴击统一取值)。
+    /// </summary>
+    private DamageInfo BuildDamageInfo(float amount, string attackLabel, Knockback knockback)
+    {
+        return new DamageInfo
+        {
+            amount = amount,
+            source = GetComponent<ICombatant>(),
+            sourcePosition = (Vector2)transform.position,
+            attackLabel = attackLabel,
+            knockback = knockback,
+            element = elementModule != null ? elementModule.CurrentElement : ElementType.None, // 按触发时刻读取（决策 N5）
+            canTriggerElementProc = true,   // player 攻击默认可触发元素 proc（C#9 结构体无字段默认值，显式设置）
+            critMultiplier = _lastCritMultiplier   // 暴击仲裁结果透传（0=未暴击）
+        };
     }
 
     /// <summary>
@@ -492,25 +500,15 @@ public class PlayerCombat : MonoBehaviour
                 // 与其他玩家→敌人路径一致：attackLabel 用重击标签(meleeFinisherAttackType)，
                 // Poise.IsMeleeAttack("Sword_Heavy")=true → OnHitBy 近战路径 → EnterStunState 强制硬直；
                 // 敌人 hitVFXVariants 均为空数组 → GetHitVFX 一律回退默认,标签切换不影响受击 VFX。
-                ICombatant source = GetComponent<ICombatant>();
-                DamageInfo info = new DamageInfo
+                Knockback knock = new Knockback
                 {
-                    amount = dmg,
-                    source = source,
-                    sourcePosition = (Vector2)transform.position,
-                    attackLabel = meleeFinisherAttackType,
-                    knockback = new Knockback
-                    {
-                        direction = knockDir,
-                        force = 8f,          // 原强化击退 8f(原 3f),构造进 Knockback.force
-                        duration = 0f,
-                        ignoreResistance = false
-                    },
-                    element = elementModule != null ? elementModule.CurrentElement : ElementType.None, // 按触发时刻读取（决策 N5）
-                    canTriggerElementProc = true,   // player 攻击默认可触发元素 proc（C#9 结构体无字段默认值，显式设置）
-                    critMultiplier = _lastCritMultiplier   // 暴击仲裁结果透传（0=未暴击）
+                    direction = knockDir,
+                    force = 8f,          // 原强化击退 8f(原 3f),构造进 Knockback.force
+                    duration = 0f,
+                    ignoreResistance = false
                 };
-                CombatResolver.Resolve(source, enemy, info);
+                var info = BuildDamageInfo(dmg, meleeFinisherAttackType, knock);
+                CombatResolver.Resolve(info.source, enemy, info);
 
                 // 命中本地冻结（独立卡帧）：弹反重击路径与普通路径一致
                 float localFreeze = enemy.IsBoss ? bossLocalHitStopDuration : enemyLocalHitStopDuration;
