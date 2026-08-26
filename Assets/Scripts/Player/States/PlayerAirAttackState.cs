@@ -89,15 +89,6 @@ public class PlayerAirAttackState : EntityState
             string stateName = comboIndex == 1 ? "Attack" : "Attack" + comboIndex;
             string clipName = "Base Layer.AirAttack." + stateName;
             anim.Play(clipName, 0, 0f);
-            var st = anim.GetCurrentAnimatorStateInfo(0);
-            string clip = "?";
-            if (anim.GetCurrentAnimatorClipInfo(0).Length > 0)
-                clip = anim.GetCurrentAnimatorClipInfo(0)[0].clip != null ? anim.GetCurrentAnimatorClipInfo(0)[0].clip.name : "null";
-            bool isLoc = st.IsName("Base Layer.Locomotion");
-            bool isJump = st.IsName("Base Layer.Jump");
-            bool isAir = st.IsName("Base Layer.AirAttack");
-            bool isAtt = st.IsName("Base Layer.Attack");
-            Debug.Log($"[AirAttack] OnEnter Play={clipName} IsName={st.IsName(clipName)} clip={clip} time={st.normalizedTime} | Loc={isLoc} Jump={isJump} Air={isAir} Att={isAtt}");
         }
 
         // 攻击朝向跟随当前输入

@@ -104,10 +104,6 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     [SerializeField] protected float airHitPullSpeed = 8f;
     [Tooltip("空中吸附偏移(玩家前方距离,编辑器可调;目标 x = 玩家位置 + 朝向 × 此值)")]
     [SerializeField] protected float airHitPullOffset = 1.5f;
-    [Tooltip("空中击退撞管道反弹系数(动漫撞墙:横向速度反向×此系数;0 = 撞上停住)")]
-    [SerializeField] protected float airHitWallBounce = 0.6f;
-    [Tooltip("撞墙形变强度(动漫挤压:水平压扁垂直拉长;0 = 关闭)")]
-    [SerializeField] protected float airHitWallSquash = 0.2f;
 
     [Header("落地冲击")]
     [Tooltip("落地冲击触发速度阈值(y 速度低于此值触发,负值;如 -8。自然落地/走路不触发)")]
@@ -520,9 +516,45 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
             }
         }
 
-        // 落地冲击。
-        // "真正落地"判定:grounded 且落地瞬间速度被地面处理(vy 接近 0)。
-        // 不用 grounded 本身:基类是射线检测,落地前一段距离就提前 true,直接用它会在下落中途误触发。
+        // 空中受击状态:落地冲击检测 / 弹跳滑行衰减 / 吸附玩家
+        UpdateAirHitState();
+
+        if (hitFlashTimer > 0f)
+        {
+            hitFlashTimer -= Time.deltaTime;
+            if (hitFlashTimer <= 0f)
+                RestoreColors();
+        }
+
+        // 受击击退滑行窗口递减（归零后 OnFixedUpdate 恢复 Move(0) 正常停住）
+        if (hitKnockbackWindow > 0f)
+            hitKnockbackWindow -= Time.deltaTime;
+
+        // 蓄力闪烁驱动：受击闪白期间(hitFlashTimer>0)让位，闪白优先
+        if (isChargeFlashing && hitFlashTimer <= 0f)
+            UpdateChargeFlash();
+
+        if (attackCooldownTimer > 0f)
+            attackCooldownTimer -= Time.deltaTime;
+
+        if (stunCooldownTimer > 0f)
+            stunCooldownTimer -= Time.deltaTime;
+
+        // 嘲讽计时递减：归零自动解除（仇恨回到真实玩家；幻象销毁后 OverrideTarget 判空自动回退玩家）
+        if (tauntTimer > 0f)
+        {
+            tauntTimer -= Time.deltaTime;
+            if (tauntTimer <= 0f)
+                ClearTaunt();
+        }
+    }
+
+    /// <summary>
+    /// 空中受击状态每帧更新:落地冲击检测(真正落地判定:grounded + vy 接近 0,基类射线会提前命中,
+    /// 直接用它会在下落中途误触发)/ 落地弹跳滑行衰减 / 空中吸附玩家。
+    /// </summary>
+    private void UpdateAirHitState()
+    {
         bool groundedNow = IsGrounded;
         float curVy = rb != null ? rb.velocity.y : 0f;
         bool landed = groundedNow && !IsLocallyFrozen && curVy > -1.5f;
@@ -558,25 +590,6 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
             }
         }
 
-        // 空中击退撞管道:向 x 方向射线检测 Channel 层(复用巡逻 channelLayer),
-        // 命中动漫反弹(横向速度反向×系数 + 挤压形变),y 保留继续下落,防敌人被打进管道
-        if (_airKnockbackActive && rb != null && channelLayer != 0 && Mathf.Abs(rb.velocity.x) > 0.1f)
-        {
-            float dir = Mathf.Sign(rb.velocity.x);
-            float checkDist = Mathf.Abs(rb.velocity.x) * Time.deltaTime + 0.2f;
-            RaycastHit2D hit = Physics2D.Raycast(rb.position, Vector2.right * dir, checkDist, channelLayer);
-            if (hit.collider != null)
-            {
-                rb.velocity = new Vector2(-rb.velocity.x * airHitWallBounce, rb.velocity.y);
-                if (airHitWallSquash > 0f)
-                {
-                    if (_squashRoutine != null) StopCoroutine(_squashRoutine);
-                    _squashRoutine = StartCoroutine(WallBounceSquashRoutine(transform, airHitWallSquash));
-                }
-                Debug.Log($"[AirSlam] {name} 空中击退撞管道,反弹 x={rb.velocity.x}");
-            }
-        }
-
         // 空中吸附:玩家空中连段时把敌人往玩家前方拉 x(目标 = 玩家位置 + 朝向 × airHitPullOffset,
         // 只吸水平,不碰 y 下落,仅空中),防止玩家前冲移动超过敌人导致错位/判定丢失。落地/死亡自动解除。
         if (_pullToPlayer && airHitPullSpeed > 0f && !isDead && rb != null && !IsGrounded)
@@ -589,35 +602,6 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
                 pos.x = Mathf.Lerp(pos.x, targetX, airHitPullSpeed * Time.deltaTime);
                 rb.position = pos;
             }
-        }
-
-        if (hitFlashTimer > 0f)
-        {
-            hitFlashTimer -= Time.deltaTime;
-            if (hitFlashTimer <= 0f)
-                RestoreColors();
-        }
-
-        // 受击击退滑行窗口递减（归零后 OnFixedUpdate 恢复 Move(0) 正常停住）
-        if (hitKnockbackWindow > 0f)
-            hitKnockbackWindow -= Time.deltaTime;
-
-        // 蓄力闪烁驱动：受击闪白期间(hitFlashTimer>0)让位，闪白优先
-        if (isChargeFlashing && hitFlashTimer <= 0f)
-            UpdateChargeFlash();
-
-        if (attackCooldownTimer > 0f)
-            attackCooldownTimer -= Time.deltaTime;
-
-        if (stunCooldownTimer > 0f)
-            stunCooldownTimer -= Time.deltaTime;
-
-        // 嘲讽计时递减：归零自动解除（仇恨回到真实玩家；幻象销毁后 OverrideTarget 判空自动回退玩家）
-        if (tauntTimer > 0f)
-        {
-            tauntTimer -= Time.deltaTime;
-            if (tauntTimer <= 0f)
-                ClearTaunt();
         }
     }
 
@@ -1052,35 +1036,6 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
             return;
         }
         rb.AddForce(knockDir * knockback.force, ForceMode2D.Impulse);
-    }
-
-    /// <summary>撞墙形变:水平压扁 + 垂直拉长,再恢复(动漫撞墙挤压,与落地形变反向)</summary>
-    private System.Collections.IEnumerator WallBounceSquashRoutine(Transform t, float amount)
-    {
-        Vector3 original = _originalLocalScale;
-        int dir = t.localScale.x >= 0f ? 1 : -1;   // 保留当前朝向符号
-        float duration = 0.12f;
-        float half = duration * 0.5f;
-
-        for (float timer = 0f; timer < half; timer += Time.deltaTime)
-        {
-            float p = timer / half;
-            t.localScale = new Vector3(
-                Mathf.Abs(original.x) * dir * (1f - p * amount),
-                original.y * (1f + p * amount),
-                original.z);
-            yield return null;
-        }
-        for (float timer = 0f; timer < half; timer += Time.deltaTime)
-        {
-            float p = timer / half;
-            t.localScale = new Vector3(
-                Mathf.Abs(original.x) * dir * (1f - (1f - p) * amount),
-                original.y * (1f + (1f - p) * amount),
-                original.z);
-            yield return null;
-        }
-        t.localScale = new Vector3(Mathf.Abs(original.x) * dir, original.y, original.z);
     }
 
     /// <summary>
