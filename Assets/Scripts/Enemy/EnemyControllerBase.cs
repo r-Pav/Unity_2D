@@ -257,6 +257,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     private Vector2 _localFreezeSavedVelocity;
     /// <summary>空中滞空冻结模式：结束恢复击退速度(正常击退轨迹),重力恢复</summary>
     private bool _airHangFreeze;
+    /// <summary>本次受击 AddForce 目标速度(Impulse 延迟物理步应用,冻结前先算好;冻结恢复用它而非旧速度)</summary>
+    private Vector2 _pendingKnockbackVelocity;
     /// <summary>上一帧是否在地面(落地上升沿检测用)</summary>
     private bool _wasGrounded;
     /// <summary>最后击退的水平方向(落地弹跳方向;0 = 无记录)</summary>
@@ -297,6 +299,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         {
             // 滞空模式:恢复重力(冻结期间关闭定身)
             if (rb != null) rb.gravityScale = 1f;
+            Debug.Log($"[AirSlam] {name} 冻结结束恢复速度={_localFreezeSavedVelocity}");
             _airHangFreeze = false;
         }
         // 恢复击退速度(滞空 = 停住后继续正常击退轨迹;普通冻结 = 恢复原行为)
@@ -314,6 +317,12 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         if (_localFreezeRemaining > 0f)
         {
             if (duration > _localFreezeRemaining) _localFreezeRemaining = duration;
+            // 冻结中再次受击:恢复速度必须换成新击退(下砸击退不能丢,否则恢复旧速度慢落)
+            if (_pendingKnockbackVelocity.sqrMagnitude > 0.0001f)
+            {
+                _localFreezeSavedVelocity = _pendingKnockbackVelocity;
+                _pendingKnockbackVelocity = Vector2.zero;
+            }
             return;
         }
         _localFreezeRemaining = duration;
@@ -321,7 +330,13 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         if (_animator != null) _animator.speed = 0f;
         if (rb != null)
         {
-            _localFreezeSavedVelocity = rb.velocity;   // 存击退速度,结束恢复(不叠加不双给)
+            // 恢复速度优先用本次击退目标速度(AddForce 延迟物理步应用,冻结时 rb.velocity 还是旧值);
+            // 无击退时退回当前速度
+            _localFreezeSavedVelocity = _pendingKnockbackVelocity.sqrMagnitude > 0.0001f
+                ? _pendingKnockbackVelocity
+                : rb.velocity;
+            _pendingKnockbackVelocity = Vector2.zero;
+            Debug.Log($"[AirSlam] {name} 冻结存速度={_localFreezeSavedVelocity}, 当前vel={rb.velocity}, hang={duration}");
             rb.velocity = Vector2.zero;
             rb.gravityScale = 0f;   // 无全局卡帧时也必须定身:关重力防下落,结束恢复
         }
@@ -493,13 +508,17 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         if (!isDead && _pendingGroundImpact && groundedNow && !IsLocallyFrozen)
         {
             _pendingGroundImpact = false;
+            Debug.Log($"[AirSlam] {name} 落地触发(标记), vy={(rb != null ? rb.velocity.y : 0f)}");
             TriggerGroundImpact();
         }
-        else if (groundedNow && !_wasGrounded && !isDead)
+        else if (groundedNow && !_wasGrounded && !isDead && !IsLocallyFrozen)
         {
             float impactY = rb != null ? rb.velocity.y : 0f;
             if (impactY < groundImpactSpeedThreshold)
+            {
+                Debug.Log($"[AirSlam] {name} 落地触发(速度阈值), vy={impactY}");
                 TriggerGroundImpact();
+            }
         }
         _wasGrounded = groundedNow;
 
@@ -948,6 +967,9 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         Vector2 knockDir = knockback.direction;
         if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
         _lastKnockbackDirX = Mathf.Sign(knockDir.x);   // 记录击退水平方向(落地弹跳用)
+        // AddForce(Impulse) 延迟到物理步应用:提前算好目标速度,滞空冻结恢复时用它,避免击退被旧速度吞掉
+        _pendingKnockbackVelocity = rb.velocity + knockDir * (knockback.force / Mathf.Max(0.01f, rb.mass));
+        Debug.Log($"[AirSlam] {name} ApplyKnockback dir={knockDir} force={knockback.force} vel前={rb.velocity} 目标速度={_pendingKnockbackVelocity}");
         rb.AddForce(knockDir * knockback.force, ForceMode2D.Impulse);
     }
 
@@ -956,6 +978,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     /// </summary>
     private void TriggerGroundImpact()
     {
+        Debug.Log($"[AirSlam] {name} TriggerGroundImpact 执行, stun={groundImpactStun}, bounce={groundBounceForce}, vfx={(groundImpactVFX != null)}");
         if (groundImpactVFX != null)
             VFXSpawner.SpawnInWorld(groundImpactVFX, transform.position);
 
@@ -983,7 +1006,10 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
         // 空中第三段(下砸,AirSlam_Heavy)命中:标记落地冲击,落地时必触发(不依赖速度阈值)
         if (info.attackLabel == AirSlamLabel)
+        {
             _pendingGroundImpact = true;
+            Debug.Log($"[AirSlam] {name} 收到标记, 空中={!IsGrounded}, 冻结中={IsLocallyFrozen}");
+        }
 
         // 空中受击:滞空冻结(停住),结束恢复击退速度继续正常击退轨迹。
         // 冻结期间 FSM 停更,结束后下方近战/远程状态推送照常执行,落地自然转态。
