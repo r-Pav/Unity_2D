@@ -36,6 +36,12 @@ public class PlayerCombat : MonoBehaviour
     [Tooltip("空中第三段(下砸)攻击类型标签 — 标记落地冲击触发(与 EnemyControllerBase 的 AirSlam 检测对应)")]
     [SerializeField] private string airFinisherAttackType = "AirSlam_Heavy";
 
+    [Tooltip("空中第三击击退倍率(击退速度 = airAttack3 配置力度 × 此值;手感微调,默认 1)")]
+    [SerializeField] private float airFinisherKnockbackMultiplier = 1f;
+
+    [Tooltip("空中第三击(下砸)击退速度倍率(编辑器手动调手感;1 = 按 airAttack3 配置原值)")]
+    [SerializeField] private float airSlamKnockbackMultiplier = 1f;
+
     [Header("近战范围指示器")]
     [Tooltip("拖入 Player 下的攻击范围 Sprite（挂 MeleeRangeIndicator）")]
     [SerializeField] private MeleeRangeIndicator rangeIndicator;
@@ -333,6 +339,9 @@ public class PlayerCombat : MonoBehaviour
                 if (_weaponThrow != null)
                 {
                     totalForce = _weaponThrow.GetKnockbackBonus(comboIndex, isAirAttack);
+                    // 空中第三击(下砸):击退速度倍率(编辑器手动调手感)
+                    if (isAirAttack && isFinisher && airSlamKnockbackMultiplier != 1f)
+                        totalForce *= airSlamKnockbackMultiplier;
                     if (totalForce.x != 0f) totalForce.x *= AttackDir;
                 }
                 else if (!_warnedMissingWeaponThrow)
