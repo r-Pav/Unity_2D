@@ -11854,7 +11854,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &334569178
 Transform:
   m_ObjectHideFlags: 0
@@ -21404,6 +21404,8 @@ MonoBehaviour:
   attackCooldownDuration: 3
   rangedKnockbackForce: 5
   airHitHangDuration: 0.3
+  airHitPullSpeed: 8
+  airHitPullOffset: 1.5
   groundImpactSpeedThreshold: -8
   groundImpactVFX: {fileID: 0}
   groundImpactHitStop: 0.05
@@ -21411,6 +21413,7 @@ MonoBehaviour:
   groundImpactShakeMagnitude: 0.1
   groundImpactStun: 0.3
   groundBounceForce: 2.5
+  groundImpactSquash: 0.3
   cliffCheckForward: 1
   cliffCheckDown: 0.5
   channelLayer:
@@ -32168,7 +32171,7 @@ MonoBehaviour:
     stickToWall: 0
     stickHoldDuration: 0.6
     stickDepth: 0.2
-    knockbackForce: {x: 10, y: -40}
+    knockbackForce: {x: 50, y: -40}
     attackShift: {x: 0, y: 0}
     attackVFX: {fileID: 0}
     landingVFX: {fileID: 0}
@@ -47309,6 +47312,7 @@ MonoBehaviour:
     m_Bits: 128
   meleeAttackType: Sword
   meleeFinisherAttackType: Sword_Heavy
+  airFinisherAttackType: AirSlam_Heavy
   rangeIndicator: {fileID: 945450417}
   meleeRangeOffset: 0.68
   swordCollider: {fileID: 952423020}
@@ -72038,7 +72042,7 @@ Transform:
   m_GameObject: {fileID: 6776004028842589203}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 17.11, y: 0.34, z: -0.022004815}
+  m_LocalPosition: {x: 24.58, y: 0.34, z: -0.022004815}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -72737,6 +72741,8 @@ MonoBehaviour:
   attackCooldownDuration: 1
   rangedKnockbackForce: 5
   airHitHangDuration: 0.3
+  airHitPullSpeed: 8
+  airHitPullOffset: 1.5
   groundImpactSpeedThreshold: -8
   groundImpactVFX: {fileID: 0}
   groundImpactHitStop: 0.05
@@ -72744,6 +72750,7 @@ MonoBehaviour:
   groundImpactShakeMagnitude: 0.1
   groundImpactStun: 0.3
   groundBounceForce: 2.5
+  groundImpactSquash: 0.3
   cliffCheckForward: 1.88
   cliffCheckDown: 0.75
   channelLayer:
@@ -74417,13 +74424,16 @@ MonoBehaviour:
   attackCooldownDuration: 3
   rangedKnockbackForce: 5
   airHitHangDuration: 0.3
+  airHitPullSpeed: 8
+  airHitPullOffset: 1.8
   groundImpactSpeedThreshold: -8
   groundImpactVFX: {fileID: 0}
   groundImpactHitStop: 0.05
   groundImpactShakeDuration: 0.1
   groundImpactShakeMagnitude: 0.1
   groundImpactStun: 0.3
-  groundBounceForce: 6
+  groundBounceForce: 20
+  groundImpactSquash: 0.3
   cliffCheckForward: 1
   cliffCheckDown: 0.5
   channelLayer:
@@ -74603,7 +74613,7 @@ RectTransform:
   m_Father: {fileID: 8230398520860553288}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
@@ -75898,7 +75908,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &6781794434044185211
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -76926,6 +76936,8 @@ MonoBehaviour:
   attackCooldownDuration: 1
   rangedKnockbackForce: 5
   airHitHangDuration: 0.3
+  airHitPullSpeed: 8
+  airHitPullOffset: 1.5
   groundImpactSpeedThreshold: -8
   groundImpactVFX: {fileID: 0}
   groundImpactHitStop: 0.05
@@ -76933,6 +76945,7 @@ MonoBehaviour:
   groundImpactShakeMagnitude: 0.1
   groundImpactStun: 0.3
   groundBounceForce: 2.5
+  groundImpactSquash: 0.3
   cliffCheckForward: 1
   cliffCheckDown: 0.6
   channelLayer:
