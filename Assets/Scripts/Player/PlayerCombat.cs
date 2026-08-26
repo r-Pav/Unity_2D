@@ -33,6 +33,9 @@ public class PlayerCombat : MonoBehaviour
     [Tooltip("近战第三段攻击类型标签 — 单独标记用于霸体计数")]
     [SerializeField] private string meleeFinisherAttackType = "Sword_Heavy";
 
+    [Tooltip("空中第三段(下砸)攻击类型标签 — 标记落地冲击触发(与 EnemyControllerBase 的 AirSlam 检测对应)")]
+    [SerializeField] private string airFinisherAttackType = "AirSlam_Heavy";
+
     [Header("近战范围指示器")]
     [Tooltip("拖入 Player 下的攻击范围 Sprite（挂 MeleeRangeIndicator）")]
     [SerializeField] private MeleeRangeIndicator rangeIndicator;
@@ -338,7 +341,13 @@ public class PlayerCombat : MonoBehaviour
                     Debug.LogWarning("[PlayerCombat] 未找到 WeaponThrow(应挂在 w1_transparent 上),击退失效。请检查 Player 子物体武器配置");
                 }
 
-                string atkType = isFinisher ? meleeFinisherAttackType : meleeAttackType;
+                string atkType;
+                if (isAirAttack && isFinisher)
+                    atkType = airFinisherAttackType;   // 空中第三击:独立标签,敌人据此触发落地冲击
+                else if (isFinisher)
+                    atkType = meleeFinisherAttackType;
+                else
+                    atkType = meleeAttackType;
 
                 // P4b:统一走 CombatResolver 结算(不再直接 enemy.TakeDamageFrom + enemyRb.AddForce)。
                 // 击退向量(含 facing 镜像/上挑)构造进 Knockback,由敌人侧 ApplyKnockback 施加;

@@ -21404,6 +21404,13 @@ MonoBehaviour:
   attackCooldownDuration: 3
   rangedKnockbackForce: 5
   airHitHangDuration: 0.3
+  groundImpactSpeedThreshold: -8
+  groundImpactVFX: {fileID: 0}
+  groundImpactHitStop: 0.05
+  groundImpactShakeDuration: 0.1
+  groundImpactShakeMagnitude: 0.1
+  groundImpactStun: 0.3
+  groundBounceForce: 2.5
   cliffCheckForward: 1
   cliffCheckDown: 0.5
   channelLayer:
@@ -72730,6 +72737,13 @@ MonoBehaviour:
   attackCooldownDuration: 1
   rangedKnockbackForce: 5
   airHitHangDuration: 0.3
+  groundImpactSpeedThreshold: -8
+  groundImpactVFX: {fileID: 0}
+  groundImpactHitStop: 0.05
+  groundImpactShakeDuration: 0.1
+  groundImpactShakeMagnitude: 0.1
+  groundImpactStun: 0.3
+  groundBounceForce: 2.5
   cliffCheckForward: 1.88
   cliffCheckDown: 0.75
   channelLayer:
@@ -74403,6 +74417,13 @@ MonoBehaviour:
   attackCooldownDuration: 3
   rangedKnockbackForce: 5
   airHitHangDuration: 0.3
+  groundImpactSpeedThreshold: -8
+  groundImpactVFX: {fileID: 0}
+  groundImpactHitStop: 0.05
+  groundImpactShakeDuration: 0.1
+  groundImpactShakeMagnitude: 0.1
+  groundImpactStun: 0.3
+  groundBounceForce: 6
   cliffCheckForward: 1
   cliffCheckDown: 0.5
   channelLayer:
@@ -76905,6 +76926,13 @@ MonoBehaviour:
   attackCooldownDuration: 1
   rangedKnockbackForce: 5
   airHitHangDuration: 0.3
+  groundImpactSpeedThreshold: -8
+  groundImpactVFX: {fileID: 0}
+  groundImpactHitStop: 0.05
+  groundImpactShakeDuration: 0.1
+  groundImpactShakeMagnitude: 0.1
+  groundImpactStun: 0.3
+  groundBounceForce: 2.5
   cliffCheckForward: 1
   cliffCheckDown: 0.6
   channelLayer:

@@ -261,6 +261,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     private bool _wasGrounded;
     /// <summary>最后击退的水平方向(落地弹跳方向;0 = 无记录)</summary>
     private float _lastKnockbackDirX;
+    /// <summary>受击标记:被空中第三段(下砸)命中,落地时必触发落地冲击(不依赖速度阈值)</summary>
+    private bool _pendingGroundImpact;
 
     /// <summary>是否正在本地冻结中</summary>
     public bool IsLocallyFrozen => _localFreezeRemaining > 0f;
@@ -483,13 +485,22 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
             }
         }
 
-        // 落地冲击:被击退高速落地(grounded 上升沿 + 下落速度超阈值)→ VFX/卡帧震屏/硬直/往击退方向弹跳
+        // 落地冲击:grounded 上升沿触发。
+        // 被空中第三段(下砸)标记的必触发;其余按高速落地速度阈值兜底。
         bool groundedNow = IsGrounded;
         if (groundedNow && !_wasGrounded && !isDead)
         {
-            float impactY = rb != null ? rb.velocity.y : 0f;
-            if (impactY < groundImpactSpeedThreshold)
+            if (_pendingGroundImpact)
+            {
+                _pendingGroundImpact = false;
                 TriggerGroundImpact();
+            }
+            else
+            {
+                float impactY = rb != null ? rb.velocity.y : 0f;
+                if (impactY < groundImpactSpeedThreshold)
+                    TriggerGroundImpact();
+            }
         }
         _wasGrounded = groundedNow;
 
@@ -600,7 +611,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     /// 禁止改空串：空串会走远程分支（不晕 + rangedKnockbackForce 击退 + 立即追击，行为变化）。
     /// </summary>
     private const string GroundPoundAttackLabel = "Sword_Heavy";
-
+    /// <summary>空中第三段(下砸)攻击标签 — 玩家 PlayerCombat.airFinisherAttackType 默认同名,收到即标记落地冲击</summary>
+    private const string AirSlamLabel = "AirSlam_Heavy";
     private void OnGroundPound(GroundPoundEvent e)
     {
         if (isDead) return;
@@ -970,7 +982,11 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     {
         if (isDead) return;
 
-        // 空中受击:滞空冻结(停住),结束清 x 按 airHitKnockbackY 独立数值落下。
+        // 空中第三段(下砸,AirSlam_Heavy)命中:标记落地冲击,落地时必触发(不依赖速度阈值)
+        if (info.attackLabel == AirSlamLabel)
+            _pendingGroundImpact = true;
+
+        // 空中受击:滞空冻结(停住),结束恢复击退速度继续正常击退轨迹。
         // 冻结期间 FSM 停更,结束后下方近战/远程状态推送照常执行,落地自然转态。
         bool airborne = !IsGrounded;
         if (airborne && airHitHangDuration > 0f)
