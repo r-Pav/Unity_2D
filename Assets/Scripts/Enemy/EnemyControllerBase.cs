@@ -97,6 +97,12 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     [Tooltip("远程攻击击退力度（近战击退由 PoiseComponent 控制；0 = 未设置）")]
     [SerializeField] protected float rangedKnockbackForce = 0f;
 
+    [Header("空中受击")]
+    [Tooltip("空中受击滞空时长(秒):击飞中再受击停住后落下;0 = 关闭")]
+    [SerializeField] protected float airHitHangDuration = 0.3f;
+    [Tooltip("滞空结束垂直速度(空中击退独立数值,与三连击配置分开):x 清零,仅 y 用此值;0 = 直接重力落下")]
+    [SerializeField] protected float airHitKnockbackY = 0f;
+
     [Header("巡逻悬崖检测")]
     [Tooltip("前方偏移（X 轴）：前方多远处探脚下地面（0.8 = 角色前方约一个身位）")]
     [SerializeField] private float cliffCheckForward = 0.8f;
@@ -235,6 +241,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     private float _localFreezeRemaining;
     /// <summary>冻结前暂存的速度（解除时恢复，保证击退速度不在冻结期间衰减）</summary>
     private Vector2 _localFreezeSavedVelocity;
+    /// <summary>空中滞空冻结模式：结束不恢复击飞速度,清 x 按 airHitKnockbackY 落下</summary>
+    private bool _airHangFreeze;
 
     /// <summary>是否正在本地冻结中</summary>
     public bool IsLocallyFrozen => _localFreezeRemaining > 0f;
@@ -265,8 +273,35 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     private void EndLocalFreeze()
     {
         if (_animator != null) _animator.speed = 1f;
-        if (rb != null) rb.velocity = _localFreezeSavedVelocity;
+        if (_airHangFreeze)
+        {
+            // 滞空模式:不恢复击飞速度,清 x、仅 y 用独立数值,重力接管自然落下
+            if (rb != null) rb.velocity = new Vector2(0f, airHitKnockbackY);
+            _airHangFreeze = false;
+        }
+        else if (rb != null)
+        {
+            rb.velocity = _localFreezeSavedVelocity;
+        }
         _localFreezeSavedVelocity = Vector2.zero;
+    }
+
+    /// <summary>
+    /// 空中滞空冻结 — 击飞中的敌人再受击:停住(动画/速度/FSM 停),结束清 x 按 airHitKnockbackY 独立数值落下。
+    /// 只对空中生效;地面受击走原硬直逻辑。冻结中再次调用取更长的剩余时长(空中连段滞空)。
+    /// </summary>
+    public void ApplyAirHangFreeze(float duration)
+    {
+        if (isDead || duration <= 0f || IsGrounded) return;
+        if (_localFreezeRemaining > 0f)
+        {
+            if (duration > _localFreezeRemaining) _localFreezeRemaining = duration;
+            return;
+        }
+        _localFreezeRemaining = duration;
+        _airHangFreeze = true;
+        if (_animator != null) _animator.speed = 0f;
+        if (rb != null) rb.velocity = Vector2.zero;
     }
 
     /// <summary>强制解除本地冻结 — 子类覆写 Die() 等场景调用，保证死亡动画/结算不被冻结卡住</summary>
@@ -863,10 +898,13 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     public float ApplyReduction(float amount) => amount;
 
     /// <summary>施加击退（CombatResolver 在霸体判定通过后调用；方向/力度由攻击方构造进 Knockback）
-    /// 2026-08-18：放开 y 水平化 — 敌人统一按攻击方构造的完整 x/y 向量击退（武器每击配置的 y 生效，可上挑/击飞）。</summary>
+    /// 2026-08-18：放开 y 水平化 — 敌人统一按攻击方构造的完整 x/y 向量击退（武器每击配置的 y 生效，可上挑/击飞）。
+    /// 空中受击例外:不施加攻击方击退(不要 x),滞空冻结接管,结束按 airHitKnockbackY 独立数值落下。</summary>
     public virtual void ApplyKnockback(Knockback knockback)
     {
         if (rb == null || knockback.force <= 0f) return;
+        // 空中受击:滞空冻结接管,攻击方击退(x/y 整体)不施加
+        if (!IsGrounded) return;
         Vector2 knockDir = knockback.direction;
         if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
         rb.AddForce(knockDir * knockback.force, ForceMode2D.Impulse);
@@ -879,6 +917,12 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     public virtual void OnHitBy(DamageInfo info)
     {
         if (isDead) return;
+
+        // 空中受击:滞空冻结(停住),结束清 x 按 airHitKnockbackY 独立数值落下。
+        // 冻结期间 FSM 停更,结束后下方近战/远程状态推送照常执行,落地自然转态。
+        bool airborne = !IsGrounded;
+        if (airborne && airHitHangDuration > 0f)
+            ApplyAirHangFreeze(airHitHangDuration);
 
         // 落雷（Thunder_Strike）：强制硬直，不区分近战/远程路径（决策 D8）。
         // 韧性判定已在 CombatResolver 跳过 Poise.RegisterHit → 霸体目标同样硬直。
@@ -903,7 +947,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
             //    击退统一由 CombatResolver.ApplyKnockback 施加（方向/力度由攻击方构造进 Knockback，
             //    与近战 enemy 一致）；仅当攻击无击退配置（force<=0，如子弹/普通攻击段）时用
             //    rangedKnockbackForce 兜底，防止与 ApplyKnockback 双重叠加导致方向/力度混乱（P4b 后遗留）。
-            if (info.knockback.force <= 0f)
+            //    空中受击不施加兜底击退(不要 x),滞空冻结接管。
+            if (!airborne && info.knockback.force <= 0f)
             {
                 Vector2 hitDir = ((Vector2)transform.position - info.sourcePosition).normalized;
                 Vector2 knockDir = hitDir;

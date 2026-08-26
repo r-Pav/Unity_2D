@@ -47,7 +47,10 @@ public static class CombatResolver
         else if (defender.Poise != null)
         {
             bool immuneBefore = defender.Poise.IsPoiseActive;
-            defender.Poise.RegisterHit(info.attackLabel);
+            // 空中受击不积累霸体计数(击飞连段不会越打越出霸体;决策见空中受击滞空需求)
+            bool isAirborne = defender is EnemyControllerBase ecb && !ecb.IsGrounded;
+            if (!isAirborne)
+                defender.Poise.RegisterHit(info.attackLabel);
             if (!immuneBefore && info.knockback.force > 0f)
                 defender.ApplyKnockback(info.knockback);
         }
