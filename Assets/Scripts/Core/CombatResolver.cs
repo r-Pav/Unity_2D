@@ -51,7 +51,9 @@ public static class CombatResolver
             bool isAirborne = defender is EnemyControllerBase ecb && !ecb.IsGrounded;
             if (!isAirborne)
                 defender.Poise.RegisterHit(info.attackLabel);
-            if (!immuneBefore && info.knockback.force > 0f)
+            // 空中受击无视霸体免疫:击退总是施加(空中连段不被打断)。
+            // 地面触发霸体后若敌人被击飞,残留的霸体免疫不该吞掉空中击退(否则第三击随机失效)。
+            if ((!immuneBefore || isAirborne) && info.knockback.force > 0f)
                 defender.ApplyKnockback(info.knockback);
         }
         else if (info.knockback.force > 0f)
