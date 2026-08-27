@@ -62,6 +62,22 @@ public class PlayerBeatJudge : MonoBehaviour
 
     private void Update()
     {
+        // 连打中:吸附 boss 身后;玩家主动位移 → 结束连打
+        if (_autoComboActive)
+        {
+            if (Mathf.Abs(Input.GetAxisRaw("Horizontal")) > 0.1f
+                || Input.GetKeyDown(KeyCode.Space)
+                || Input.GetKeyDown(KeyCode.LeftShift))
+            {
+                _autoComboActive = false;
+                Debug.Log("[PlayerBeat] 玩家主动位移,连打结束");
+            }
+            else
+            {
+                SnapBehindEnemy();
+            }
+        }
+
         // 判定输入:攻击键(左键)或 F 键;窗口内 = 成功(失败无惩罚)
         if (Input.GetMouseButtonDown(0) || Input.GetKeyDown(KeyCode.F))
         {
@@ -130,7 +146,7 @@ public class PlayerBeatJudge : MonoBehaviour
             judgeIndicator.SetActive(false);
     }
 
-    /// <summary>瞬移到 enemy 身后(enemy 背对 player 的一侧,保持当前高度,空中允许)</summary>
+    /// <summary>瞬移到 enemy 身后(enemy 背对方向,保持当前高度,空中允许)</summary>
     private void TeleportBehindEnemy()
     {
         if (_pc == null) return;
@@ -140,10 +156,19 @@ public class PlayerBeatJudge : MonoBehaviour
             Debug.Log("[PlayerBeat] 瞬移敌后:未找到 Boss,跳过位移");
             return;
         }
-        float dir = _pc.transform.position.x > enemy.transform.position.x ? 1f : -1f;   // player 相对 enemy 的方向
-        float behindX = enemy.transform.position.x - dir * behindDistance;               // enemy 身后(enemy 面朝 player,背后即反方向)
+        float behindX = enemy.transform.position.x - enemy.Facing * behindDistance;   // enemy 背对方向
         _pc.transform.position = new Vector3(behindX, _pc.transform.position.y, _pc.transform.position.z);
         Debug.Log($"[PlayerBeat] 瞬移到 enemy 身后 x={behindX:F2}");
+    }
+
+    /// <summary>吸附:连打期间每帧保持 enemy 身后位置(跟随 boss 移动)</summary>
+    private void SnapBehindEnemy()
+    {
+        if (_pc == null) return;
+        var enemy = FindObjectOfType<BossControllerBase>();
+        if (enemy == null) return;
+        float behindX = enemy.transform.position.x - enemy.Facing * behindDistance;
+        _pc.transform.position = new Vector3(behindX, _pc.transform.position.y, _pc.transform.position.z);
     }
 
     /// <summary>该标点时刻是否属于某组</summary>
