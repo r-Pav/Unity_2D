@@ -33,6 +33,11 @@ public class PlayerBeatJudge : MonoBehaviour
         {
             mgr.OnWindowEnter += OnWindowEnter;
             _subscribed = true;
+            Debug.Log($"[PlayerBeat] 监听启动 判定组[{judgeGroup}] 连打组[{comboGroup}] 当前曲={(mgr.CurrentTrack != null ? mgr.CurrentTrack.name : "null")}");
+        }
+        else
+        {
+            Debug.LogWarning("[PlayerBeat] MusicPointManager 不存在,判定/连打不生效");
         }
     }
 
@@ -49,10 +54,15 @@ public class PlayerBeatJudge : MonoBehaviour
         if (Input.GetMouseButtonDown(0) || Input.GetKeyDown(KeyCode.F))
         {
             var mgr = MusicPointManager.Instance;
-            if (mgr != null && mgr.IsInGroupWindow(judgeGroup))
+            if (mgr != null)
             {
-                _autoComboActive = true;
-                Debug.Log("[PlayerBeat] 重击音判定成功,进入自动连打");
+                bool inWindow = mgr.IsInGroupWindow(judgeGroup);
+                Debug.Log($"[PlayerBeat] 按键 组[{judgeGroup}]窗口={inWindow} 当前组={mgr.CurrentWindowGroup} 连打已激活={_autoComboActive}");
+                if (inWindow)
+                {
+                    _autoComboActive = true;
+                    Debug.Log("[PlayerBeat] 重击音判定成功,进入自动连打");
+                }
             }
         }
     }
@@ -60,12 +70,28 @@ public class PlayerBeatJudge : MonoBehaviour
     /// <summary>音乐窗口事件:PlayerCombo 标点到达 → 自动攻击(玩家不在攻击中且冷却就绪)</summary>
     private void OnWindowEnter(float pointTime)
     {
-        if (!_autoComboActive) return;
         var mgr = MusicPointManager.Instance;
+        string currentGroup = mgr != null ? mgr.CurrentWindowGroup : "无";
+        Debug.Log($"[PlayerBeat] 窗口事件 组={currentGroup} 连打激活={_autoComboActive}");
+        if (!_autoComboActive) return;
         if (mgr == null || !mgr.IsInGroupWindow(comboGroup)) return;
 
-        if (_pc == null || _pc.IsAttacking) return;
-        if (_pc.Combat == null || !_pc.Combat.AttackCooldownReady) return;
+        if (_pc == null)
+        {
+            Debug.Log("[PlayerBeat] 自动攻击拦截:PlayerController 为空");
+            return;
+        }
+        if (_pc.IsAttacking)
+        {
+            Debug.Log("[PlayerBeat] 自动攻击拦截:玩家正在攻击中");
+            return;
+        }
+        if (_pc.Combat == null || !_pc.Combat.AttackCooldownReady)
+        {
+            Debug.Log("[PlayerBeat] 自动攻击拦截:攻击冷却未就绪");
+            return;
+        }
+        Debug.Log("[PlayerBeat] 自动攻击触发(PlayerCombo 标点)");
         _pc.PlayerFsm.ChangeState(_pc.AttackState);
     }
 }

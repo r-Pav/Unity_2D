@@ -159,6 +159,24 @@ public class MusicPointManager : MonoBehaviour
         return false;
     }
 
+    /// <summary>当前窗口所属组名(遍历曲目标点组匹配;不在窗口/未匹配返回 null)</summary>
+    public string CurrentWindowGroup
+    {
+        get
+        {
+            if (!_inWindow || _currentTrack == null || _currentTrack.pointGroups == null) return null;
+            foreach (var g in _currentTrack.pointGroups)
+            {
+                if (g == null || g.points == null) continue;
+                foreach (float p in g.points)
+                {
+                    if (Mathf.Abs(p - _activePointTime) < 0.001f) return g.groupName;
+                }
+            }
+            return null;
+        }
+    }
+
     private void Awake()
     {
         if (initialTrack != null)
