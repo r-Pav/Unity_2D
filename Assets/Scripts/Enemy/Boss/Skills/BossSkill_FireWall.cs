@@ -2,10 +2,9 @@ using System.Collections;
 using UnityEngine;
 
 /// <summary>
-/// 技能 1:双火墙交叉(Wall Pincer,定版)。
-/// 流程:左右墙在场景配置位置生成 → 左墙向右、右墙向左交叉移动(固定方向,不追 player)
-/// → 到距 player stopDistance 停靠(保留现状规则,相对 player)→ 停留 wallLifetime 秒
-/// → 向两边分开(左墙向左、右墙向右)wallLifetime 秒后消失。
+/// 技能 1:双火墙夹击(Wall Pincer,定版)。
+/// 流程:左右墙在场景配置位置生成 → 两墙同时朝 player 移动,到距 player stopDistance 停下
+/// → 停留 wallLifetime 秒 → 左墙向右、右墙向左交叉穿过,一直到屏幕外消失。
 /// 伤害:单次碰到触发(进入墙范围触发一次,离开再进可再触发;不持续刷伤害)。
 /// 墙为场景根独立物体,不受 Boss 层级影响;空中战位期间关 Boss 重力,结束/中断恢复。
 /// </summary>
@@ -65,7 +64,7 @@ public class BossSkill_FireWall : BossSkillExecutor
         GameObject leftWall = SpawnWall(sceneConfig != null ? sceneConfig.fireWallLeftSpawn : null);
         GameObject rightWall = SpawnWall(sceneConfig != null ? sceneConfig.fireWallRightSpawn : null);
 
-        // 3. 阶段 A:左墙向右、右墙向左交叉移动(固定方向),到距 player stopDistance 停靠(超时 10 秒兜底)
+        // 3. 阶段 A:两墙同时朝 player 移动,到距 player stopDistance 停下(超时 10 秒兜底)
         bool hitOnce = false;
         float moveElapsed = 0f;
         const float moveTimeout = 10f;
@@ -73,8 +72,8 @@ public class BossSkill_FireWall : BossSkillExecutor
         {
             if (ctx.player != null)
             {
-                if (leftWall != null) MoveWallIn(leftWall, 1f, ctx.player, stopDistance, wallMoveSpeed);
-                if (rightWall != null) MoveWallIn(rightWall, -1f, ctx.player, stopDistance, wallMoveSpeed);
+                if (leftWall != null) MoveWallTowardPlayer(leftWall, ctx.player, stopDistance, wallMoveSpeed);
+                if (rightWall != null) MoveWallTowardPlayer(rightWall, ctx.player, stopDistance, wallMoveSpeed);
             }
 
             TickHitOnce(ctx, leftWall, rightWall, ref hitOnce);
@@ -99,12 +98,18 @@ public class BossSkill_FireWall : BossSkillExecutor
             yield return null;
         }
 
-        // 5. 阶段 C:向两边分开(左墙向左、右墙向右)wallLifetime 秒后消失
+        // 5. 阶段 C:左墙向右、右墙向左交叉穿过,一直到屏幕外消失(超时兜底)
+        Camera cam = Camera.main;
+        float rightEdge = cam != null ? cam.ViewportToWorldPoint(new Vector3(1f, 0.5f, 0f)).x + 2f : float.MaxValue;
+        float leftEdge = cam != null ? cam.ViewportToWorldPoint(new Vector3(0f, 0.5f, 0f)).x - 2f : float.MinValue;
         float outElapsed = 0f;
-        while (outElapsed < wallLifetime)
+        const float outTimeout = 10f;
+        while (outElapsed < outTimeout
+            && ((leftWall != null && leftWall.transform.position.x < rightEdge)
+             || (rightWall != null && rightWall.transform.position.x > leftEdge)))
         {
-            if (leftWall != null) MoveWallOut(leftWall, -1f, wallMoveSpeed);
-            if (rightWall != null) MoveWallOut(rightWall, 1f, wallMoveSpeed);
+            if (leftWall != null) leftWall.transform.position += Vector3.right * wallMoveSpeed * Time.deltaTime;
+            if (rightWall != null) rightWall.transform.position += Vector3.right * -wallMoveSpeed * Time.deltaTime;
             outElapsed += Time.deltaTime;
             yield return null;
         }
@@ -144,21 +149,16 @@ public class BossSkill_FireWall : BossSkillExecutor
         _spawnedWalls.Clear();
     }
 
-    /// <summary>墙按固定方向移动(dir=+1 右,-1 左),距 player x 到 stopDist 停靠(保留现状停靠规则,相对 player)</summary>
-    private void MoveWallIn(GameObject wall, float dir, Transform player, float stopDist, float speed)
+    /// <summary>墙朝 player 移动,距 player x 到 stopDist 停靠(两墙夹击)</summary>
+    private void MoveWallTowardPlayer(GameObject wall, Transform player, float stopDist, float speed)
     {
         if (wall == null || player == null) return;
         Vector3 pos = wall.transform.position;
-        if (Mathf.Abs(pos.x - player.position.x) <= stopDist) return;   // 已停靠
-        pos.x += dir * speed * Time.deltaTime;
+        float dx = player.position.x - pos.x;
+        if (Mathf.Abs(dx) <= stopDist) return;   // 已停靠
+        float step = speed * Time.deltaTime;
+        pos.x += Mathf.Sign(dx) * Mathf.Min(step, Mathf.Abs(dx) - stopDist);
         wall.transform.position = pos;
-    }
-
-    /// <summary>墙沿固定方向移动(dir=+1 右,-1 左),用于停靠后向两边分开</summary>
-    private void MoveWallOut(GameObject wall, float dir, float speed)
-    {
-        if (wall == null) return;
-        wall.transform.position += Vector3.right * dir * speed * Time.deltaTime;
     }
 
     /// <summary>单次碰到伤害:player 进入任一墙范围触发一次,离开范围可再次触发(不持续刷)</summary>
