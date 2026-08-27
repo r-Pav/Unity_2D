@@ -162,11 +162,13 @@ public class BossSkill_FireWall : BossSkillExecutor
     private IEnumerator MoveTransform(Transform t, Vector3 target, float speed)
     {
         var rb = t != null ? t.GetComponent<Rigidbody2D>() : null;
-        while (t != null && Vector2.Distance(t.position, target) > 0.05f)
+        float timeout = 5f;   // 目标不可达(被地形/墙卡住)时兜底,防技能永久卡死
+        while (t != null && Vector2.Distance(t.position, target) > 0.05f && timeout > 0f)
         {
             Vector3 next = Vector3.MoveTowards(t.position, target, speed * Time.deltaTime);
             if (rb != null) rb.MovePosition(next);   // 物理移动,不与 Rigidbody 冲突
             else t.position = next;
+            timeout -= Time.deltaTime;
             yield return null;
         }
     }
