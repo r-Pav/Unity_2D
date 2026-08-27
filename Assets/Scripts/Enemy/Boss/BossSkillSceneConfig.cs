@@ -16,8 +16,4 @@ public class BossSkillSceneConfig : MonoBehaviour
 
     [Tooltip("右墙生成位置(拖场景空物体)")]
     public Transform fireWallRightSpawn;
-
-    [Header("技能 2 法球")]
-    [Tooltip("法球生成位置(拖场景空物体)")]
-    public Transform orbSpawnPoint;
 }
