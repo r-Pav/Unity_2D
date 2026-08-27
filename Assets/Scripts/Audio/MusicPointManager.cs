@@ -72,6 +72,9 @@ public class MusicPointManager : MonoBehaviour
     /// <summary>窗口关闭/点已过(参数=点时刻)</summary>
     public event Action<float> OnWindowPassed;
 
+    /// <summary>两段式:前奏结束切到主体循环(转阶段点,音乐与阶段同步;Boss 订阅后 ForcePhaseTransition)</summary>
+    public event Action OnBossMainLoopStarted;
+
     /// <summary>当前曲目(空 = 未配置)</summary>
     public MusicTrackData CurrentTrack => _currentTrack;
 
@@ -469,6 +472,7 @@ public class MusicPointManager : MonoBehaviour
         _inIntroPhase = false;
         RestartSchedule();               // 排主体 points
         _bossLoopRoutine = StartCoroutine(BossLoopRoutine());
+        OnBossMainLoopStarted?.Invoke(); // 转阶段点:音乐切到循环段
 
         // 前奏尾巴(交叠)播到自然结束停用
         while (_bossMode && introSource != null && introSource.isPlaying

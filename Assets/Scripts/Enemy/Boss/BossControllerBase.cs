@@ -199,6 +199,9 @@ public abstract class BossControllerBase : EnemyControllerBase
     protected override void OnDisable()
     {
         base.OnDisable();
+        var mgr = MusicPointManager.Instance;
+        if (mgr != null)
+            mgr.OnBossMainLoopStarted -= OnBossMainLoopStarted;
     }
 
     // ============================================================
@@ -217,7 +220,7 @@ public abstract class BossControllerBase : EnemyControllerBase
         ActivateBoss();
     }
 
-    /// <summary>激活 Boss — 开始 AI，触发事件（由 BossRoomTrigger 调用）</summary>
+    /// <summary>激活 Boss — 开始 AI,触发事件(由 BossRoomTrigger 调用)</summary>
     public virtual void ActivateBoss()
     {
         if (isActivated) return;
@@ -225,9 +228,23 @@ public abstract class BossControllerBase : EnemyControllerBase
 
         EventBus.Trigger(new BossActivatedEvent(this, maxHealth, currentHealth));
 
-        // 切换到追击状态（子类实现）
+        // 音乐转阶段:前奏切主体循环时 → P2(两段式 Boss 曲;无前奏则不触发)
+        var mgr = MusicPointManager.Instance;
+        if (mgr != null)
+        {
+            mgr.OnBossMainLoopStarted -= OnBossMainLoopStarted;
+            mgr.OnBossMainLoopStarted += OnBossMainLoopStarted;
+        }
+
+        // 切换到追击状态(子类实现)
         if (fsm != null)
             fsm.ChangeState(CreateChaseState());
+    }
+
+    /// <summary>音乐切到主体循环(转阶段点):转 P2</summary>
+    private void OnBossMainLoopStarted()
+    {
+        ForcePhaseTransition(1);
     }
 
     // ============================================================
@@ -293,7 +310,6 @@ public abstract class BossControllerBase : EnemyControllerBase
         }
 
         fsm.ChangeState(CreateChaseState());
-        CheckPhaseTransition();
     }
 
     // ============================================================
@@ -329,28 +345,18 @@ public abstract class BossControllerBase : EnemyControllerBase
     }
 
     // ============================================================
-    // 阶段系统
+    // 阶段系统(音乐驱动:转阶段点 = 音乐切到主体循环,introSwitchTime)
     // ============================================================
 
-    /// <summary>检查并触发阶段切换（血量跨过阈值）</summary>
-    protected virtual void CheckPhaseTransition()
+    /// <summary>
+    /// 强制转阶段(音乐切主体循环时调用)。无敌帧 → 触发回调 → 结束无敌。
+    /// 替代旧 HP 阈值 CheckPhaseTransition(已废弃,不再按血量转阶段)。
+    /// </summary>
+    public void ForcePhaseTransition(int newPhase)
     {
         if (isDead || isPhaseTransitioning) return;
-        if (maxHealth <= 0f) return;
-
-        // 用 maxHealth 作基准:OnStatModifiersChanged 会等比缩放 currentHealth/maxHealth,
-        // 比例不受装备修饰器影响;用 initialMaxHealth 会在缩放后产生 96/1200 类错比导致无限切阶段
-        float hpRatio = currentHealth / maxHealth;
-
-        // 从当前阶段开始向后检查，一次只切一个阶段（防止连续跳过）
-        for (int i = currentPhase; i < hpThresholds.Length; i++)
-        {
-            if (hpRatio <= hpThresholds[i])
-            {
-                StartCoroutine(PhaseTransitionRoutine(i + 1));
-                return;
-            }
-        }
+        if (newPhase <= currentPhase) return;
+        StartCoroutine(PhaseTransitionRoutine(newPhase));
     }
 
     /// <summary>阶段切换协程：无敌 → 触发回调 → 结束无敌</summary>
@@ -372,10 +378,6 @@ public abstract class BossControllerBase : EnemyControllerBase
         yield return new WaitForSeconds(phaseTransitionDuration);
 
         isPhaseTransitioning = false;
-
-        // 无敌结束后重检：如果期间又挨打跨过下一阈值
-        if (!isDead)
-            CheckPhaseTransition();
     }
 
     /// <summary>

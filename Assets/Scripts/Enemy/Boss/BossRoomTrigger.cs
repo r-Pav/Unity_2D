@@ -12,6 +12,10 @@ public class BossRoomTrigger : MonoBehaviour
     [SerializeField] private BossControllerBase boss;
     [SerializeField] private CameraFollow cameraFollow;
 
+    [Header("相机接管")]
+    [Tooltip("Boss 房相机接管组件(挂场景空物体或本物体;留空 = 不接管相机)")]
+    [SerializeField] private BossRoomCamera roomCamera;
+
     [Header("空气墙")]
     [SerializeField] private Collider2D[] airWalls;
 
@@ -19,6 +23,24 @@ public class BossRoomTrigger : MonoBehaviour
     [SerializeField] private float cutsceneZoom = 7f;
 
     private bool _triggered;
+
+    private void OnEnable()
+    {
+        EventBus.Subscribe<BossDefeatedEvent>(OnBossDefeated);
+    }
+
+    private void OnDisable()
+    {
+        EventBus.Unsubscribe<BossDefeatedEvent>(OnBossDefeated);
+        _triggered = false;
+    }
+
+    /// <summary>Boss 死亡:恢复相机(出房)</summary>
+    private void OnBossDefeated(BossDefeatedEvent e)
+    {
+        if (e.boss != null && e.boss == boss && roomCamera != null)
+            roomCamera.ExitBossRoom();
+    }
 
     private void OnTriggerEnter2D(Collider2D other)
     {
@@ -41,14 +63,13 @@ public class BossRoomTrigger : MonoBehaviour
         // 激活 Boss — 立即进入追击状态(不过场、不锁输入、不自动走)
         boss.ActivateBoss();
 
+        // 相机接管:Boss 房相机锁定到锚点
+        if (roomCamera != null)
+            roomCamera.EnterBossRoom();
+
         // 音乐:进 Boss 房,切换器切 Boss 曲(同物体挂 MusicSwitchTrigger 时自动调用)
         GetComponent<MusicSwitchTrigger>()?.TriggerSwitch();
         yield break;
-    }
-
-    private void OnDisable()
-    {
-        _triggered = false;
     }
 
 #if UNITY_EDITOR
