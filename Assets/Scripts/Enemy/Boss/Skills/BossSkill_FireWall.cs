@@ -2,12 +2,12 @@ using System.Collections;
 using UnityEngine;
 
 /// <summary>
-/// 技能 1:双火墙(Wall Pincer,改版)。
-/// 流程:Boss 移动到固定位置(手动指定,留空不移动)→ 左右墙在手动指定位置生成
-/// → 墙朝 player 移动(不是朝 Boss)→ 墙范围(子 obj MeleeRangeIndicator)覆盖 player 时造成伤害(带间隔)
-/// → 墙距 player 到 stopDistance 停住,停留 wallLifetime 秒后消失。
-/// 墙不物理推人(collider 由 prefab 决定,推荐不加实心碰撞),只是经过时受伤害。
-/// 所有位置手动指定,无 Camera 兜底。
+/// 技能 1:双火墙交叉(Wall Pincer,定版)。
+/// 流程:左右墙在场景配置位置生成 → 左墙向右、右墙向左交叉移动(固定方向,不追 player)
+/// → 到距 player stopDistance 停靠(保留现状规则,相对 player)→ 停留 wallLifetime 秒
+/// → 向两边分开(左墙向左、右墙向右)wallLifetime 秒后消失。
+/// 伤害:单次碰到触发(进入墙范围触发一次,离开再进可再触发;不持续刷伤害)。
+/// 墙为场景根独立物体,不受 Boss 层级影响;空中战位期间关 Boss 重力,结束/中断恢复。
 /// </summary>
 public class BossSkill_FireWall : BossSkillExecutor
 {
@@ -22,9 +22,7 @@ public class BossSkill_FireWall : BossSkillExecutor
     public float wallMoveSpeed = 4f;
     [Tooltip("墙距 player 的停靠距离(到距离后停)")]
     public float stopDistance = 2f;
-    [Tooltip("墙范围持续伤害间隔秒")]
-    public float damageInterval = 0.5f;
-    [Tooltip("墙停靠后停留秒数(之后消失)")]
+    [Tooltip("墙停靠后停留秒数(之后向两边分开并消失)")]
     public float wallLifetime = 2f;
 
     // 生成的墙(场景根独立物体,不挂 Boss 下;中断时 OnDestroy 清理)
@@ -67,18 +65,19 @@ public class BossSkill_FireWall : BossSkillExecutor
         GameObject leftWall = SpawnWall(sceneConfig != null ? sceneConfig.fireWallLeftSpawn : null);
         GameObject rightWall = SpawnWall(sceneConfig != null ? sceneConfig.fireWallRightSpawn : null);
 
-        // 3. 阶段 A:墙朝 player 移动,直到两墙都停靠(超时 10 秒兜底)
-        float lastDamageTime = -10f;
+        // 3. 阶段 A:左墙向右、右墙向左交叉移动(固定方向),到距 player stopDistance 停靠(超时 10 秒兜底)
+        bool hitOnce = false;
         float moveElapsed = 0f;
         const float moveTimeout = 10f;
         while (moveElapsed < moveTimeout)
         {
             if (ctx.player != null)
             {
-                Vector3 target = ctx.player.position;
-                if (leftWall != null) MoveWallToward(leftWall, target, stopDistance, wallMoveSpeed);
-                if (rightWall != null) MoveWallToward(rightWall, target, stopDistance, wallMoveSpeed);
+                if (leftWall != null) MoveWallIn(leftWall, 1f, ctx.player, stopDistance, wallMoveSpeed);
+                if (rightWall != null) MoveWallIn(rightWall, -1f, ctx.player, stopDistance, wallMoveSpeed);
             }
+
+            TickHitOnce(ctx, leftWall, rightWall, ref hitOnce);
 
             // 两墙都停靠(或未生成)→ 进入停留阶段
             bool leftDone = leftWall == null || ctx.player == null
@@ -91,22 +90,22 @@ public class BossSkill_FireWall : BossSkillExecutor
             yield return null;
         }
 
-        // 4. 阶段 B:停留 wallLifetime 秒,期间持续范围伤害
+        // 4. 阶段 B:停留 wallLifetime 秒(单次碰到伤害)
         float stayElapsed = 0f;
         while (stayElapsed < wallLifetime)
         {
-            if (ctx.player != null && Time.time - lastDamageTime >= damageInterval)
-            {
-                bool caught = (leftWall != null && WallContainsPlayer(leftWall, ctx.player))
-                           || (rightWall != null && WallContainsPlayer(rightWall, ctx.player));
-                if (caught)
-                {
-                    AttackPlayer(ctx);
-                    lastDamageTime = Time.time;
-                }
-            }
-
+            TickHitOnce(ctx, leftWall, rightWall, ref hitOnce);
             stayElapsed += Time.deltaTime;
+            yield return null;
+        }
+
+        // 5. 阶段 C:向两边分开(左墙向左、右墙向右)wallLifetime 秒后消失
+        float outElapsed = 0f;
+        while (outElapsed < wallLifetime)
+        {
+            if (leftWall != null) MoveWallOut(leftWall, -1f, wallMoveSpeed);
+            if (rightWall != null) MoveWallOut(rightWall, 1f, wallMoveSpeed);
+            outElapsed += Time.deltaTime;
             yield return null;
         }
 
@@ -145,16 +144,38 @@ public class BossSkill_FireWall : BossSkillExecutor
         _spawnedWalls.Clear();
     }
 
-    /// <summary>墙朝目标移动,距目标 x 到 stopDist 停住(每帧,不物理推挤)</summary>
-    private void MoveWallToward(GameObject wall, Vector3 target, float stopDist, float speed)
+    /// <summary>墙按固定方向移动(dir=+1 右,-1 左),距 player x 到 stopDist 停靠(保留现状停靠规则,相对 player)</summary>
+    private void MoveWallIn(GameObject wall, float dir, Transform player, float stopDist, float speed)
+    {
+        if (wall == null || player == null) return;
+        Vector3 pos = wall.transform.position;
+        if (Mathf.Abs(pos.x - player.position.x) <= stopDist) return;   // 已停靠
+        pos.x += dir * speed * Time.deltaTime;
+        wall.transform.position = pos;
+    }
+
+    /// <summary>墙沿固定方向移动(dir=+1 右,-1 左),用于停靠后向两边分开</summary>
+    private void MoveWallOut(GameObject wall, float dir, float speed)
     {
         if (wall == null) return;
-        Vector3 pos = wall.transform.position;
-        float dx = target.x - pos.x;
-        if (Mathf.Abs(dx) <= stopDist) return;   // 已到停靠距离
-        float step = speed * Time.deltaTime;
-        pos.x += Mathf.Sign(dx) * Mathf.Min(step, Mathf.Abs(dx) - stopDist);
-        wall.transform.position = pos;
+        wall.transform.position += Vector3.right * dir * speed * Time.deltaTime;
+    }
+
+    /// <summary>单次碰到伤害:player 进入任一墙范围触发一次,离开范围可再次触发(不持续刷)</summary>
+    private void TickHitOnce(BossSkillContext ctx, GameObject leftWall, GameObject rightWall, ref bool hitOnce)
+    {
+        if (ctx.player == null) return;
+        bool inRange = (leftWall != null && WallContainsPlayer(leftWall, ctx.player))
+                    || (rightWall != null && WallContainsPlayer(rightWall, ctx.player));
+        if (inRange && !hitOnce)
+        {
+            AttackPlayer(ctx);
+            hitOnce = true;
+        }
+        else if (!inRange)
+        {
+            hitOnce = false;
+        }
     }
 
     /// <summary>墙范围(子 obj MeleeRangeIndicator,Size=视觉大小)内是否有 player</summary>
