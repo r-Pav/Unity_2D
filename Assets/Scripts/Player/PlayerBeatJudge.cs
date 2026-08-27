@@ -98,6 +98,10 @@ public class PlayerBeatJudge : MonoBehaviour
                         _lockedEnemy = enemy;
                         _lockedFacing = enemy.Facing;
                         enemy.SetFacingLocked(true, _lockedFacing);   // 锁定 boss 朝向,防转身闪帧
+                        enemy.moveInput = 0f;                          // 硬直定身
+                        var bossAnim = enemy.GetComponentInChildren<Animator>();
+                        if (bossAnim != null)
+                            bossAnim.Play("Hurt");                     // 进入 hurt 状态(动画)
                     }
                     TeleportBehindEnemy();   // 瞬移到 enemy 身后(空中保持当前高度,允许空中触发)
                     _autoComboActive = true;
@@ -173,12 +177,13 @@ public class PlayerBeatJudge : MonoBehaviour
         Debug.Log($"[PlayerBeat] 瞬移到 enemy 身后 x={behindX:F2}");
     }
 
-    /// <summary>吸附:连打期间每帧保持 enemy 身后位置(跟随 x + y,用锁定朝向)</summary>
+    /// <summary>吸附:连打期间每帧保持 enemy 身后位置(跟随 x + y,用锁定朝向)+ 定身硬直</summary>
     private void SnapBehindEnemy()
     {
         if (_pc == null) return;
         var enemy = _lockedEnemy != null ? _lockedEnemy : FindObjectOfType<BossControllerBase>();
         if (enemy == null) return;
+        enemy.moveInput = 0f;   // 硬直定身(定在原本位置)
         float behindX = enemy.transform.position.x - _lockedFacing * behindDistance;
         _pc.transform.position = new Vector3(behindX, enemy.transform.position.y, _pc.transform.position.z);   // y 跟随 boss(空中也跟上去)
     }
