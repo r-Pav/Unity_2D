@@ -53,6 +53,14 @@ public class BossSkill_Orb : BossSkillExecutor
 
         string group = GetOrbGroup();
 
+        // 预检查:当前轮换组没配/没标点 → 立即放弃(不攒着空等,防 Boss 卡技能)
+        var groupPoints = GetGroupPoints(mgr, group);
+        if (groupPoints.Length == 0)
+        {
+            Debug.LogWarning($"[BossSkill_Orb] 音乐未配置标点组 {group},技能 2 空放(不卡)");
+            yield break;
+        }
+
         // 攒着:等当前组后续窗口内出现标点(条件满足才释放;超时放弃)
         float waitElapsed = 0f;
         while (waitElapsed < waitTimeout)
