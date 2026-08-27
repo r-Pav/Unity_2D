@@ -110,11 +110,12 @@ public class BossHeavyAttack : MonoBehaviour
             if (toNext >= 0f && toNext <= prepareLead)
             {
                 Debug.Log($"[BossHeavy] 发现重击标点 {next:F2} 秒,还有 {toNext:F2} 秒(组={groupName})");
-                // 重击独立机制:技能执行中直接打断(技能是随机释放,不是标点重叠,不该让位)
+                // 不打断技能:技能执行中重击让位,等技能结束后再查下一个标点
                 if (_slots != null && _slots.IsExecuting)
                 {
-                    Debug.Log("[BossHeavy] 打断当前技能,执行重击");
-                    _slots.Interrupt();
+                    Debug.Log("[BossHeavy] 技能执行中,重击让位(不打断技能)");
+                    while (mgr.TrackTime < next) yield return null;
+                    continue;
                 }
                 yield return StartCoroutine(ExecuteHeavy(next));
                 continue;
