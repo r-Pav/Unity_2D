@@ -295,29 +295,54 @@ public class MusicPointManager : MonoBehaviour
         RestartSchedule();
     }
 
-    /// <summary>重启点表排程(切曲/切圈时调用):排当前曲主体 points</summary>
+    /// <summary>重启点表排程(切曲/切圈时调用):排当前曲主体 points,合并所有组标点</summary>
     private void RestartSchedule()
     {
         if (_scheduleRoutine != null)
             StopCoroutine(_scheduleRoutine);
-        _scheduleRoutine = StartCoroutine(ScheduleRoutine(_currentTrack != null ? _currentTrack.points : null));
+        _scheduleRoutine = StartCoroutine(ScheduleRoutine(_currentTrack != null ? _currentTrack.points : null, true));
     }
 
-    /// <summary>用指定点表启动排程(两段式前奏段 introPoints 用)</summary>
+    /// <summary>用指定点表启动排程(两段式前奏段 introPoints 用,不合并组点)</summary>
     private void StartScheduleWith(float[] points)
     {
         if (_scheduleRoutine != null)
             StopCoroutine(_scheduleRoutine);
-        _scheduleRoutine = StartCoroutine(ScheduleRoutine(points));
+        _scheduleRoutine = StartCoroutine(ScheduleRoutine(points, false));
     }
 
     /// <summary>
     /// 点表排程:逐个点等窗口开/关。事件驱动:协程内部只等待时间,不在 Update 轮询业务。
+    /// mergeGroups=true 时合并主 points + 所有 Point Groups 标点(升序去重),保证
+    /// BossHeavy/BossHeavySound/PlayerCombo/BossOrb 等组标点也有窗口事件。
     /// 场景模式 loop 回绕:处理完最后一个点后,等 time 回落(loop 归 0)再从头排。
     /// </summary>
-    private IEnumerator ScheduleRoutine(float[] points)
+    private IEnumerator ScheduleRoutine(float[] basePoints, bool mergeGroups)
     {
-        if (points == null || points.Length == 0) yield break;
+        List<float> points;
+        if (mergeGroups && _currentTrack != null && _currentTrack.pointGroups != null)
+        {
+            var all = new List<float>();
+            if (basePoints != null) all.AddRange(basePoints);
+            foreach (var g in _currentTrack.pointGroups)
+            {
+                if (g != null && g.points != null) all.AddRange(g.points);
+            }
+            all.Sort();
+            points = new List<float>();
+            foreach (float p in all)
+            {
+                if (points.Count == 0 || Mathf.Abs(p - points[points.Count - 1]) > 0.001f)
+                    points.Add(p);   // 去重(同一时刻多个组共用标点只开一次窗)
+            }
+        }
+        else
+        {
+            points = new List<float>();
+            if (basePoints != null) points.AddRange(basePoints);
+        }
+
+        if (points.Count == 0) yield break;
 
         int i = 0;
         while (true)
