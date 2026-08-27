@@ -304,12 +304,12 @@ public class MusicPointManager : MonoBehaviour
         _scheduleRoutine = StartCoroutine(ScheduleRoutine(_currentTrack != null ? _currentTrack.points : null, true));
     }
 
-    /// <summary>用指定点表启动排程(两段式前奏段 introPoints 用,不合并组点)</summary>
+    /// <summary>用指定点表启动排程(两段式前奏段 introPoints 用;合并组点,保证前奏段组标点也有窗口)</summary>
     private void StartScheduleWith(float[] points)
     {
         if (_scheduleRoutine != null)
             StopCoroutine(_scheduleRoutine);
-        _scheduleRoutine = StartCoroutine(ScheduleRoutine(points, false));
+        _scheduleRoutine = StartCoroutine(ScheduleRoutine(points, true));
     }
 
     /// <summary>
