@@ -101,9 +101,11 @@ public class BossHeavyAttack : MonoBehaviour
 
             if (toNext >= 0f && toNext <= prepareLead)
             {
+                Debug.Log($"[BossHeavy] 发现重击标点 {next:F2} 秒,还有 {toNext:F2} 秒(组={groupName})");
                 // 优先级仲裁:技能执行中 → 重击让位,等到标点过后再查下一个
                 if (_slots != null && _slots.IsExecuting)
                 {
+                    Debug.Log("[BossHeavy] 技能执行中,重击让位(等下一个标点)");
                     while (mgr.TrackTime < next) yield return null;
                     continue;
                 }
@@ -119,11 +121,17 @@ public class BossHeavyAttack : MonoBehaviour
     {
         _heavyActive = true;
         _cancelled = false;
+        Debug.Log($"[BossHeavy] 重击开始(标点 {beatTime:F2}),闪现+霸体");
 
         TeleportToPlayer();
 
-        if (_animator != null && !string.IsNullOrEmpty(animState))
-            _animator.Play(animState);
+        // 播放动画:优先重击动画,未配置则用普攻 Attack 代替(测试用)
+        string state = string.IsNullOrEmpty(animState) ? "Attack" : animState;
+        if (_animator != null)
+        {
+            _animator.Play(state);
+            Debug.Log($"[BossHeavy] 播放动画 {state}");
+        }
 
         // 等到重音标点
         var mgr = MusicPointManager.Instance;
@@ -132,8 +140,15 @@ public class BossHeavyAttack : MonoBehaviour
         if (_boss == null || _boss.IsDead) yield break;
 
         // 到标点:未被抵消 → 重击攻击
-        if (!_cancelled)
+        if (_cancelled)
+        {
+            Debug.Log("[BossHeavy] 重击被玩家攻击抵消,本次不造成伤害");
+        }
+        else
+        {
+            Debug.Log($"[BossHeavy] 重音到达,重击攻击 damage={damage}");
             PerformHeavyHit();
+        }
 
         // 短后摇(动画播完由动画器接管,这里给个最小间隔)
         yield return new WaitForSeconds(0.3f);
