@@ -17,12 +17,18 @@ public class BossSkill_FireWall : BossSkillExecutor
     [Header("火焰墙(资源与数值)")]
     [Tooltip("墙 prefab(视觉 + 子 obj 挂 MeleeRangeIndicator 定范围;不加实心 collider,墙不推人)")]
     public GameObject wallPrefab;
-    [Tooltip("墙向 player 移动速度")]
+    [Tooltip("墙向 player 移动速度(最大速度基准)")]
     public float wallMoveSpeed = 4f;
     [Tooltip("墙距 player 的停靠距离(到距离后停)")]
     public float stopDistance = 2f;
     [Tooltip("墙停靠后停留秒数(之后向两边分开并消失)")]
     public float wallLifetime = 2f;
+
+    [Header("第一阶段(朝 player,缓出减速)")]
+    [Tooltip("朝 player 移动减速节奏(秒):此时间内从快变慢,到停靠点停")]
+    public float wallInDuration = 1.5f;
+    [Tooltip("缓出强度:越大前段甩得越快(2=平方,3=立方,4=四次方)")]
+    public float wallInEasePower = 2f;
 
     [Header("最后阶段(交叉穿过,缓入加速)")]
     [Tooltip("交叉穿过全程耗时(秒),速度由慢变快")]
@@ -70,16 +76,20 @@ public class BossSkill_FireWall : BossSkillExecutor
         GameObject leftWall = SpawnWall(sceneConfig != null ? sceneConfig.fireWallLeftSpawn : null);
         GameObject rightWall = SpawnWall(sceneConfig != null ? sceneConfig.fireWallRightSpawn : null);
 
-        // 3. 阶段 A:两墙同时朝 player 移动,到距 player stopDistance 停下(超时 10 秒兜底)
+        // 3. 阶段 A:两墙同时朝 player 移动,缓出(由快变慢),到距 player stopDistance 停下(超时 10 秒兜底)
         bool hitOnce = false;
         float moveElapsed = 0f;
         const float moveTimeout = 10f;
         while (moveElapsed < moveTimeout)
         {
+            float k = Mathf.Clamp01(moveElapsed / wallInDuration);
+            float ease = 1f - Mathf.Pow(1f - k, wallInEasePower);   // 缓出:前段快后段慢
+            float stepSpeed = wallMoveSpeed * ease;
+
             if (ctx.player != null)
             {
-                if (leftWall != null) MoveWallTowardPlayer(leftWall, ctx.player, stopDistance, wallMoveSpeed);
-                if (rightWall != null) MoveWallTowardPlayer(rightWall, ctx.player, stopDistance, wallMoveSpeed);
+                if (leftWall != null) MoveWallTowardPlayer(leftWall, ctx.player, stopDistance, stepSpeed);
+                if (rightWall != null) MoveWallTowardPlayer(rightWall, ctx.player, stopDistance, stepSpeed);
             }
 
             TickHitOnce(ctx, leftWall, rightWall, ref hitOnce);
