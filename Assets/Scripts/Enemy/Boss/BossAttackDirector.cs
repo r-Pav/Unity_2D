@@ -107,8 +107,7 @@ public class BossAttackDirector : MonoBehaviour
         // 普攻阶段:普攻间隔中不普攻
         if (boss.IsMeleeIntervalActive) return false;
 
-        boss.PerformDefaultMelee();          // 普攻伤害(即时判定)
-        boss.Fsm.ChangeState(boss.CreateAttackState());   // 普攻动画(播完回追击)
+        boss.Fsm.ChangeState(boss.CreateAttackState());   // 普攻动画;伤害在动画命中帧由 BossAttackState 结算
         _meleeCount++;
         if (_meleeCount >= _meleeLimit)
             EnterSkillPhase();

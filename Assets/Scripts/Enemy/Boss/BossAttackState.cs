@@ -10,6 +10,7 @@ using UnityEngine;
 public class BossAttackState : EntityState
 {
     private float _lastNormalized;   // 上一帧动画进度(loop 回绕检测)
+    private bool _hitDone;           // 本次攻击是否已结算伤害(命中帧一次性)
 
     public BossAttackState(CharacterBase owner, StateMachine stateMachine, Animator anim = null)
         : base(owner, stateMachine, anim, new[] { AnimParams.IsAttacking })
@@ -29,12 +30,24 @@ public class BossAttackState : EntityState
             boss.UpdateFacing(dir);
 
         _lastNormalized = 0f;
+        _hitDone = false;
     }
 
     public override void OnUpdate()
     {
         var boss = (FirstBoss)owner;
         if (boss.IsDead) return;
+
+        // 命中帧:动画进度过半时结算一次伤害(动画事件驱动可后续替换,当前 Attack.anim 无事件)
+        if (!_hitDone && anim != null)
+        {
+            var info = anim.GetCurrentAnimatorStateInfo(0);
+            if (info.IsName("Attack") && info.normalizedTime >= 0.5f)
+            {
+                boss.PerformDefaultMelee();
+                _hitDone = true;
+            }
+        }
 
         // 攻击动画完整播完一圈才回追击(不再因玩家出范围截断)。
         // Attack.anim 是循环动画且无结束事件,用 normalizedTime 回绕检测"播完一圈";
