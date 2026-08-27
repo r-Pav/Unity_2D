@@ -62,6 +62,7 @@ public class MusicPointManager : MonoBehaviour
     private bool _inWindow;              // 当前是否在触发窗口内
     private float _activePointTime;      // 当前窗口对应的点时刻
     private bool _bossMode;              // Boss 战模式(双源交叠)
+    private bool _inIntroPhase;          // 两段式:当前是否处于前奏段(恢复/仲裁用)
     private MusicTrackData _sceneTrack;  // 进 Boss 前保存的场景曲(退 Boss 时切回)
     private float _savedTrackTime;       // 应用失焦/切后台时保存的音频位置(恢复时重定位)
 
@@ -197,12 +198,16 @@ public class MusicPointManager : MonoBehaviour
 
     private void OnApplicationPause(bool pause)
     {
+        if (_activeSource != null)
+            Debug.Log($"[MusicFocus] Pause={pause} clip={_activeSource.clip?.name ?? "null"} time={_activeSource.time:F2} playing={_activeSource.isPlaying}");
         if (pause) _savedTrackTime = _activeSource != null ? _activeSource.time : 0f;
         else RestoreAfterAppResume();
     }
 
     private void OnApplicationFocus(bool focus)
     {
+        if (_activeSource != null)
+            Debug.Log($"[MusicFocus] Focus={focus} clip={_activeSource.clip?.name ?? "null"} time={_activeSource.time:F2} playing={_activeSource.isPlaying}");
         if (!focus) _savedTrackTime = _activeSource != null ? _activeSource.time : 0f;
         else RestoreAfterAppResume();
     }
@@ -211,6 +216,8 @@ public class MusicPointManager : MonoBehaviour
     private void RestoreAfterAppResume()
     {
         if (_activeSource == null || _activeSource.clip == null) return;
+
+        Debug.Log($"[MusicFocus] Restore saved={_savedTrackTime:F2} cur={_activeSource.time:F2} clip={_activeSource.clip.name} boss={_bossMode}");
 
         _activeSource.time = Mathf.Clamp(_savedTrackTime, 0f, _activeSource.clip.length);
         if (!_activeSource.isPlaying)
@@ -224,10 +231,21 @@ public class MusicPointManager : MonoBehaviour
             other.clip = null;
         }
 
-        if (_bossMode && _currentTrack != null && _currentTrack.introClip != null
-            && _activeSource.clip == _currentTrack.introClip)
+        if (_bossMode && _currentTrack != null && _currentTrack.introClip != null && _inIntroPhase)
         {
-            // 前奏段:重排 introPoints + 重启前奏协程
+            // 前奏段:强制恢复前奏源(后台期间可能被误切/暂停,一律拉回 introClip 重定位)
+            var introSource = audioSourceA;
+            introSource.Stop();
+            introSource.clip = _currentTrack.introClip;
+            introSource.loop = false;
+            introSource.time = Mathf.Clamp(_savedTrackTime, 0f, introSource.clip.length);
+            introSource.Play();
+            _activeSource = introSource;
+            if (audioSourceB != null && audioSourceB.isPlaying)
+            {
+                audioSourceB.Stop();
+                audioSourceB.clip = null;
+            }
             StartScheduleWith(_currentTrack.introPoints);
             if (_introRoutine != null) StopCoroutine(_introRoutine);
             _introRoutine = StartCoroutine(IntroRoutine(_currentTrack));
@@ -394,12 +412,14 @@ public class MusicPointManager : MonoBehaviour
             fadeIn.Play();
             _activeSource = fadeIn;
             _currentTrack = bossTrack;
+            _inIntroPhase = true;
             StartScheduleWith(bossTrack.introPoints);   // 前奏段点表
             _introRoutine = StartCoroutine(IntroRoutine(bossTrack));
         }
         else
         {
             // 单曲:Boss 曲直接播,交叠循环由 BossLoopRoutine 控制
+            _inIntroPhase = false;
             fadeIn.clip = bossTrack.clip;
             fadeIn.loop = false;
             fadeIn.time = 0f;
@@ -438,9 +458,9 @@ public class MusicPointManager : MonoBehaviour
     {
         AudioSource introSource = audioSourceA;
 
-        // 等前奏播到切换点
-        while (_bossMode && introSource != null && introSource.isPlaying
-               && introSource.time < track.introSwitchTime)
+        // 等前奏播到切换点。注意:不查 isPlaying — 切后台时团结引擎会暂停源(playing=False 但 time 保留),
+        // 查 isPlaying 会误判"前奏结束"直接切主体(从 0 播) = 切回时从循环处开始。只等 time 到达。
+        while (_bossMode && introSource != null && introSource.time < track.introSwitchTime)
             yield return null;
         if (!_bossMode) yield break;
 
@@ -452,6 +472,7 @@ public class MusicPointManager : MonoBehaviour
         mainSource.time = 0f;
         mainSource.Play();
         _activeSource = mainSource;      // 时钟切到主体
+        _inIntroPhase = false;
         RestartSchedule();               // 排主体 points
         _bossLoopRoutine = StartCoroutine(BossLoopRoutine());
 
@@ -481,6 +502,7 @@ public class MusicPointManager : MonoBehaviour
             StopCoroutine(_introRoutine);
             _introRoutine = null;
         }
+        _inIntroPhase = false;
         if (_sceneTrack != null)
             CrossFadeTo(_sceneTrack);          // 复用缓入缓出,回场景模式(loop=true)
         else if (_activeSource != null)
