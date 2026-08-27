@@ -15,6 +15,10 @@ public class PlayerBeatJudge : MonoBehaviour
     [Tooltip("自动连打组名(判定成功后,此组标点到达自动攻击)")]
     public string comboGroup = "PlayerCombo";
 
+    [Header("判定窗口标识")]
+    [Tooltip("标识物体(初始关闭):进入判定窗口时显示,窗口结束隐藏")]
+    public GameObject judgeIndicator;
+
     private PlayerController _pc;
     private bool _autoComboActive;
     private bool _subscribed;
@@ -32,6 +36,7 @@ public class PlayerBeatJudge : MonoBehaviour
         if (mgr != null)
         {
             mgr.OnWindowEnter += OnWindowEnter;
+            mgr.OnWindowPassed += OnWindowPassed;
             _subscribed = true;
             Debug.Log($"[PlayerBeat] 监听启动 判定组[{judgeGroup}] 连打组[{comboGroup}] 当前曲={(mgr.CurrentTrack != null ? mgr.CurrentTrack.name : "null")}");
         }
@@ -45,7 +50,10 @@ public class PlayerBeatJudge : MonoBehaviour
     {
         var mgr = MusicPointManager.Instance;
         if (mgr != null && _subscribed)
+        {
             mgr.OnWindowEnter -= OnWindowEnter;
+            mgr.OnWindowPassed -= OnWindowPassed;
+        }
     }
 
     private void Update()
@@ -67,12 +75,17 @@ public class PlayerBeatJudge : MonoBehaviour
         }
     }
 
-    /// <summary>音乐窗口事件:PlayerCombo 标点到达 → 自动攻击(玩家不在攻击中且冷却就绪)</summary>
+    /// <summary>音乐窗口事件:进入判定窗口 → 显示标识;PlayerCombo 标点 → 自动攻击</summary>
     private void OnWindowEnter(float pointTime)
     {
         var mgr = MusicPointManager.Instance;
         string currentGroup = mgr != null ? mgr.CurrentWindowGroup : "无";
         Debug.Log($"[PlayerBeat] 窗口事件 组={currentGroup} 连打激活={_autoComboActive}");
+
+        // 判定窗口:显示标识(提示玩家该按键)
+        if (mgr != null && mgr.IsInGroupWindow(judgeGroup) && judgeIndicator != null)
+            judgeIndicator.SetActive(true);
+
         if (!_autoComboActive) return;
         if (mgr == null || !mgr.IsInGroupWindow(comboGroup)) return;
 
@@ -93,5 +106,28 @@ public class PlayerBeatJudge : MonoBehaviour
         }
         Debug.Log("[PlayerBeat] 自动攻击触发(PlayerCombo 标点)");
         _pc.PlayerFsm.ChangeState(_pc.AttackState);
+    }
+
+    /// <summary>窗口结束:判定窗口的标点过了 → 隐藏标识</summary>
+    private void OnWindowPassed(float pointTime)
+    {
+        var mgr = MusicPointManager.Instance;
+        if (mgr == null) return;
+        if (judgeIndicator != null && PointInGroup(mgr, pointTime, judgeGroup))
+            judgeIndicator.SetActive(false);
+    }
+
+    /// <summary>该标点时刻是否属于某组</summary>
+    private bool PointInGroup(MusicPointManager mgr, float point, string groupName)
+    {
+        var track = mgr.CurrentTrack;
+        if (track == null) return false;
+        var g = track.GetGroup(groupName);
+        if (g == null || g.points == null) return false;
+        foreach (float p in g.points)
+        {
+            if (Mathf.Abs(p - point) < 0.001f) return true;
+        }
+        return false;
     }
 }
