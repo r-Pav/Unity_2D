@@ -24,6 +24,12 @@ public class BossSkill_FireWall : BossSkillExecutor
     [Tooltip("墙停靠后停留秒数(之后向两边分开并消失)")]
     public float wallLifetime = 2f;
 
+    [Header("最后阶段(交叉穿过,缓入加速)")]
+    [Tooltip("交叉穿过全程耗时(秒),速度由慢变快")]
+    public float wallExitDuration = 2f;
+    [Tooltip("缓入强度:越大后段甩得越快(2=平方,3=立方,4=四次方)")]
+    public float wallExitEasePower = 2f;
+
     // 生成的墙(场景根独立物体,不挂 Boss 下;中断时 OnDestroy 清理)
     private readonly System.Collections.Generic.List<GameObject> _spawnedWalls = new();
 
@@ -98,20 +104,22 @@ public class BossSkill_FireWall : BossSkillExecutor
             yield return null;
         }
 
-        // 5. 阶段 C:左墙向右、右墙向左交叉穿过,一直到屏幕外消失(超时兜底)
+        // 5. 阶段 C:左墙向右、右墙向左交叉穿过,缓入加速(开始慢越来越快),到屏幕外消失
         Camera cam = Camera.main;
-        float rightEdge = cam != null ? cam.ViewportToWorldPoint(new Vector3(1f, 0.5f, 0f)).x + 2f : float.MaxValue;
-        float leftEdge = cam != null ? cam.ViewportToWorldPoint(new Vector3(0f, 0.5f, 0f)).x - 2f : float.MinValue;
-        float outElapsed = 0f;
-        const float outTimeout = 10f;
-        while (outElapsed < outTimeout
-            && ((leftWall != null && leftWall.transform.position.x < rightEdge)
-             || (rightWall != null && rightWall.transform.position.x > leftEdge)))
+        Vector3 leftStart = leftWall != null ? leftWall.transform.position : Vector3.zero;
+        Vector3 rightStart = rightWall != null ? rightWall.transform.position : Vector3.zero;
+        float exitRightX = cam != null ? cam.ViewportToWorldPoint(new Vector3(1f, 0.5f, 0f)).x + 2f : leftStart.x + 30f;
+        float exitLeftX = cam != null ? cam.ViewportToWorldPoint(new Vector3(0f, 0.5f, 0f)).x - 2f : rightStart.x - 30f;
+        float exitT = 0f;
+        while (exitT < wallExitDuration)
         {
-            if (leftWall != null) leftWall.transform.position += Vector3.right * wallMoveSpeed * Time.deltaTime;
-            if (rightWall != null) rightWall.transform.position += Vector3.right * -wallMoveSpeed * Time.deltaTime;
+            exitT += Time.deltaTime;
+            float k = Mathf.Pow(Mathf.Clamp01(exitT / wallExitDuration), wallExitEasePower);   // 缓入:0→1 加速
+            if (leftWall != null)
+                leftWall.transform.position = Vector3.LerpUnclamped(leftStart, new Vector3(exitRightX, leftStart.y, leftStart.z), k);
+            if (rightWall != null)
+                rightWall.transform.position = Vector3.LerpUnclamped(rightStart, new Vector3(exitLeftX, rightStart.y, rightStart.z), k);
             TickHitOnce(ctx, leftWall, rightWall, ref hitOnce);   // 交叉穿过时碰到 player 也触发伤害
-            outElapsed += Time.deltaTime;
             yield return null;
         }
 
