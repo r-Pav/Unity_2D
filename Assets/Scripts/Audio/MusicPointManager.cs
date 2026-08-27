@@ -57,6 +57,7 @@ public class MusicPointManager : MonoBehaviour
     private Coroutine _scheduleRoutine;  // 点表排程协程
     private Coroutine _crossFadeRoutine; // 缓入缓出协程
     private Coroutine _bossLoopRoutine;  // Boss 双源交叠循环协程
+    private Coroutine _introRoutine;     // 两段式前奏协程(前奏→切主体)
     private Coroutine _fadeRoutine;      // 界面静音淡入淡出协程
     private bool _inWindow;              // 当前是否在触发窗口内
     private float _activePointTime;      // 当前窗口对应的点时刻
@@ -120,6 +121,39 @@ public class MusicPointManager : MonoBehaviour
         }
     }
 
+    /// <summary>按组名查下一个标点时刻(-1 = 该组无点/未配置)。命名组:BossHeavy/BossOrb1~5/PlayerCombo/BossHeavySound</summary>
+    public float NextPointInGroup(string groupName)
+    {
+        var group = _currentTrack != null ? _currentTrack.GetGroup(groupName) : null;
+        if (group == null || group.points == null || group.points.Length == 0) return -1f;
+        float t = TrackTime;
+        for (int i = 0; i < group.points.Length; i++)
+        {
+            if (group.points[i] > t + 0.001f) return group.points[i];
+        }
+        return group.points[group.points.Length - 1];   // 最后一圈,等 loop 回绕
+    }
+
+    /// <summary>按组名查距下一个标点秒数(-1 = 无点)</summary>
+    public float TimeToNextPointInGroup(string groupName)
+    {
+        float next = NextPointInGroup(groupName);
+        return next < 0f ? -1f : next - TrackTime;
+    }
+
+    /// <summary>当前是否处于指定组某标点的窗口内(事件驱动查询,不做每帧轮询)</summary>
+    public bool IsInGroupWindow(string groupName)
+    {
+        if (!_inWindow) return false;
+        var group = _currentTrack != null ? _currentTrack.GetGroup(groupName) : null;
+        if (group == null || group.points == null) return false;
+        foreach (float p in group.points)
+        {
+            if (Mathf.Abs(p - _activePointTime) < 0.001f) return true;
+        }
+        return false;
+    }
+
     private void Awake()
     {
         if (initialTrack != null)
@@ -171,21 +205,28 @@ public class MusicPointManager : MonoBehaviour
         RestartSchedule();
     }
 
-    /// <summary>重启点表排程(切曲/切圈时调用)</summary>
+    /// <summary>重启点表排程(切曲/切圈时调用):排当前曲主体 points</summary>
     private void RestartSchedule()
     {
         if (_scheduleRoutine != null)
             StopCoroutine(_scheduleRoutine);
-        _scheduleRoutine = StartCoroutine(ScheduleRoutine());
+        _scheduleRoutine = StartCoroutine(ScheduleRoutine(_currentTrack != null ? _currentTrack.points : null));
+    }
+
+    /// <summary>用指定点表启动排程(两段式前奏段 introPoints 用)</summary>
+    private void StartScheduleWith(float[] points)
+    {
+        if (_scheduleRoutine != null)
+            StopCoroutine(_scheduleRoutine);
+        _scheduleRoutine = StartCoroutine(ScheduleRoutine(points));
     }
 
     /// <summary>
     /// 点表排程:逐个点等窗口开/关。事件驱动:协程内部只等待时间,不在 Update 轮询业务。
     /// 场景模式 loop 回绕:处理完最后一个点后,等 time 回落(loop 归 0)再从头排。
     /// </summary>
-    private IEnumerator ScheduleRoutine()
+    private IEnumerator ScheduleRoutine(float[] points)
     {
-        var points = _currentTrack != null ? _currentTrack.points : null;
         if (points == null || points.Length == 0) yield break;
 
         int i = 0;
@@ -285,15 +326,33 @@ public class MusicPointManager : MonoBehaviour
         AudioSource fadeOut = _activeSource;   // 场景曲主源(可能 null)
         AudioSource fadeIn = audioSourceA;
         float targetVol = AudioManager.Instance != null ? AudioManager.Instance.BgmVolume : 1f;
-        fadeIn.clip = bossTrack.clip;
-        fadeIn.loop = false;                   // Boss 曲:交叠循环由 BossLoopRoutine 控制
-        fadeIn.time = 0f;
-        fadeIn.volume = 0f;
-        fadeIn.Play();
-        _activeSource = fadeIn;
-        _currentTrack = bossTrack;
-        RestartSchedule();
-        _bossLoopRoutine = StartCoroutine(BossLoopRoutine());
+
+        if (bossTrack.introClip != null && fadeIn != null)
+        {
+            // 两段式:先播前奏,IntroRoutine 到 introSwitchTime 交叠切主体
+            fadeIn.clip = bossTrack.introClip;
+            fadeIn.loop = false;
+            fadeIn.time = 0f;
+            fadeIn.volume = 0f;
+            fadeIn.Play();
+            _activeSource = fadeIn;
+            _currentTrack = bossTrack;
+            StartScheduleWith(bossTrack.introPoints);   // 前奏段点表
+            _introRoutine = StartCoroutine(IntroRoutine(bossTrack));
+        }
+        else
+        {
+            // 单曲:Boss 曲直接播,交叠循环由 BossLoopRoutine 控制
+            fadeIn.clip = bossTrack.clip;
+            fadeIn.loop = false;
+            fadeIn.time = 0f;
+            fadeIn.volume = 0f;
+            fadeIn.Play();
+            _activeSource = fadeIn;
+            _currentTrack = bossTrack;
+            RestartSchedule();
+            _bossLoopRoutine = StartCoroutine(BossLoopRoutine());
+        }
 
         if (fadeOut != null && fadeOut != fadeIn)
         {
@@ -314,6 +373,42 @@ public class MusicPointManager : MonoBehaviour
         _crossFadeRoutine = null;
     }
 
+    /// <summary>
+    /// 两段式前奏:等前奏播到 introSwitchTime → 副源从 0 播主体曲,主源切到主体(时钟切),
+    /// 重启主体点表 + 启动 Boss 交叠循环;前奏尾巴(交叠)播到自然结束停用。
+    /// </summary>
+    private IEnumerator IntroRoutine(MusicTrackData track)
+    {
+        AudioSource introSource = audioSourceA;
+
+        // 等前奏播到切换点
+        while (_bossMode && introSource != null && introSource.isPlaying
+               && introSource.time < track.introSwitchTime)
+            yield return null;
+        if (!_bossMode) yield break;
+
+        AudioSource mainSource = audioSourceB;
+        if (mainSource == null) yield break;
+
+        mainSource.clip = track.clip;
+        mainSource.loop = false;
+        mainSource.time = 0f;
+        mainSource.Play();
+        _activeSource = mainSource;      // 时钟切到主体
+        RestartSchedule();               // 排主体 points
+        _bossLoopRoutine = StartCoroutine(BossLoopRoutine());
+
+        // 前奏尾巴(交叠)播到自然结束停用
+        while (_bossMode && introSource != null && introSource.isPlaying
+               && introSource.time < introSource.clip.length - 0.01f)
+            yield return null;
+        if (introSource != null)
+        {
+            introSource.Stop();
+            introSource.clip = null;
+        }
+    }
+
     /// <summary>退出 Boss 战:停交叠循环,Boss 曲缓出、场景曲缓入(击杀后调用)</summary>
     public void ExitBossMusic()
     {
@@ -323,6 +418,11 @@ public class MusicPointManager : MonoBehaviour
         {
             StopCoroutine(_bossLoopRoutine);
             _bossLoopRoutine = null;
+        }
+        if (_introRoutine != null)
+        {
+            StopCoroutine(_introRoutine);
+            _introRoutine = null;
         }
         if (_sceneTrack != null)
             CrossFadeTo(_sceneTrack);          // 复用缓入缓出,回场景模式(loop=true)
