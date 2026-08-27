@@ -88,7 +88,7 @@ public abstract class BossControllerBase : EnemyControllerBase
     // ============================================================
 
     [Header("Boss 特性")]
-    [Tooltip("Boss 显示名称（血条 UI 用）")]
+    [Tooltip("Boss 显示名称(血条 UI 用)")]
     [SerializeField] protected string bossName = "Boss";
 
     [Tooltip("击退抵抗系数 0~1，1=完全免疫击退")]
@@ -96,6 +96,10 @@ public abstract class BossControllerBase : EnemyControllerBase
 
     [Tooltip("死亡延迟（秒），期间播死亡动画，之后 Destroy")]
     [SerializeField] protected float deathDelay = 2.0f;
+
+    [Header("普攻间隔")]
+    [Tooltip("普通普攻两次之间的最小间隔（秒），只约束普攻，不影响技能与重击")]
+    [SerializeField] protected float meleeIntervalDuration = 5f;
 
     // ============================================================
     // Inspector — 战斗区域
@@ -136,6 +140,9 @@ public abstract class BossControllerBase : EnemyControllerBase
     /// <summary>初始最大血量（用于阈值比例比较）</summary>
     protected float initialMaxHealth;
 
+    /// <summary>普攻间隔计时（>0 = 禁止普攻,不影响技能/重击）</summary>
+    protected float meleeIntervalTimer;
+
     /// <summary>当前血量（覆写是因为我们需要在无敌期间也处理伤害为 0）</summary>
     public float CurrentHp => currentHealth;
     public float MaxHp => maxHealth;
@@ -174,6 +181,8 @@ public abstract class BossControllerBase : EnemyControllerBase
     protected override void OnUpdate()
     {
         base.OnUpdate();
+        if (meleeIntervalTimer > 0f)
+            meleeIntervalTimer -= Time.deltaTime;
     }
 
     protected override void OnEnable()
@@ -273,8 +282,6 @@ public abstract class BossControllerBase : EnemyControllerBase
         EventBus.Trigger(new BossHpChangedEvent(this, currentHealth, maxHealth));
 
         if (isDead) return;
-
-        attackCooldownTimer = 0f;  // 受击立即反击:清冷却,CanAttack 不再被冷却拦截
 
         if (faceSource)
         {
@@ -410,6 +417,15 @@ public abstract class BossControllerBase : EnemyControllerBase
         ActivateBoss();
     }
 
+    /// <summary>普攻开始:启动普攻间隔(技能/重击不受此间隔约束)。攻击状态进入时调用</summary>
+    public void StartMeleeInterval()
+    {
+        meleeIntervalTimer = meleeIntervalDuration;
+    }
+
+    /// <summary>普攻间隔是否进行中(>0 = 禁止普攻)</summary>
+    public bool IsMeleeIntervalActive => meleeIntervalTimer > 0f;
+
     // ============================================================
     // 技能系统接口
     // ============================================================
@@ -475,10 +491,6 @@ public abstract class BossControllerBase : EnemyControllerBase
                 defaultMelee.PerformAttack(this);
             yield return new WaitForSeconds(0.5f);
         }
-
-        // 攻击冷却：一次攻击(技能/普攻)结束后进入冷却，对齐普通 enemy(MeleeAttackState.OnExit 设 attackCooldownTimer)
-        // → CanBossAttack 的 attackCooldownTimer 检查生效,攻击节奏规整
-        attackCooldownTimer = AttackCooldownDuration;
     }
 
     // ============================================================

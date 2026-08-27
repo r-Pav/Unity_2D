@@ -231,8 +231,7 @@ public class FirstBoss : BossControllerBase
         if (isDead) return false;
         if (skillSlots != null && skillSlots.IsExecuting) return false;
         if (PlayerTarget == null) return false;
-        if (attackCooldownTimer > 0f) return false;
-
+        if (IsMeleeIntervalActive) return false;   // 普攻间隔:技能/重击不走 CanAttack,不受此约束
         return IsPlayerInBossAttackRange();
     }
 
