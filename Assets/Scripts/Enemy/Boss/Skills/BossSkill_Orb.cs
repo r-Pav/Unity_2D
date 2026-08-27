@@ -18,10 +18,8 @@ public class BossSkill_Orb : BossSkillExecutor
     [Header("法球")]
     [Tooltip("法球 prefab(视觉 + 可选范围;挂 OrbProjectile 自动加)")]
     public GameObject orbPrefab;
-    [Tooltip("检查后续标点的秒数窗口(攒着触发条件:窗口内有标点才释放)")]
+    [Tooltip("检查后续标点的秒数窗口(窗口内有标点才释放法球)")]
     public float lookAheadWindow = 4f;
-    [Tooltip("攒着等待超时秒数(组内一直无标点时放弃,防技能卡死)")]
-    public float waitTimeout = 30f;
     [Tooltip("地面/墙壁层(法球终点射线命中用)")]
     public LayerMask groundLayer;
     [Tooltip("射线最大距离(没命中地面/墙壁时终点=此距离处)")]
@@ -51,9 +49,10 @@ public class BossSkill_Orb : BossSkillExecutor
         if (mgr == null || ctx.player == null || ctx.boss == null) yield break;
         PlaySkillAnim(ctx.animator);
 
-        string group = GetOrbGroup();
+        // 组:预约时由 BossAttackDirector 指定(不消耗轮换计数);手动测试/未预约 = 自行轮换
+        string group = !string.IsNullOrEmpty(ctx.reservedOrbGroup) ? ctx.reservedOrbGroup : GetOrbGroup();
 
-        // 预检查:当前轮换组没配/没标点 → 立即放弃(不攒着空等,防 Boss 卡技能)
+        // 预检查:当前轮换组没配/没标点 → 立即放弃(不等,防 Boss 卡技能)
         var groupPoints = GetGroupPoints(mgr, group);
         if (groupPoints.Length == 0)
         {
@@ -61,17 +60,13 @@ public class BossSkill_Orb : BossSkillExecutor
             yield break;
         }
 
-        // 攒着:等当前组后续窗口内出现标点(条件满足才释放;超时放弃)
-        float waitElapsed = 0f;
-        while (waitElapsed < waitTimeout)
+        // 立即检查:lookAheadWindow 秒窗口内有标点才释放;无 → 空放(不攒着等)
+        float candidate = mgr.NextPointInGroup(group);
+        if (candidate < 0f || candidate - mgr.TrackTime > lookAheadWindow)
         {
-            float candidate = mgr.NextPointInGroup(group);
-            if (candidate >= 0f && candidate - mgr.TrackTime <= lookAheadWindow)
-                break;
-            waitElapsed += Time.deltaTime;
-            yield return null;
+            Debug.LogWarning($"[BossSkill_Orb] 组 {group} 后续 {lookAheadWindow} 秒内无标点,技能 2 空放(不等)");
+            yield break;
         }
-        if (waitElapsed >= waitTimeout) yield break;   // 超时无标点,放弃
 
         // 取组内接下来 5 个标点(回绕循环)
         var beats = GetNextBeats(mgr, group, 5);

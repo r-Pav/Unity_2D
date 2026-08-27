@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -126,8 +126,8 @@ public class BossSkillSlots : MonoBehaviour
         return list.ToArray();
     }
 
-    /// <summary>执行指定 index 技能(由 BossAttackDirector 调用)</summary>
-    public void Execute(int index)
+    /// <summary>执行指定 index 技能(由 BossAttackDirector 调用;reservedOrbGroup 法球预约组可选)</summary>
+    public void Execute(int index, string reservedOrbGroup = null)
     {
         if (allSkills == null || index < 0 || index >= allSkills.Length)
         {
@@ -151,7 +151,7 @@ public class BossSkillSlots : MonoBehaviour
             Debug.Log($"[BossSkillSlots] 执行技能 [{index}] {so.skillName} (anim={so.animState})");
 
         OnSkillStarted?.Invoke(index);
-        currentCoroutine = StartCoroutine(ExecuteRoutine(so, index));
+        currentCoroutine = StartCoroutine(ExecuteRoutine(so, index, reservedOrbGroup));
     }
 
     /// <summary>强制中断当前技能(受击/死亡时调用)</summary>
@@ -205,7 +205,7 @@ public class BossSkillSlots : MonoBehaviour
     // 执行协程
     // ============================================================
 
-    private IEnumerator ExecuteRoutine(BossSkillData so, int index)
+    private IEnumerator ExecuteRoutine(BossSkillData so, int index, string reservedOrbGroup = null)
     {
         // 实例化技能 prefab 挂 Boss 下(prefab 根上的执行器执行逻辑)
         if (so.skillPrefab != null)
@@ -222,7 +222,8 @@ public class BossSkillSlots : MonoBehaviour
                 boss = owner as BossControllerBase,
                 player = player,
                 slots = this,
-                animator = animator
+                animator = animator,
+                reservedOrbGroup = reservedOrbGroup
             };
             yield return currentExecutor.ExecuteSkill(ctx);
         }

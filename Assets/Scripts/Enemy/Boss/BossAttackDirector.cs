@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 /// <summary>
 /// Boss 攻击编排 — 技能阶段 ↔ 普攻阶段循环(替代旧 ExecuteBossSkillCycle)。
@@ -29,6 +29,14 @@ public class BossAttackDirector : MonoBehaviour
     [Tooltip("每次进入普攻阶段随机次数上限")]
     [SerializeField] private int maxMeleeCount = 4;
 
+    [Header("法球预约")]
+    [Tooltip("法球技能在技能池的索引(启用法球预约; -1 = 不启用)")]
+    [SerializeField] private int orbSkillIndex = -1;
+    [Tooltip("预约窗口:标点在此时长(秒)内才预约;无标点/太远则放弃法球回普通")]
+    [SerializeField] private float orbReserveWindow = 10f;
+    [Tooltip("法球标点前提前释放秒数(保证飞行到标点)")]
+    [SerializeField] private float orbReserveLead = 4f;
+
     // ============================================================
     // 运行时状态
     // ============================================================
@@ -39,6 +47,12 @@ public class BossAttackDirector : MonoBehaviour
     private int _meleeLimit;
     private int _meleeCount;
     private int _lastSkillIndex = -1;   // 上次释放的技能(随机时排除,避免连续重复)
+
+    // 法球预约状态:预约后到 releaseAt 前只普攻,到点用预约组释放
+    private bool _orbReserved;
+    private float _orbReleaseAt;
+    private string _orbGroup;
+    private static int _orbUseCount;    // 法球组轮换计数(与执行器分开,预约路径用)
 
     public bool InSkillPhase => _inSkillPhase;
 
@@ -102,6 +116,22 @@ public class BossAttackDirector : MonoBehaviour
         if (skillSlots == null) return false;
         if (skillSlots.IsExecuting) return false;
 
+        // 法球预约中:releaseAt 前只普攻(保证标点前 Boss 非技能状态),到点释放法球(用预约组)
+        if (_orbReserved)
+        {
+            var mgr = MusicPointManager.Instance;
+            if (mgr != null && mgr.TrackTime >= _orbReleaseAt)
+            {
+                _orbReserved = false;
+                skillSlots.Execute(orbSkillIndex, _orbGroup);
+                _skillCastCount++;
+                if (_skillCastCount >= _skillCastLimit)
+                    EnterMeleePhase();
+                return true;
+            }
+            return TryMeleeOnly();
+        }
+
         // 技能阶段:随机选技能释放(排除上次,避免连续重复)
         if (_inSkillPhase)
         {
@@ -109,6 +139,33 @@ public class BossAttackDirector : MonoBehaviour
             if (available.Length > 0)
             {
                 int chosen = SelectSkillAvoidRepeat(available);
+
+                // 法球:预约检查(无标点/标点太远 → 放弃法球,回普通循环,不卡)
+                if (chosen == orbSkillIndex)
+                {
+                    var mgr = MusicPointManager.Instance;
+                    if (mgr != null)
+                    {
+                        string group = NextOrbGroup();
+                        float next = mgr.NextPointInGroup(group);
+                        float toNext = next >= 0f ? next - mgr.TrackTime : -1f;
+                        if (toNext >= 0f && toNext < orbReserveWindow)
+                        {
+                            // 预约成功:标点前 orbReserveLead 秒释放;期间只普攻
+                            _orbReserved = true;
+                            _orbReleaseAt = next - orbReserveLead;
+                            _orbGroup = group;
+                            _lastSkillIndex = -1;   // 法球未真正释放,下次可再选
+                            EnterMeleePhase();
+                            return TryMeleeOnly();
+                        }
+                    }
+                    // 无标点/太远/无音乐管理器:放弃法球,回普通
+                    _lastSkillIndex = -1;
+                    EnterMeleePhase();
+                    return TryMeleeOnly();
+                }
+
                 _lastSkillIndex = chosen;
                 skillSlots.Execute(chosen);
                 _skillCastCount++;
@@ -120,7 +177,12 @@ public class BossAttackDirector : MonoBehaviour
             EnterMeleePhase();
         }
 
-        // 普攻阶段:普攻间隔中不普攻
+        return TryMeleeOnly();
+    }
+
+    /// <summary>只普攻(普攻间隔中不普攻;次数到 limit 转技能阶段)</summary>
+    private bool TryMeleeOnly()
+    {
         if (boss.IsMeleeIntervalActive) return false;
 
         boss.Fsm.ChangeState(boss.CreateAttackState());   // 普攻动画;伤害在动画命中帧由 BossAttackState 结算
@@ -128,5 +190,13 @@ public class BossAttackDirector : MonoBehaviour
         if (_meleeCount >= _meleeLimit)
             EnterSkillPhase();
         return true;
+    }
+
+    /// <summary>法球组轮换(与 BossSkill_Orb 轮换计数分开;预约路径由 Director 定组,执行器不重复轮换)</summary>
+    private static string NextOrbGroup()
+    {
+        int idx = _orbUseCount % 5 + 1;
+        _orbUseCount++;
+        return "BossOrb" + idx;
     }
 }

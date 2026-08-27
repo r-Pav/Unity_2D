@@ -8,6 +8,9 @@ public class BossSkillContext
     public Transform player;
     public BossSkillSlots slots;
     public Animator animator;
+
+    /// <summary>法球预约组(BossAttackDirector 预约时确定,执行器用它替代轮换;空 = 执行器自行轮换)</summary>
+    public string reservedOrbGroup;
 }
 
 /// <summary>
