@@ -27,6 +27,9 @@ public class BossSkill_FireWall : BossSkillExecutor
     [Tooltip("墙停靠后停留秒数(之后消失)")]
     public float wallLifetime = 2f;
 
+    // 生成的墙(场景根独立物体,不挂 Boss 下;中断时 OnDestroy 清理)
+    private readonly System.Collections.Generic.List<GameObject> _spawnedWalls = new();
+
     public override IEnumerator ExecuteSkill(BossSkillContext ctx)
     {
         var boss = ctx.boss;
@@ -102,9 +105,20 @@ public class BossSkill_FireWall : BossSkillExecutor
     private GameObject SpawnWall(Transform spawn)
     {
         if (wallPrefab == null || spawn == null) return null;
-        GameObject wall = Instantiate(wallPrefab, transform);
+        GameObject wall = Instantiate(wallPrefab);   // 场景根:不挂 Boss 下,不受 Boss 层级/物理影响
         wall.transform.position = spawn.position;
+        _spawnedWalls.Add(wall);
         return wall;
+    }
+
+    /// <summary>技能中断(prefab 被销毁)时清理墙,避免残留</summary>
+    private void OnDestroy()
+    {
+        foreach (var w in _spawnedWalls)
+        {
+            if (w != null) Destroy(w);
+        }
+        _spawnedWalls.Clear();
     }
 
     /// <summary>墙朝目标移动,距目标 x 到 stopDist 停住(每帧,不物理推挤)</summary>
