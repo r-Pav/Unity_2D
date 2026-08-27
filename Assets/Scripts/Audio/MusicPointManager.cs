@@ -63,6 +63,7 @@ public class MusicPointManager : MonoBehaviour
     private float _activePointTime;      // 当前窗口对应的点时刻
     private bool _bossMode;              // Boss 战模式(双源交叠)
     private MusicTrackData _sceneTrack;  // 进 Boss 前保存的场景曲(退 Boss 时切回)
+    private float _savedTrackTime;       // 应用失焦/切后台时保存的音频位置(恢复时重定位)
 
     /// <summary>窗口开启(参数=点时刻)</summary>
     public event Action<float> OnWindowEnter;
@@ -186,6 +187,62 @@ public class MusicPointManager : MonoBehaviour
         if (am == null) return;
         if (audioSourceA != null) am.UnregisterSource(AudioManager.AudioGroup.Bgm, audioSourceA);
         if (audioSourceB != null) am.UnregisterSource(AudioManager.AudioGroup.Bgm, audioSourceB);
+    }
+
+    // ============================================================
+    // 应用失焦/切后台:保存播放位置;恢复:重定位 + 重启编排
+    // (Boss 曲 AudioSource.loop=false,切后台期间播放状态/时钟被系统打断,
+    //  恢复时 time 跳变或源已停 → 交叠协程误判立即切圈 = "从循环处开始"。)
+    // ============================================================
+
+    private void OnApplicationPause(bool pause)
+    {
+        if (pause) _savedTrackTime = _activeSource != null ? _activeSource.time : 0f;
+        else RestoreAfterAppResume();
+    }
+
+    private void OnApplicationFocus(bool focus)
+    {
+        if (!focus) _savedTrackTime = _activeSource != null ? _activeSource.time : 0f;
+        else RestoreAfterAppResume();
+    }
+
+    /// <summary>恢复前台:主源重定位到保存位置(若已停则续播),副源清空,重启当前段编排</summary>
+    private void RestoreAfterAppResume()
+    {
+        if (_activeSource == null || _activeSource.clip == null) return;
+
+        _activeSource.time = Mathf.Clamp(_savedTrackTime, 0f, _activeSource.clip.length);
+        if (!_activeSource.isPlaying)
+            _activeSource.Play();
+
+        // 副源清空(交叠尾巴可能残留/停摆,交给重启后的编排重新管理)
+        AudioSource other = _activeSource == audioSourceA ? audioSourceB : audioSourceA;
+        if (other != null && other.isPlaying)
+        {
+            other.Stop();
+            other.clip = null;
+        }
+
+        if (_bossMode && _currentTrack != null && _currentTrack.introClip != null
+            && _activeSource.clip == _currentTrack.introClip)
+        {
+            // 前奏段:重排 introPoints + 重启前奏协程
+            StartScheduleWith(_currentTrack.introPoints);
+            if (_introRoutine != null) StopCoroutine(_introRoutine);
+            _introRoutine = StartCoroutine(IntroRoutine(_currentTrack));
+        }
+        else
+        {
+            RestartSchedule();
+            if (_bossMode)
+            {
+                if (_bossLoopRoutine != null) StopCoroutine(_bossLoopRoutine);
+                _bossLoopRoutine = null;
+                if (_currentTrack != null && _currentTrack.loopPoint > 0f)
+                    _bossLoopRoutine = StartCoroutine(BossLoopRoutine());
+            }
+        }
     }
 
     /// <summary>切曲重播:换 clip 从头播,主源 = A(场景模式,普通循环),点表重新排程</summary>
