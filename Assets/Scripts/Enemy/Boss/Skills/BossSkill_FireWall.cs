@@ -63,8 +63,6 @@ public class BossSkill_FireWall : BossSkillExecutor
             Debug.LogWarning("[BossSkill_FireWall] 未配置 Wall Prefab,技能 1 空放");
         GameObject leftWall = SpawnWall(sceneConfig != null ? sceneConfig.fireWallLeftSpawn : null);
         GameObject rightWall = SpawnWall(sceneConfig != null ? sceneConfig.fireWallRightSpawn : null);
-        LogWallSize(leftWall, "left");
-        LogWallSize(rightWall, "right");
 
         // 3. 阶段 A:两墙同时朝 player 移动,到距 player stopDistance 停下(超时 10 秒兜底)
         bool hitOnce = false;
@@ -137,17 +135,6 @@ public class BossSkill_FireWall : BossSkillExecutor
         return wall;
     }
 
-    /// <summary>调试:打印墙的判定范围(确认视觉与实际判定是否一致)</summary>
-    private void LogWallSize(GameObject wall, string name)
-    {
-        if (wall == null) return;
-        var ind = wall.GetComponentInChildren<MeleeRangeIndicator>();
-        if (ind != null)
-            Debug.Log($"[BossSkill_FireWall] {name} Wall Size={ind.Size} center={ind.transform.position}");
-        else
-            Debug.LogWarning($"[BossSkill_FireWall] {name} 墙没有 MeleeRangeIndicator,伤害永远不触发");
-    }
-
     /// <summary>技能中断(prefab 被销毁)时恢复重力并清理墙,避免残留</summary>
     private void OnDestroy()
     {
@@ -183,7 +170,6 @@ public class BossSkill_FireWall : BossSkillExecutor
                     || (rightWall != null && WallContainsPlayer(rightWall, ctx.player));
         if (inRange && !hitOnce)
         {
-            Debug.Log($"[BossSkill_FireWall] 触发伤害 player=({ctx.player.position.x:F1},{ctx.player.position.y:F1})");
             AttackPlayer(ctx);
             hitOnce = true;
         }
