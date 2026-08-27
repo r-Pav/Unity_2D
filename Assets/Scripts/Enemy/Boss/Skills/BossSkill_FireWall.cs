@@ -2,31 +2,36 @@ using System.Collections;
 using UnityEngine;
 
 /// <summary>
-/// 技能 1:双火墙夹击(Wall Pincer)。
-/// 流程:Boss 移动到固定位置(拖场景 Transform)→ 屏幕左右两端生成火焰墙(视觉 + 实心 collider 物理阻挡)
-/// → 暂停 waitSeconds → 墙朝 Boss 移动至 stopDistance 停住 → 墙范围内(子 obj 大小)有 player → Boss 攻击(data 结算);
-/// 无 player → 墙继续沿原方向移动至屏幕边缘消失。
-/// 范围/特效/挂点都在技能 prefab 子 obj 上,data 只提供伤害/击退等通用状态。
+/// 技能 1:双火墙(Wall Pincer,改版)。
+/// 流程:Boss 移动到固定位置(手动指定,留空不移动)→ 左右墙在手动指定位置生成
+/// → 墙朝 player 移动(不是朝 Boss)→ 墙范围(子 obj MeleeRangeIndicator)覆盖 player 时造成伤害(带间隔)
+/// → 墙距 player 到 stopDistance 停住,停留 wallLifetime 秒后消失。
+/// 墙不物理推人(collider 由 prefab 决定,推荐不加实心碰撞),只是经过时受伤害。
+/// 所有位置手动指定,无 Camera 兜底。
 /// </summary>
 public class BossSkill_FireWall : BossSkillExecutor
 {
-    [Header("Boss 位移")]
-    [Tooltip("Boss 移动到的固定位置(拖场景 Transform,禁手填坐标)")]
+    [Header("Boss 位移(手动指定,无兜底)")]
+    [Tooltip("Boss 移动到的固定位置(拖场景 Transform;留空 = 不移动)")]
     public Transform bossMoveTarget;
     [Tooltip("Boss 移动到目标的速度")]
     public float bossMoveSpeed = 6f;
 
-    [Header("火焰墙")]
-    [Tooltip("火焰墙 prefab(根上视觉 + 实心 BoxCollider2D 物理阻挡;子 obj 挂 MeleeRangeIndicator 定范围)")]
+    [Header("火焰墙(生成位置手动指定,无兜底)")]
+    [Tooltip("墙 prefab(视觉 + 子 obj 挂 MeleeRangeIndicator 定范围;不加实心 collider,墙不推人)")]
     public GameObject wallPrefab;
-    [Tooltip("墙生成后暂停秒数(再朝 Boss 移动)")]
-    public float waitSeconds = 1f;
-    [Tooltip("墙停住时距 Boss 的距离")]
-    public float stopDistance = 3f;
-    [Tooltip("墙朝 Boss 移动速度")]
+    [Tooltip("左墙生成位置(拖场景 Transform;留空 = 不生成左墙)")]
+    public Transform leftWallSpawn;
+    [Tooltip("右墙生成位置(拖场景 Transform;留空 = 不生成右墙)")]
+    public Transform rightWallSpawn;
+    [Tooltip("墙向 player 移动速度")]
     public float wallMoveSpeed = 4f;
-    [Tooltip("墙到屏幕边缘速度(无 player 时)")]
-    public float edgeMoveSpeed = 6f;
+    [Tooltip("墙距 player 的停靠距离(到距离后停)")]
+    public float stopDistance = 2f;
+    [Tooltip("墙范围持续伤害间隔秒")]
+    public float damageInterval = 0.5f;
+    [Tooltip("墙停靠后停留秒数(之后消失)")]
+    public float wallLifetime = 2f;
 
     public override IEnumerator ExecuteSkill(BossSkillContext ctx)
     {
@@ -34,56 +39,66 @@ public class BossSkill_FireWall : BossSkillExecutor
         if (boss == null) yield break;
         PlaySkillAnim(ctx.animator);
 
-        // 1. Boss 移动到固定位置(技能执行中 ChaseState 站桩,直接移 transform)
+        // 1. Boss 移动到固定位置(手动指定;留空不动)
         if (bossMoveTarget != null)
         {
-            // 防护:目标不能挂在 Boss 下/技能 prefab 里(会随 Boss 移动,目标永远追不上 → 跑出屏幕)
-            if (bossMoveTarget.IsChildOf(boss.transform))
-            {
-                Debug.LogWarning("[BossSkill_FireWall] bossMoveTarget 挂在了 Boss/技能 prefab 下(目标会随 Boss 移动而失效),请在场景层级建独立空物体当 Boss 战位");
-            }
-            Vector3 targetPos = bossMoveTarget.position;   // 快照固定目标,防止执行中目标变化
+            Vector3 targetPos = bossMoveTarget.position;   // 快照固定目标
             yield return MoveTransform(boss.transform, targetPos, bossMoveSpeed);
         }
 
-        // 2. 屏幕左右两端生成火焰墙(挂执行器 prefab 下,中断时随 prefab 一起销毁)
-        Camera cam = Camera.main;
-        Vector3 leftEdge = boss.transform.position;
-        Vector3 rightEdge = boss.transform.position;
-        if (cam != null)
-        {
-            leftEdge = cam.ViewportToWorldPoint(new Vector3(0f, 0.5f, 0f));
-            rightEdge = cam.ViewportToWorldPoint(new Vector3(1f, 0.5f, 0f));
-        }
-        GameObject leftWall = wallPrefab != null ? Instantiate(wallPrefab, transform) : null;
-        GameObject rightWall = wallPrefab != null ? Instantiate(wallPrefab, transform) : null;
-        if (leftWall != null) leftWall.transform.position = leftEdge;
-        if (rightWall != null) rightWall.transform.position = rightEdge;
+        // 2. 左右墙在手动指定位置生成(挂执行器 prefab 下,随技能结束销毁)
+        GameObject leftWall = SpawnWall(leftWallSpawn);
+        GameObject rightWall = SpawnWall(rightWallSpawn);
 
-        // 3. 暂停
-        yield return new WaitForSeconds(waitSeconds);
-
-        // 4. 墙朝 Boss 移动至 stopDistance
-        Vector3 bossPos = boss.transform.position;
-        if (leftWall != null)
-            yield return MoveWall(leftWall, bossPos, stopDistance, wallMoveSpeed);
-        if (rightWall != null)
-            yield return MoveWall(rightWall, bossPos, stopDistance, wallMoveSpeed);
-
-        // 5. 范围检测:有 player → Boss 攻击;无 → 墙继续到屏幕边缘消失
-        bool caught = (leftWall != null && WallContainsPlayer(leftWall, ctx.player))
-                   || (rightWall != null && WallContainsPlayer(rightWall, ctx.player));
-        if (caught)
+        // 3. 墙朝 player 移动 + 范围伤害;到 stopDistance 停,停留 wallLifetime 后消失
+        float elapsed = 0f;
+        float lastDamageTime = -10f;
+        while (elapsed < wallLifetime && (leftWall != null || rightWall != null))
         {
-            AttackPlayer(ctx);
+            if (ctx.player != null)
+            {
+                Vector3 target = ctx.player.position;
+                if (leftWall != null) MoveWallToward(leftWall, target, stopDistance, wallMoveSpeed);
+                if (rightWall != null) MoveWallToward(rightWall, target, stopDistance, wallMoveSpeed);
+            }
+
+            if (Time.time - lastDamageTime >= damageInterval)
+            {
+                bool caught = (leftWall != null && WallContainsPlayer(leftWall, ctx.player))
+                           || (rightWall != null && WallContainsPlayer(rightWall, ctx.player));
+                if (caught)
+                {
+                    AttackPlayer(ctx);
+                    lastDamageTime = Time.time;
+                }
+            }
+
+            elapsed += Time.deltaTime;
+            yield return null;
         }
-        else
-        {
-            if (leftWall != null)
-                yield return MoveWallToEdge(leftWall, bossPos, edgeMoveSpeed);
-            if (rightWall != null)
-                yield return MoveWallToEdge(rightWall, bossPos, edgeMoveSpeed);
-        }
+
+        if (leftWall != null) Destroy(leftWall);
+        if (rightWall != null) Destroy(rightWall);
+    }
+
+    private GameObject SpawnWall(Transform spawn)
+    {
+        if (wallPrefab == null || spawn == null) return null;
+        GameObject wall = Instantiate(wallPrefab, transform);
+        wall.transform.position = spawn.position;
+        return wall;
+    }
+
+    /// <summary>墙朝目标移动,距目标 x 到 stopDist 停住(每帧,不物理推挤)</summary>
+    private void MoveWallToward(GameObject wall, Vector3 target, float stopDist, float speed)
+    {
+        if (wall == null) return;
+        Vector3 pos = wall.transform.position;
+        float dx = target.x - pos.x;
+        if (Mathf.Abs(dx) <= stopDist) return;   // 已到停靠距离
+        float step = speed * Time.deltaTime;
+        pos.x += Mathf.Sign(dx) * Mathf.Min(step, Mathf.Abs(dx) - stopDist);
+        wall.transform.position = pos;
     }
 
     /// <summary>墙范围(子 obj MeleeRangeIndicator,Size=视觉大小)内是否有 player</summary>
@@ -99,7 +114,7 @@ public class BossSkill_FireWall : BossSkillExecutor
             && Mathf.Abs(player.position.y - center.y) <= size.y * 0.5f;
     }
 
-    /// <summary>Boss 攻击墙内 player(data 统一结算)</summary>
+    /// <summary>Boss 对墙内 player 造成伤害(data 统一结算)</summary>
     private void AttackPlayer(BossSkillContext ctx)
     {
         if (ctx.player == null || Data == null || ctx.boss == null) return;
@@ -120,37 +135,6 @@ public class BossSkill_FireWall : BossSkillExecutor
             Vector3 next = Vector3.MoveTowards(t.position, target, speed * Time.deltaTime);
             if (rb != null) rb.MovePosition(next);   // 物理移动,不与 Rigidbody 冲突
             else t.position = next;
-            yield return null;
-        }
-    }
-
-    /// <summary>墙朝 Boss 移动,停在距离 boss 为 stopDist 的位置(左墙停 boss 左侧,右墙停右侧)</summary>
-    private IEnumerator MoveWall(GameObject wall, Vector3 bossPos, float stopDist, float speed)
-    {
-        if (wall == null) yield break;
-        float dir = Mathf.Sign(bossPos.x - wall.transform.position.x);
-        if (dir == 0f) dir = 1f;
-        while (wall != null && Mathf.Abs(wall.transform.position.x - bossPos.x) > stopDist)
-        {
-            wall.transform.position += Vector3.right * dir * speed * Time.deltaTime;
-            yield return null;
-        }
-        if (wall != null)
-            wall.transform.position = new Vector3(bossPos.x - dir * stopDist, wall.transform.position.y, wall.transform.position.z);
-    }
-
-    /// <summary>墙沿原方向(相对 boss 向外)继续移动至屏幕边缘外</summary>
-    private IEnumerator MoveWallToEdge(GameObject wall, Vector3 bossPos, float speed)
-    {
-        if (wall == null) yield break;
-        Camera cam = Camera.main;
-        if (cam == null) yield break;
-        float dir = Mathf.Sign(wall.transform.position.x - bossPos.x);
-        if (dir == 0f) dir = 1f;
-        float edgeX = cam.ViewportToWorldPoint(new Vector3(dir > 0f ? 1f : 0f, 0.5f, 0f)).x + dir * 2f;
-        while (wall != null && Mathf.Abs(wall.transform.position.x - edgeX) > 0.1f)
-        {
-            wall.transform.position += Vector3.right * dir * speed * Time.deltaTime;
             yield return null;
         }
     }
