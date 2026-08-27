@@ -21,6 +21,22 @@ public class BossAnimationRelay : MonoBehaviour
             atk.OnAnimEnd();
     }
 
+    /// <summary>技能命中帧事件 — 转发给当前技能执行器(经 BossSkillSlots 路由)。技能动画的事件帧调这里。</summary>
+    public void OnBossSkillHitFrame()
+    {
+        if (_boss == null) return;
+        var slots = _boss.GetComponent<BossSkillSlots>();
+        slots?.OnSkillHitFrame();
+    }
+
+    /// <summary>技能动画结束帧事件 — 转发给当前技能执行器。技能动画的事件帧调这里。</summary>
+    public void OnBossSkillAnimEnd()
+    {
+        if (_boss == null) return;
+        var slots = _boss.GetComponent<BossSkillSlots>();
+        slots?.OnSkillAnimEnd();
+    }
+
     // 后续接入伤害/技能时在这里加独立事件(如 OnBossAttackActiveStart/End → BossSkillSlots),
     // 与普通 enemy 的 AnimationRelay 保持隔离。
 }

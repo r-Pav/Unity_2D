@@ -66,6 +66,7 @@ public class FirstBoss : BossControllerBase
     protected override IState GetInitialState() => new BossIdleState(this, Fsm, Animator);
     public override IState CreateChaseState() => new BossChaseState(this, Fsm, Animator);
     public override IState CreateFallbackState() => new BossIdleState(this, Fsm, Animator);
+    public override IState CreateAttackState() => new BossAttackState(this, Fsm, Animator);
 
     // ============================================================
     // 生命周期
@@ -231,7 +232,7 @@ public class FirstBoss : BossControllerBase
         if (isDead) return false;
         if (skillSlots != null && skillSlots.IsExecuting) return false;
         if (PlayerTarget == null) return false;
-        if (IsMeleeIntervalActive) return false;   // 普攻间隔:技能/重击不走 CanAttack,不受此约束
+        // 普攻间隔不在此拦(技能不受间隔约束,普攻间隔在 BossAttackDirector.TryAttack 普攻分支拦)
         return IsPlayerInBossAttackRange();
     }
 

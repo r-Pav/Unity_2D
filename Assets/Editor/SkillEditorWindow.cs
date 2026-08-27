@@ -191,7 +191,7 @@ public class SkillEditorWindow : EditorWindow
             TabType.Passive => typeof(PassiveSkillData),
             TabType.Weapon => typeof(WeaponSkillData),
             TabType.Combination => typeof(CombinationSkillData),
-            TabType.Boss => typeof(BossAttackSO),
+            TabType.Boss => typeof(BossSkillData),
             _ => typeof(SkillData),
         };
 
@@ -205,7 +205,7 @@ public class SkillEditorWindow : EditorWindow
             TabType.Passive => "Passive_LX_LX",
             TabType.Weapon => "Skill_Weapon_New",
             TabType.Combination => "Skill_Combination_New",
-            TabType.Boss => "BossAttack_New",
+            TabType.Boss => "BossSkill_New",
             _ => "Skill_New",
         };
         string path = AssetDatabase.GenerateUniqueAssetPath($"{dir}/{baseName}.asset");

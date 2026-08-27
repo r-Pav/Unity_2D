@@ -114,10 +114,13 @@ public abstract class BossControllerBase : EnemyControllerBase
     // ============================================================
 
     [Header("技能系统")]
-    [Tooltip("Boss 特殊技能槽组件（挂 BossSkillSlots）")]
+    [Tooltip("Boss 特殊技能槽组件(挂 BossSkillSlots)")]
     [SerializeField] protected BossSkillSlots skillSlots;
 
-    [Tooltip("冷却时 fallback 普攻组件（挂 EnemyMeleeAttack）")]
+    [Tooltip("攻击编排组件(挂 BossAttackDirector,技能/普攻循环)")]
+    [SerializeField] protected BossAttackDirector attackDirector;
+
+    [Tooltip("普攻组件(普攻阶段伤害,挂 EnemyMeleeAttack)")]
     [SerializeField] protected EnemyMeleeAttack defaultMelee;
 
     [Header("VFX")]
@@ -426,6 +429,18 @@ public abstract class BossControllerBase : EnemyControllerBase
     /// <summary>普攻间隔是否进行中(>0 = 禁止普攻)</summary>
     public bool IsMeleeIntervalActive => meleeIntervalTimer > 0f;
 
+    /// <summary>攻击编排组件</summary>
+    public BossAttackDirector AttackDirector => attackDirector;
+
+    /// <summary>普攻伤害(即时判定,由攻击编排普攻阶段调用)</summary>
+    public void PerformDefaultMelee()
+    {
+        if (defaultMelee != null) defaultMelee.PerformAttack(this);
+    }
+
+    /// <summary>创建普攻状态(子类覆写:FirstBoss → BossAttackState;默认 null = 无普攻动画)</summary>
+    public virtual IState CreateAttackState() => null;
+
     // ============================================================
     // 技能系统接口
     // ============================================================
@@ -449,16 +464,6 @@ public abstract class BossControllerBase : EnemyControllerBase
         if (skillSlots == null) return;
         skillSlots.Interrupt();
         skillSlots.Execute(index);
-    }
-
-    /// <summary>
-    /// 外部触发魔法技能(绕过自动选择) — 预留给 BGM 重音系统。
-    /// 后续 RhythmClock.OnBeat(重音到达) 时调用,由 BossSkillSlots.TriggerMagic 执行魔法技能 SO。
-    /// </summary>
-    public void TriggerMagicSkill(int index)
-    {
-        if (skillSlots == null) return;
-        skillSlots.TriggerMagic(index);
     }
 
     /// <summary>
