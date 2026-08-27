@@ -30,11 +30,23 @@ public class BossSkill_FireWall : BossSkillExecutor
     // 生成的墙(场景根独立物体,不挂 Boss 下;中断时 OnDestroy 清理)
     private readonly System.Collections.Generic.List<GameObject> _spawnedWalls = new();
 
+    // 空中战位兼容:技能执行期间关 Boss 重力(移动+悬浮),结束/中断恢复
+    private Rigidbody2D _savedBossRb;
+    private float _savedGravityScale = 1f;
+
     public override IEnumerator ExecuteSkill(BossSkillContext ctx)
     {
         var boss = ctx.boss;
         if (boss == null) yield break;
         PlaySkillAnim(ctx.animator);
+
+        // 兼容空中战位:执行期间关重力,技能结束恢复(中断由 OnDestroy 兜底)
+        _savedBossRb = boss.GetComponent<Rigidbody2D>();
+        if (_savedBossRb != null)
+        {
+            _savedGravityScale = _savedBossRb.gravityScale;
+            _savedBossRb.gravityScale = 0f;
+        }
 
         // 0. 场景配置:位置全部从 BossSkillSceneConfig 读(prefab 不存场景引用)
         var sceneConfig = FindObjectOfType<BossSkillSceneConfig>();
@@ -100,6 +112,13 @@ public class BossSkill_FireWall : BossSkillExecutor
 
         if (leftWall != null) Destroy(leftWall);
         if (rightWall != null) Destroy(rightWall);
+
+        // 恢复重力(技能结束,空中战位 → 正常落地)
+        if (_savedBossRb != null)
+        {
+            _savedBossRb.gravityScale = _savedGravityScale;
+            _savedBossRb = null;
+        }
     }
 
     private GameObject SpawnWall(Transform spawn)
@@ -111,9 +130,14 @@ public class BossSkill_FireWall : BossSkillExecutor
         return wall;
     }
 
-    /// <summary>技能中断(prefab 被销毁)时清理墙,避免残留</summary>
+    /// <summary>技能中断(prefab 被销毁)时恢复重力并清理墙,避免残留</summary>
     private void OnDestroy()
     {
+        if (_savedBossRb != null)
+        {
+            _savedBossRb.gravityScale = _savedGravityScale;
+            _savedBossRb = null;
+        }
         foreach (var w in _spawnedWalls)
         {
             if (w != null) Destroy(w);
