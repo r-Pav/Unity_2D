@@ -6,7 +6,8 @@ using UnityEngine;
 /// 进 Boss 房:玩家 VCam Priority 降为休眠,boss VCam Priority 拉高 → CinemachineBrain 自动 blend 平滑切换。
 /// Boss VCam 自身配置:Follow 玩家、OrthoSize 独立、CinemachineConfiner2D 绑 Boss 房范围。
 /// Boss 死亡:恢复两个 VCam 原优先级 → blend 平滑回玩家相机。
-/// 主相机始终 enabled(Brain 驱动),不需要关玩家相机;CameraFollow 保持禁用勿动。
+/// 玩家死亡:相机也回玩家(复活后不残留 Boss 相机)。
+/// 注意:Confiner2D 只支持 PolygonCollider2D / CompositeCollider2D,BoxCollider2D 不生效。
 /// </summary>
 public class BossRoomCamera : MonoBehaviour
 {
@@ -24,17 +25,45 @@ public class BossRoomCamera : MonoBehaviour
 
     private int _playerOriginalPriority;
     private int _bossOriginalPriority;
+    private bool _active;
 
     private void Awake()
     {
         if (playerVCam != null) _playerOriginalPriority = playerVCam.Priority;
         if (bossVCam != null) _bossOriginalPriority = bossVCam.Priority;
+
+        // Confiner 检查:BoxCollider2D 不生效,提前警告
+        var confiner = bossVCam != null ? bossVCam.GetComponent<CinemachineConfiner2D>() : null;
+        if (confiner != null && confiner.m_BoundingShape2D != null
+            && !(confiner.m_BoundingShape2D is PolygonCollider2D)
+            && !(confiner.m_BoundingShape2D is CompositeCollider2D))
+        {
+            Debug.LogWarning("[BossRoomCamera] Boss VCam 的 Confiner 需要 PolygonCollider2D(或带 Polygon 的 CompositeCollider2D),BoxCollider2D 不生效,相机不会受范围约束");
+        }
+    }
+
+    private void OnEnable()
+    {
+        EventBus.Subscribe<PlayerDeathEvent>(OnPlayerDeath);
+    }
+
+    private void OnDisable()
+    {
+        EventBus.Unsubscribe<PlayerDeathEvent>(OnPlayerDeath);
+    }
+
+    /// <summary>玩家死亡:相机回玩家(复活后不残留 Boss 相机;Boss 战若继续,下次进房再接管)</summary>
+    private void OnPlayerDeath(PlayerDeathEvent _)
+    {
+        if (_active)
+            ExitBossRoom();
     }
 
     /// <summary>进房:降玩家 VCam、拉高 Boss VCam → Brain 平滑 blend 切换</summary>
     public void EnterBossRoom()
     {
         if (bossVCam == null) return;
+        _active = true;
         if (playerVCam != null)
         {
             _playerOriginalPriority = playerVCam.Priority;
@@ -43,9 +72,10 @@ public class BossRoomCamera : MonoBehaviour
         bossVCam.Priority = bossActivePriority;
     }
 
-    /// <summary>出房(Boss 死亡):恢复两个 VCam 原优先级 → blend 回玩家相机</summary>
+    /// <summary>出房(Boss 死亡/玩家死亡):恢复两个 VCam 原优先级 → blend 回玩家相机</summary>
     public void ExitBossRoom()
     {
+        _active = false;
         if (bossVCam != null)
             bossVCam.Priority = _bossOriginalPriority;
         if (playerVCam != null)
