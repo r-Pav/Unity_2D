@@ -77,6 +77,8 @@ public class BossSkill_FireWall : BossSkillExecutor
         GameObject rightWall = SpawnWall(sceneConfig != null ? sceneConfig.fireWallRightSpawn : null);
 
         // 3. 阶段 A:两墙同时朝 player 移动,缓出(由快变慢),到距 player stopDistance 停下(超时 10 秒兜底)
+        // 停靠目标 = 开始移动那一帧的 player 位置(快照,不追实时)
+        float targetX = ctx.player != null ? ctx.player.position.x : boss.transform.position.x;
         bool hitOnce = false;
         float moveElapsed = 0f;
         const float moveTimeout = 10f;
@@ -86,19 +88,14 @@ public class BossSkill_FireWall : BossSkillExecutor
             float ease = 1f - Mathf.Pow(1f - k, wallInEasePower);   // 缓出:前段快后段慢
             float stepSpeed = wallMoveSpeed * ease;
 
-            if (ctx.player != null)
-            {
-                if (leftWall != null) MoveWallTowardPlayer(leftWall, ctx.player, stopDistance, stepSpeed);
-                if (rightWall != null) MoveWallTowardPlayer(rightWall, ctx.player, stopDistance, stepSpeed);
-            }
+            if (leftWall != null) MoveWallToward(leftWall, targetX, stopDistance, stepSpeed);
+            if (rightWall != null) MoveWallToward(rightWall, targetX, stopDistance, stepSpeed);
 
             TickHitOnce(ctx, leftWall, rightWall, ref hitOnce);
 
             // 两墙都停靠(或未生成)→ 进入停留阶段
-            bool leftDone = leftWall == null || ctx.player == null
-                || Mathf.Abs(leftWall.transform.position.x - ctx.player.position.x) <= stopDistance;
-            bool rightDone = rightWall == null || ctx.player == null
-                || Mathf.Abs(rightWall.transform.position.x - ctx.player.position.x) <= stopDistance;
+            bool leftDone = leftWall == null || Mathf.Abs(leftWall.transform.position.x - targetX) <= stopDistance;
+            bool rightDone = rightWall == null || Mathf.Abs(rightWall.transform.position.x - targetX) <= stopDistance;
             if (leftDone && rightDone) break;
 
             moveElapsed += Time.deltaTime;
@@ -168,12 +165,12 @@ public class BossSkill_FireWall : BossSkillExecutor
         _spawnedWalls.Clear();
     }
 
-    /// <summary>墙朝 player 移动,距 player x 到 stopDist 停靠(两墙夹击)</summary>
-    private void MoveWallTowardPlayer(GameObject wall, Transform player, float stopDist, float speed)
+    /// <summary>墙朝目标 x 移动,距目标 x 到 stopDist 停靠(两墙夹击;目标 = 阶段开始时的 player 快照)</summary>
+    private void MoveWallToward(GameObject wall, float targetX, float stopDist, float speed)
     {
-        if (wall == null || player == null) return;
+        if (wall == null) return;
         Vector3 pos = wall.transform.position;
-        float dx = player.position.x - pos.x;
+        float dx = targetX - pos.x;
         if (Mathf.Abs(dx) <= stopDist) return;   // 已停靠
         float step = speed * Time.deltaTime;
         pos.x += Mathf.Sign(dx) * Mathf.Min(step, Mathf.Abs(dx) - stopDist);
