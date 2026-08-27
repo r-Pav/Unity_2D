@@ -50,6 +50,7 @@ public abstract class CharacterBase : MonoBehaviour
 
     protected bool grounded;
     protected int facing = 1;  // 1 = 朝右, -1 = 朝左
+    protected bool facingLocked = false;   // 锁定朝向(连打吸附等场景,禁止 UpdateFacing 转身)
 
     // 击退
     protected bool isKnockedBack;
@@ -171,6 +172,7 @@ public abstract class CharacterBase : MonoBehaviour
     /// <summary>根据水平输入更新面朝方向（使用 transform.localScale.x 翻转，兼容 Animator）</summary>
     public virtual void UpdateFacing(float direction)
     {
+        if (facingLocked) return;
         if (direction == 0f) return;
 
         facing = direction > 0f ? 1 : -1;
@@ -178,6 +180,19 @@ public abstract class CharacterBase : MonoBehaviour
         Vector3 scale = transform.localScale;
         scale.x = Mathf.Abs(scale.x) * facing;
         transform.localScale = scale;
+    }
+
+    /// <summary>锁定/解锁朝向(连打吸附等场景用):锁定时禁止转身,并立即设置朝向</summary>
+    public void SetFacingLocked(bool locked, int dir)
+    {
+        facingLocked = locked;
+        if (locked)
+        {
+            facing = dir > 0f ? 1 : -1;
+            Vector3 scale = transform.localScale;
+            scale.x = Mathf.Abs(scale.x) * facing;
+            transform.localScale = scale;
+        }
     }
 
     // ============================================================

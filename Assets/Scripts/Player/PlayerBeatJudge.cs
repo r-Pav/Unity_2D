@@ -26,6 +26,8 @@ public class PlayerBeatJudge : MonoBehaviour
     private PlayerController _pc;
     private bool _autoComboActive;
     private bool _subscribed;
+    private int _lockedFacing = 1;          // 连打期间锁定的朝向快照(boss 转身不会闪)
+    private BossControllerBase _lockedEnemy; // 被锁定朝向的 boss(连打结束/销毁时解锁)
 
     public bool AutoComboActive => _autoComboActive;
 
@@ -52,6 +54,7 @@ public class PlayerBeatJudge : MonoBehaviour
 
     private void OnDestroy()
     {
+        ReleaseFacingLock();   // 兜底解锁 boss 朝向
         var mgr = MusicPointManager.Instance;
         if (mgr != null && _subscribed)
         {
@@ -70,6 +73,7 @@ public class PlayerBeatJudge : MonoBehaviour
                 || Input.GetKeyDown(KeyCode.LeftShift))
             {
                 _autoComboActive = false;
+                ReleaseFacingLock();
                 Debug.Log("[PlayerBeat] 玩家主动位移,连打结束");
             }
             else
@@ -88,6 +92,13 @@ public class PlayerBeatJudge : MonoBehaviour
                 Debug.Log($"[PlayerBeat] 按键 组[{judgeGroup}]窗口={inWindow} 当前组={mgr.CurrentWindowGroup} 连打已激活={_autoComboActive}");
                 if (inWindow)
                 {
+                    var enemy = FindObjectOfType<BossControllerBase>();
+                    if (enemy != null)
+                    {
+                        _lockedEnemy = enemy;
+                        _lockedFacing = enemy.Facing;
+                        enemy.SetFacingLocked(true, _lockedFacing);   // 锁定 boss 朝向,防转身闪帧
+                    }
                     TeleportBehindEnemy();   // 瞬移到 enemy 身后(空中保持当前高度,允许空中触发)
                     _autoComboActive = true;
                     Debug.Log("[PlayerBeat] 重击音判定成功,进入自动连打");
@@ -161,14 +172,24 @@ public class PlayerBeatJudge : MonoBehaviour
         Debug.Log($"[PlayerBeat] 瞬移到 enemy 身后 x={behindX:F2}");
     }
 
-    /// <summary>吸附:连打期间每帧保持 enemy 身后位置(跟随 boss 移动)</summary>
+    /// <summary>吸附:连打期间每帧保持 enemy 身后位置(用锁定朝向,跟随 boss 移动)</summary>
     private void SnapBehindEnemy()
     {
         if (_pc == null) return;
-        var enemy = FindObjectOfType<BossControllerBase>();
+        var enemy = _lockedEnemy != null ? _lockedEnemy : FindObjectOfType<BossControllerBase>();
         if (enemy == null) return;
-        float behindX = enemy.transform.position.x - enemy.Facing * behindDistance;
+        float behindX = enemy.transform.position.x - _lockedFacing * behindDistance;
         _pc.transform.position = new Vector3(behindX, _pc.transform.position.y, _pc.transform.position.z);
+    }
+
+    /// <summary>解锁 boss 朝向(连打结束/销毁兜底)</summary>
+    private void ReleaseFacingLock()
+    {
+        if (_lockedEnemy != null)
+        {
+            _lockedEnemy.SetFacingLocked(false, 1);
+            _lockedEnemy = null;
+        }
     }
 
     /// <summary>该标点时刻是否属于某组</summary>
