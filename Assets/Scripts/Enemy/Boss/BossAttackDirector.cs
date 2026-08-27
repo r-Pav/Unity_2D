@@ -6,6 +6,9 @@
 /// 任何阶段/外部可直接调用切入(如某技能释放完强制进普攻)。
 /// 技能不受普攻间隔约束;普攻受 boss 的 meleeInterval(5 秒)约束。
 /// 由 ChaseState 在玩家进攻击范围且 CanAttack 时调用 TryAttack() 触发一次攻击。
+/// 法球(技能 2):随机到法球时做预约检查(该组标点 orbReserveWindow 秒内存在才预约),
+/// 预约后标点前 orbReserveLead 秒释放,期间只普攻(保证释放时 Boss 非技能状态);
+/// 无标点/太远则放弃法球回普通循环(不卡,不等)。
 /// </summary>
 public class BossAttackDirector : MonoBehaviour
 {
