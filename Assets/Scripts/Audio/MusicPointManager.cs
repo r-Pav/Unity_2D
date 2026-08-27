@@ -348,7 +348,7 @@ public class MusicPointManager : MonoBehaviour
         int i = 0;
         while (true)
         {
-            if (i >= points.Length)
+            if (i >= points.Count)
             {
                 // 本圈结束:等 loop 回绕(time 从末点之后回落到开头)再排下一圈
                 float last = points[points.Length - 1];
