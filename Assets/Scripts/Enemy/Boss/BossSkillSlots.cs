@@ -23,6 +23,9 @@ public class BossSkillSlots : MonoBehaviour
     [Header("Debug")]
     [SerializeField] private bool logSkillExecutions;
 
+    [Tooltip("测试用:打开后运行中按数字键 1~9 强制释放对应索引技能(先打断当前技能/普攻)")]
+    [SerializeField] private bool debugForceKeys;
+
     // ============================================================
     // 运行时状态
     // ============================================================
@@ -76,6 +79,24 @@ public class BossSkillSlots : MonoBehaviour
         player = PlayerController.Instance?.transform;
     }
 
+    // ============================================================
+    // 调试:数字键强制释放技能(测试用,debugForceKeys 打开生效)
+    // ============================================================
+
+    private void Update()
+    {
+        if (!debugForceKeys || allSkills == null) return;
+        for (int i = 1; i <= Mathf.Min(9, allSkills.Length); i++)
+        {
+            if (Input.GetKeyDown(KeyCode.Alpha0 + i))
+            {
+                Interrupt();
+                Execute(i - 1);
+                break;
+            }
+        }
+    }
+
     private void OnDestroy()
     {
         isQuitting = true;
@@ -116,6 +137,8 @@ public class BossSkillSlots : MonoBehaviour
 
         var so = allSkills[index];
         if (so == null) return;
+
+        Debug.Log($"[BossSkillSlots] 释放技能 [{index}] {so.skillName} (anim={so.animState})");
 
         if (currentCoroutine != null)
         {
