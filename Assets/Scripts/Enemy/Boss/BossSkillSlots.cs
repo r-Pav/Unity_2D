@@ -138,8 +138,6 @@ public class BossSkillSlots : MonoBehaviour
         var so = allSkills[index];
         if (so == null) return;
 
-        Debug.Log($"[BossSkillSlots] 释放技能 [{index}] {so.skillName} (anim={so.animState})");
-
         if (currentCoroutine != null)
         {
             Debug.LogWarning($"[BossSkillSlots] 已有技能执行中,跳过 Execute({index})");
