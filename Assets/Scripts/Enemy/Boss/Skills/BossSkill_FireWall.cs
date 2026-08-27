@@ -47,6 +47,10 @@ public class BossSkill_FireWall : BossSkillExecutor
         }
 
         // 2. 左右墙在手动指定位置生成(挂执行器 prefab 下,随技能结束销毁)
+        if (wallPrefab == null)
+            Debug.LogWarning("[BossSkill_FireWall] 未配置 Wall Prefab,技能 1 空放");
+        if (leftWallSpawn == null && rightWallSpawn == null)
+            Debug.LogWarning("[BossSkill_FireWall] 未配置 Left/Right Wall Spawn,技能 1 空放(墙不生成)");
         GameObject leftWall = SpawnWall(leftWallSpawn);
         GameObject rightWall = SpawnWall(rightWallSpawn);
 
