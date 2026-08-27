@@ -38,6 +38,7 @@ public class BossAttackDirector : MonoBehaviour
     private int _skillCastCount;
     private int _meleeLimit;
     private int _meleeCount;
+    private int _lastSkillIndex = -1;   // 上次释放的技能(随机时排除,避免连续重复)
 
     public bool InSkillPhase => _inSkillPhase;
 
@@ -73,6 +74,20 @@ public class BossAttackDirector : MonoBehaviour
         _meleeCount = 0;
     }
 
+    /// <summary>技能随机选择:排除上次释放的技能(池内多于 1 个时),避免连续重复</summary>
+    private int SelectSkillAvoidRepeat(int[] available)
+    {
+        if (available.Length <= 1) return available[0];
+        var pool = new System.Collections.Generic.List<int>();
+        foreach (int idx in available)
+        {
+            if (idx != _lastSkillIndex)
+                pool.Add(idx);
+        }
+        if (pool.Count == 0) return available[Random.Range(0, available.Length)];
+        return pool[Random.Range(0, pool.Count)];
+    }
+
     // ============================================================
     // 攻击请求(ChaseState 调用)
     // ============================================================
@@ -87,13 +102,14 @@ public class BossAttackDirector : MonoBehaviour
         if (skillSlots == null) return false;
         if (skillSlots.IsExecuting) return false;
 
-        // 技能阶段:随机选技能释放
+        // 技能阶段:随机选技能释放(排除上次,避免连续重复)
         if (_inSkillPhase)
         {
             int[] available = skillSlots.GetAvailableSkills();
             if (available.Length > 0)
             {
-                int chosen = available[Random.Range(0, available.Length)];
+                int chosen = SelectSkillAvoidRepeat(available);
+                _lastSkillIndex = chosen;
                 skillSlots.Execute(chosen);
                 _skillCastCount++;
                 if (_skillCastCount >= _skillCastLimit)
