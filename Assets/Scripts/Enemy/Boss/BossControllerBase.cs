@@ -123,6 +123,9 @@ public abstract class BossControllerBase : EnemyControllerBase
     [Tooltip("普攻组件(普攻阶段伤害,挂 EnemyMeleeAttack)")]
     [SerializeField] protected EnemyMeleeAttack defaultMelee;
 
+    [Tooltip("重击组件(挂 BossHeavyAttack,BossHeavy 标点驱动;重击中霸体)")]
+    [SerializeField] protected BossHeavyAttack heavyAttack;
+
     [Header("VFX")]
     [Tooltip("Boss 死亡 VFX 预制体 — 死亡时 Instantiate")]
     [SerializeField] protected GameObject bossDeathVFXPrefab;
@@ -275,6 +278,15 @@ public abstract class BossControllerBase : EnemyControllerBase
         if (isPhaseTransitioning)
             return;
 
+        // 重击霸体:不掉硬直不中断,标记抵消(该次重击不造成伤害),照常掉血
+        if (IsHeavyActive)
+        {
+            heavyAttack.NotifyHit();
+            base.TakeDamage(amount, attackType);
+            EventBus.Trigger(new BossHpChangedEvent(this, currentHealth, maxHealth));
+            return;
+        }
+
         // 委托基类处理核心逻辑：扣血 + 受伤反馈 + 硬直 + 死亡检测 + VFX
         base.TakeDamage(amount, attackType);
 
@@ -327,13 +339,22 @@ public abstract class BossControllerBase : EnemyControllerBase
         if (!isActivated) return;
         if (isPhaseTransitioning) return;
 
+        // 重击霸体:不掉硬直不中断,标记抵消(该次重击不造成伤害),照常掉血(Resolve 已扣)
+        if (IsHeavyActive)
+        {
+            heavyAttack.NotifyHit();
+            EventBus.Trigger(new BossHpChangedEvent(this, currentHealth, maxHealth));
+            return;
+        }
+
         // Boss 不吃硬直(不进入 EnemyStunState),统一回追击;击退抵抗已在 ApplyKnockback 处理
         HandleHitCommon(true, info.sourcePosition);
     }
 
-    /// <summary>施加击退（带抵抗系数）：resistance=1 时完全不吃击退</summary>
+    /// <summary>施加击退（带抵抗系数）：resistance=1 时完全不吃击退；重击霸体中完全免疫</summary>
     public override void ApplyKnockback(Knockback knockback)
     {
+        if (IsHeavyActive) return;   // 重击霸体:免疫击退
         if (rb == null || knockback.force <= 0f) return;
         float knockMultiplier = 1f - knockbackResistance;
         if (knockMultiplier <= 0.001f) return;
@@ -430,6 +451,9 @@ public abstract class BossControllerBase : EnemyControllerBase
 
     /// <summary>普攻间隔是否进行中(>0 = 禁止普攻)</summary>
     public bool IsMeleeIntervalActive => meleeIntervalTimer > 0f;
+
+    /// <summary>重击施放中(霸体:不掉硬直/击退,不中断;照常掉血)</summary>
+    public bool IsHeavyActive => heavyAttack != null && heavyAttack.IsActive;
 
     /// <summary>攻击编排组件</summary>
     public BossAttackDirector AttackDirector => attackDirector;
