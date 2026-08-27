@@ -87,6 +87,14 @@ public class BossHeavyAttack : MonoBehaviour
 
     private IEnumerator HeavyLoop()
     {
+        var mgr0 = MusicPointManager.Instance;
+        if (mgr0 != null)
+        {
+            var track = mgr0.CurrentTrack;
+            var group = track != null ? track.GetGroup(groupName) : null;
+            Debug.Log($"[BossHeavy] 监听启动 track={(track != null ? track.name : "null")} 组[{groupName}]存在={(group != null)} 点数={(group != null && group.points != null ? group.points.Length : 0)}");
+        }
+
         while (_boss != null && !_boss.IsDead)
         {
             var mgr = MusicPointManager.Instance;
@@ -102,12 +110,11 @@ public class BossHeavyAttack : MonoBehaviour
             if (toNext >= 0f && toNext <= prepareLead)
             {
                 Debug.Log($"[BossHeavy] 发现重击标点 {next:F2} 秒,还有 {toNext:F2} 秒(组={groupName})");
-                // 优先级仲裁:技能执行中 → 重击让位,等到标点过后再查下一个
+                // 重击独立机制:技能执行中直接打断(技能是随机释放,不是标点重叠,不该让位)
                 if (_slots != null && _slots.IsExecuting)
                 {
-                    Debug.Log("[BossHeavy] 技能执行中,重击让位(等下一个标点)");
-                    while (mgr.TrackTime < next) yield return null;
-                    continue;
+                    Debug.Log("[BossHeavy] 打断当前技能,执行重击");
+                    _slots.Interrupt();
                 }
                 yield return StartCoroutine(ExecuteHeavy(next));
                 continue;
