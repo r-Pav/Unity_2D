@@ -169,25 +169,31 @@ public class PlayerBeatJudge : MonoBehaviour
         }
         float behindX = enemy.transform.position.x - enemy.Facing * behindDistance;   // enemy 背对方向
         _pc.transform.position = new Vector3(behindX, _pc.transform.position.y, _pc.transform.position.z);
+        _pc.UpdateFacing(enemy.Facing);   // 玩家面向 boss(在 boss 身后,面朝 boss 方向)
         Debug.Log($"[PlayerBeat] 瞬移到 enemy 身后 x={behindX:F2}");
     }
 
-    /// <summary>吸附:连打期间每帧保持 enemy 身后位置(用锁定朝向,跟随 boss 移动)</summary>
+    /// <summary>吸附:连打期间每帧保持 enemy 身后位置(跟随 x + y,用锁定朝向)</summary>
     private void SnapBehindEnemy()
     {
         if (_pc == null) return;
         var enemy = _lockedEnemy != null ? _lockedEnemy : FindObjectOfType<BossControllerBase>();
         if (enemy == null) return;
         float behindX = enemy.transform.position.x - _lockedFacing * behindDistance;
-        _pc.transform.position = new Vector3(behindX, _pc.transform.position.y, _pc.transform.position.z);
+        _pc.transform.position = new Vector3(behindX, enemy.transform.position.y, _pc.transform.position.z);   // y 跟随 boss(空中也跟上去)
     }
 
-    /// <summary>解锁 boss 朝向(连打结束/销毁兜底)</summary>
+    /// <summary>解锁 boss 朝向(连打结束/销毁兜底):解锁后 boss 重新面向 player</summary>
     private void ReleaseFacingLock()
     {
         if (_lockedEnemy != null)
         {
             _lockedEnemy.SetFacingLocked(false, 1);
+            if (_pc != null)
+            {
+                float dir = _pc.transform.position.x > _lockedEnemy.transform.position.x ? 1f : -1f;
+                _lockedEnemy.UpdateFacing(dir);   // 恢复面向 player
+            }
             _lockedEnemy = null;
         }
     }
