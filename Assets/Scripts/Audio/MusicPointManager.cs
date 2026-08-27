@@ -198,16 +198,12 @@ public class MusicPointManager : MonoBehaviour
 
     private void OnApplicationPause(bool pause)
     {
-        if (_activeSource != null)
-            Debug.Log($"[MusicFocus] Pause={pause} clip={_activeSource.clip?.name ?? "null"} time={_activeSource.time:F2} playing={_activeSource.isPlaying}");
         if (pause) _savedTrackTime = _activeSource != null ? _activeSource.time : 0f;
         else RestoreAfterAppResume();
     }
 
     private void OnApplicationFocus(bool focus)
     {
-        if (_activeSource != null)
-            Debug.Log($"[MusicFocus] Focus={focus} clip={_activeSource.clip?.name ?? "null"} time={_activeSource.time:F2} playing={_activeSource.isPlaying}");
         if (!focus) _savedTrackTime = _activeSource != null ? _activeSource.time : 0f;
         else RestoreAfterAppResume();
     }
@@ -216,8 +212,6 @@ public class MusicPointManager : MonoBehaviour
     private void RestoreAfterAppResume()
     {
         if (_activeSource == null || _activeSource.clip == null) return;
-
-        Debug.Log($"[MusicFocus] Restore saved={_savedTrackTime:F2} cur={_activeSource.time:F2} clip={_activeSource.clip.name} boss={_bossMode}");
 
         _activeSource.time = Mathf.Clamp(_savedTrackTime, 0f, _activeSource.clip.length);
         if (!_activeSource.isPlaying)
