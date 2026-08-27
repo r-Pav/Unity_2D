@@ -37,7 +37,13 @@ public class BossSkill_FireWall : BossSkillExecutor
         // 1. Boss 移动到固定位置(技能执行中 ChaseState 站桩,直接移 transform)
         if (bossMoveTarget != null)
         {
-            yield return MoveTransform(boss.transform, bossMoveTarget.position, bossMoveSpeed);
+            // 防护:目标不能挂在 Boss 下/技能 prefab 里(会随 Boss 移动,目标永远追不上 → 跑出屏幕)
+            if (bossMoveTarget.IsChildOf(boss.transform))
+            {
+                Debug.LogWarning("[BossSkill_FireWall] bossMoveTarget 挂在了 Boss/技能 prefab 下(目标会随 Boss 移动而失效),请在场景层级建独立空物体当 Boss 战位");
+            }
+            Vector3 targetPos = bossMoveTarget.position;   // 快照固定目标,防止执行中目标变化
+            yield return MoveTransform(boss.transform, targetPos, bossMoveSpeed);
         }
 
         // 2. 屏幕左右两端生成火焰墙(挂执行器 prefab 下,中断时随 prefab 一起销毁)
@@ -108,9 +114,12 @@ public class BossSkill_FireWall : BossSkillExecutor
 
     private IEnumerator MoveTransform(Transform t, Vector3 target, float speed)
     {
+        var rb = t != null ? t.GetComponent<Rigidbody2D>() : null;
         while (t != null && Vector2.Distance(t.position, target) > 0.05f)
         {
-            t.position = Vector3.MoveTowards(t.position, target, speed * Time.deltaTime);
+            Vector3 next = Vector3.MoveTowards(t.position, target, speed * Time.deltaTime);
+            if (rb != null) rb.MovePosition(next);   // 物理移动,不与 Rigidbody 冲突
+            else t.position = next;
             yield return null;
         }
     }
