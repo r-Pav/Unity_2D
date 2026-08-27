@@ -52,10 +52,11 @@ public class BossSkill_FireWall : BossSkillExecutor
         GameObject leftWall = SpawnWall(sceneConfig != null ? sceneConfig.fireWallLeftSpawn : null);
         GameObject rightWall = SpawnWall(sceneConfig != null ? sceneConfig.fireWallRightSpawn : null);
 
-        // 3. 墙朝 player 移动 + 范围伤害;到 stopDistance 停,停留 wallLifetime 后消失
-        float elapsed = 0f;
+        // 3. 阶段 A:墙朝 player 移动,直到两墙都停靠(超时 10 秒兜底)
         float lastDamageTime = -10f;
-        while (elapsed < wallLifetime && (leftWall != null || rightWall != null))
+        float moveElapsed = 0f;
+        const float moveTimeout = 10f;
+        while (moveElapsed < moveTimeout)
         {
             if (ctx.player != null)
             {
@@ -64,7 +65,22 @@ public class BossSkill_FireWall : BossSkillExecutor
                 if (rightWall != null) MoveWallToward(rightWall, target, stopDistance, wallMoveSpeed);
             }
 
-            if (Time.time - lastDamageTime >= damageInterval)
+            // 两墙都停靠(或未生成)→ 进入停留阶段
+            bool leftDone = leftWall == null || ctx.player == null
+                || Mathf.Abs(leftWall.transform.position.x - ctx.player.position.x) <= stopDistance;
+            bool rightDone = rightWall == null || ctx.player == null
+                || Mathf.Abs(rightWall.transform.position.x - ctx.player.position.x) <= stopDistance;
+            if (leftDone && rightDone) break;
+
+            moveElapsed += Time.deltaTime;
+            yield return null;
+        }
+
+        // 4. 阶段 B:停留 wallLifetime 秒,期间持续范围伤害
+        float stayElapsed = 0f;
+        while (stayElapsed < wallLifetime)
+        {
+            if (ctx.player != null && Time.time - lastDamageTime >= damageInterval)
             {
                 bool caught = (leftWall != null && WallContainsPlayer(leftWall, ctx.player))
                            || (rightWall != null && WallContainsPlayer(rightWall, ctx.player));
@@ -75,7 +91,7 @@ public class BossSkill_FireWall : BossSkillExecutor
                 }
             }
 
-            elapsed += Time.deltaTime;
+            stayElapsed += Time.deltaTime;
             yield return null;
         }
 
