@@ -19,6 +19,10 @@ public class PlayerBeatJudge : MonoBehaviour
     [Tooltip("标识物体(初始关闭):进入判定窗口时显示,窗口结束隐藏")]
     public GameObject judgeIndicator;
 
+    [Header("瞬移敌后")]
+    [Tooltip("判定成功后 player 瞬移到 enemy 身后的距离")]
+    public float behindDistance = 1.5f;
+
     private PlayerController _pc;
     private bool _autoComboActive;
     private bool _subscribed;
@@ -68,6 +72,7 @@ public class PlayerBeatJudge : MonoBehaviour
                 Debug.Log($"[PlayerBeat] 按键 组[{judgeGroup}]窗口={inWindow} 当前组={mgr.CurrentWindowGroup} 连打已激活={_autoComboActive}");
                 if (inWindow)
                 {
+                    TeleportBehindEnemy();   // 瞬移到 enemy 身后(空中保持当前高度,允许空中触发)
                     _autoComboActive = true;
                     Debug.Log("[PlayerBeat] 重击音判定成功,进入自动连打");
                 }
@@ -80,7 +85,15 @@ public class PlayerBeatJudge : MonoBehaviour
     {
         var mgr = MusicPointManager.Instance;
         string currentGroup = mgr != null ? mgr.CurrentWindowGroup : "无";
-        Debug.Log($"[PlayerBeat] 窗口事件 组={currentGroup} 连打激活={_autoComboActive}");
+        Debug.Log($"[PlayerBeat] 窗口事件 组={currentGroup} 连打激活={_autoComboActive} 当前点={pointTime:F2}");
+
+        // 判定窗口细节:judgeGroup 是否存在/标点数(排查用)
+        if (mgr != null)
+        {
+            var track = mgr.CurrentTrack;
+            var g = track != null ? track.GetGroup(judgeGroup) : null;
+            Debug.Log($"[PlayerBeat] 判定组[{judgeGroup}]存在={g != null} 点数={(g != null && g.points != null ? g.points.Length : 0)} 标识={(judgeIndicator != null ? judgeIndicator.name : "未拖")}");
+        }
 
         // 判定窗口:显示标识(提示玩家该按键)
         if (mgr != null && mgr.IsInGroupWindow(judgeGroup) && judgeIndicator != null)
@@ -115,6 +128,22 @@ public class PlayerBeatJudge : MonoBehaviour
         if (mgr == null) return;
         if (judgeIndicator != null && PointInGroup(mgr, pointTime, judgeGroup))
             judgeIndicator.SetActive(false);
+    }
+
+    /// <summary>瞬移到 enemy 身后(enemy 背对 player 的一侧,保持当前高度,空中允许)</summary>
+    private void TeleportBehindEnemy()
+    {
+        if (_pc == null) return;
+        var enemy = FindObjectOfType<BossControllerBase>();
+        if (enemy == null)
+        {
+            Debug.Log("[PlayerBeat] 瞬移敌后:未找到 Boss,跳过位移");
+            return;
+        }
+        float dir = _pc.transform.position.x > enemy.transform.position.x ? 1f : -1f;   // player 相对 enemy 的方向
+        float behindX = enemy.transform.position.x - dir * behindDistance;               // enemy 身后(enemy 面朝 player,背后即反方向)
+        _pc.transform.position = new Vector3(behindX, _pc.transform.position.y, _pc.transform.position.z);
+        Debug.Log($"[PlayerBeat] 瞬移到 enemy 身后 x={behindX:F2}");
     }
 
     /// <summary>该标点时刻是否属于某组</summary>
