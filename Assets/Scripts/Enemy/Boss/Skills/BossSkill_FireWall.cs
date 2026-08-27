@@ -11,19 +11,13 @@ using UnityEngine;
 /// </summary>
 public class BossSkill_FireWall : BossSkillExecutor
 {
-    [Header("Boss 位移(手动指定,无兜底)")]
-    [Tooltip("Boss 移动到的固定位置(拖场景 Transform;留空 = 不移动)")]
-    public Transform bossMoveTarget;
+    [Header("Boss 位移(位置在场景 BossSkillSceneConfig,这里只留速度)")]
     [Tooltip("Boss 移动到目标的速度")]
     public float bossMoveSpeed = 6f;
 
-    [Header("火焰墙(生成位置手动指定,无兜底)")]
+    [Header("火焰墙(资源与数值)")]
     [Tooltip("墙 prefab(视觉 + 子 obj 挂 MeleeRangeIndicator 定范围;不加实心 collider,墙不推人)")]
     public GameObject wallPrefab;
-    [Tooltip("左墙生成位置(拖场景 Transform;留空 = 不生成左墙)")]
-    public Transform leftWallSpawn;
-    [Tooltip("右墙生成位置(拖场景 Transform;留空 = 不生成右墙)")]
-    public Transform rightWallSpawn;
     [Tooltip("墙向 player 移动速度")]
     public float wallMoveSpeed = 4f;
     [Tooltip("墙距 player 的停靠距离(到距离后停)")]
@@ -39,20 +33,24 @@ public class BossSkill_FireWall : BossSkillExecutor
         if (boss == null) yield break;
         PlaySkillAnim(ctx.animator);
 
-        // 1. Boss 移动到固定位置(手动指定;留空不动)
+        // 0. 场景配置:位置全部从 BossSkillSceneConfig 读(prefab 不存场景引用)
+        var sceneConfig = FindObjectOfType<BossSkillSceneConfig>();
+        if (sceneConfig == null)
+            Debug.LogWarning("[BossSkill_FireWall] 场景里没有 BossSkillSceneConfig(挂空物体拖位置),技能 1 空放");
+
+        // 1. Boss 移动到固定位置(场景配置;留空不动)
+        Transform bossMoveTarget = sceneConfig != null ? sceneConfig.fireWallBossTarget : null;
         if (bossMoveTarget != null)
         {
             Vector3 targetPos = bossMoveTarget.position;   // 快照固定目标
             yield return MoveTransform(boss.transform, targetPos, bossMoveSpeed);
         }
 
-        // 2. 左右墙在手动指定位置生成(挂执行器 prefab 下,随技能结束销毁)
+        // 2. 左右墙在场景配置位置生成(挂执行器 prefab 下,随技能结束销毁)
         if (wallPrefab == null)
             Debug.LogWarning("[BossSkill_FireWall] 未配置 Wall Prefab,技能 1 空放");
-        if (leftWallSpawn == null && rightWallSpawn == null)
-            Debug.LogWarning("[BossSkill_FireWall] 未配置 Left/Right Wall Spawn,技能 1 空放(墙不生成)");
-        GameObject leftWall = SpawnWall(leftWallSpawn);
-        GameObject rightWall = SpawnWall(rightWallSpawn);
+        GameObject leftWall = SpawnWall(sceneConfig != null ? sceneConfig.fireWallLeftSpawn : null);
+        GameObject rightWall = SpawnWall(sceneConfig != null ? sceneConfig.fireWallRightSpawn : null);
 
         // 3. 墙朝 player 移动 + 范围伤害;到 stopDistance 停,停留 wallLifetime 后消失
         float elapsed = 0f;
