@@ -33,7 +33,6 @@ public class EnemyInspector : Editor
         EditorGUILayout.LabelField("当前 HP", enemy.CurrentHealth.ToString("F1"));
         EditorGUILayout.LabelField("攻击冷却", enemy.AttackCooldownDuration.ToString("F2"));
         EditorGUILayout.LabelField("攻击范围", $"宽 {enemy.AttackWidth:F1} × 高 {enemy.AttackHeight:F1}");
-        EditorGUILayout.LabelField("检测范围", $"宽 {enemy.DetectionWidth:F1} × 高 {enemy.DetectionHeight:F1}");
 
         // 攻击力 / 移速（管线终值，装备加成后实时变化）
         var atk = enemy.GetComponent<EnemyMeleeAttack>();

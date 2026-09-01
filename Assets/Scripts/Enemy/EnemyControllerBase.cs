@@ -76,12 +76,6 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     [Tooltip("按攻击类型匹配的受击 VFX 列表（匹配到时覆盖 hitVFXPrefab）")]
     [SerializeField] private HitVFXVariant[] hitVFXVariants;
 
-    [Header("AI 检测 — 矩形")]
-    [Tooltip("检测矩形半宽（X 轴；0 = 未设置）")]
-    [SerializeField] protected float detectionWidth = 0f;
-    [Tooltip("检测矩形半高（Y 轴；0 = 未设置）")]
-    [SerializeField] protected float detectionHeight = 0f;
-
     [Header("攻击范围 — 矩形")]
     [Tooltip("攻击矩形半宽（X 轴；0 = 未设置）")]
     [SerializeField] protected float attackWidth = 0f;
@@ -142,22 +136,10 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     /// <summary>管道检测射线命中缓冲（团结引擎 ContactFilter2D 重载需结果数组；静态复用防每帧 GC）</summary>
     private static readonly RaycastHit2D[] channelCheckHits = new RaycastHit2D[1];
 
-    [Header("移动范围")]
-    [Tooltip("活动范围半径（X 轴，以出生锚点为中心；0 = 不限制）")]
-    [SerializeField] protected float homeRange = 0f;
-    [Tooltip("出生锚点 X（活动范围中心；默认 = 编辑器摆放位置，可手动改）")]
-    [SerializeField] protected float homeX;
-    /// <summary>出生锚点是否已初始化（OnValidate/Awake 置位；置位后允许手动改 homeX 不被覆盖）</summary>
-    [SerializeField] private bool homeXInitialized;
-
     /// <summary>暴露攻击矩形半宽给攻击组件读取</summary>
     public float AttackWidth => attackWidth;
     /// <summary>暴露攻击矩形半高给攻击组件读取</summary>
     public float AttackHeight => attackHeight;
-    /// <summary>暴露检测矩形半宽给攻击组件读取</summary>
-    public float DetectionWidth => detectionWidth;
-    /// <summary>暴露检测矩形半高给攻击组件读取</summary>
-    public float DetectionHeight => detectionHeight;
 
     /// <summary>
     /// 嘲讽目标抽象层（B11）— 所有 AI 读取目标位置统一走此属性：
@@ -380,8 +362,6 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
     // ── 内置默认值（Inspector 与 SO 均未设置时的兜底，与原代码默认值一致）──
     protected const float DefaultMaxHealth = 3f;
-    protected const float DefaultDetectionWidth = 8f;
-    protected const float DefaultDetectionHeight = 3f;
     protected const float DefaultAttackWidth = 1.5f;
     protected const float DefaultAttackHeight = 1.5f;
     protected const float DefaultAttackCooldown = 1f;
@@ -400,21 +380,11 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
         _originalLocalScale = transform.localScale;   // 形变中断/禁用时恢复用
 
-        // [移动范围] 出生锚点兜底：OnValidate 未跑过（动态生成 / 运行时实例化）时同步为当前摆放位置。
-        // 已初始化（编辑器 OnValidate 同步过）则保留序列化值，允许手动改 homeX。
-        if (!homeXInitialized)
-        {
-            homeX = transform.position.x;
-            homeXInitialized = true;
-        }
-
         // [Lv 收敛] 按 level 取 SO 对应档（config 为空 → 全 null → 全走 Inspector/内置默认）
         lvStats = config != null ? config.GetLvStats(level) : null;
 
         // 取值链：Inspector 手填(>0) → SO 对应 Lv 档(>0) → 内置默认（0 = 未设置）
         maxHealth = Resolve(maxHealth, lvStats?.maxHealth ?? 0f, DefaultMaxHealth);
-        detectionWidth = Resolve(detectionWidth, lvStats?.detectionWidth ?? 0f, DefaultDetectionWidth);
-        detectionHeight = Resolve(detectionHeight, lvStats?.detectionHeight ?? 0f, DefaultDetectionHeight);
         attackWidth = Resolve(attackWidth, lvStats?.attackWidth ?? 0f, DefaultAttackWidth);
         attackHeight = Resolve(attackHeight, lvStats?.attackHeight ?? 0f, DefaultAttackHeight);
         attackCooldownDuration = Resolve(attackCooldownDuration, lvStats?.attackCooldownDuration ?? 0f, DefaultAttackCooldown);
@@ -437,20 +407,9 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     }
 
 #if UNITY_EDITOR
-    /// <summary>
-    /// 编辑器专用：首次加载/摆放 enemy 时把出生锚点 homeX 同步为当前摆放位置并置位 homeXInitialized。
-    /// 只初始化一次——之后用户可手动改 homeX 覆盖（不会再被同步覆盖）。
-    /// Awake 兜底覆盖动态生成 / 运行时实例化（OnValidate 未跑）的情况。
-    /// </summary>
     protected override void OnValidate()
     {
         base.OnValidate();  // 基类：自动补齐 rb/col
-
-        if (!homeXInitialized)
-        {
-            homeX = transform.position.x;
-            homeXInitialized = true;
-        }
     }
 #endif
 
@@ -650,17 +609,6 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
         // 空中击退中:移动系统完全让位,不清 x,让斜向击退速度自由飞(落地时清标志恢复)
         if (_airKnockbackActive) return;
-
-        // [移动范围] 数学拦截：已在边界(|x-homeX| >= homeRange)且仍朝边界外走 → 停。
-        // 朝范围中心方向（返回）不拦；homeRange=0 不限制。
-        // 状态无关：Patrol/Chase/Rush 统一遵守，防止敌人跨区/进管道。fsm 状态不动，
-        // 追击时停在边界面向玩家，玩家离开检测范围自然回巡逻。
-        if (homeRange > 0f
-            && Mathf.Abs(transform.position.x - homeX) >= homeRange
-            && Mathf.Sign(moveInput) == Mathf.Sign(transform.position.x - homeX))
-        {
-            moveInput = 0f;
-        }
 
         // FSM 状态已经设好 moveInput，这里统一执行物理移动
         if (Mathf.Abs(moveInput) > 0.01f)
@@ -1044,7 +992,19 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     private void TriggerGroundImpact()
     {
         if (groundImpactVFX != null)
-            VFXSpawner.SpawnInWorld(groundImpactVFX, transform.position);
+        {
+            // 尘土出现在 enemy 与地面的接触线:取所有碰撞体最低底边 y(敌人 pivot 通常在中心,
+            // 直接用 transform.position 会让尘土从身体中间冒出来)
+            Vector3 pos = transform.position;
+            float minY = pos.y;
+            foreach (var col in GetComponents<Collider2D>())
+            {
+                if (col != null && col.bounds.min.y < minY)
+                    minY = col.bounds.min.y;
+            }
+            pos.y = minY;
+            VFXSpawner.SpawnInWorld(groundImpactVFX, pos);
+        }
 
         if (groundImpactHitStop > 0f)
             HitStopController.Instance?.Trigger(groundImpactHitStop, groundImpactShakeDuration, groundImpactShakeMagnitude, Vector2.down);
@@ -1313,37 +1273,25 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     {
         if (!IsPlayerAlive()) return false;
         if (PlayerTarget == null) return false;
-        if (!IsInDetectionRect()) return false;
-        return HasLineOfSight();
+        return PlayerInSightRay();
     }
 
-    private bool IsInDetectionRect()
+    /// <summary>水平射线检测玩家 — 与管道检测同一条射线(同起点/同高度/同长度 channelCheckForward,方向 = Facing)。
+    /// 射线命中玩家/嘲讽幻象 = 看到;命中墙等其他物体 = 被挡没看到;射线内无玩家 = 没看到。
+    /// 必须 RaycastAll 跳过自身 collider(origin 在自身 collider 内,普通 Raycast 会先命中自己 → 永远 false)。</summary>
+    private bool PlayerInSightRay()
     {
-        float deltaX = PlayerTarget.position.x - transform.position.x;
-        float deltaY = PlayerTarget.position.y - transform.position.y;
-        return Mathf.Abs(deltaX) <= detectionWidth * 0.5f
-            && Mathf.Abs(deltaY) <= detectionHeight * 0.5f;
-    }
-
-    private bool HasLineOfSight()
-    {
-        float dist = Vector2.Distance(transform.position, PlayerTarget.position);
-        Vector2 dir = ((Vector2)(PlayerTarget.position - transform.position)).normalized;
-        Vector2 origin = (Vector2)transform.position + Vector2.up * 0.5f;
-
-        RaycastHit2D[] hits = Physics2D.RaycastAll(origin, dir, dist);
+        Vector2 origin = new Vector2(transform.position.x + Facing * 0.1f, transform.position.y + channelRayHeightOffset);
+        RaycastHit2D[] hits = Physics2D.RaycastAll(origin, Vector2.right * Facing, channelCheckForward);
         foreach (RaycastHit2D hit in hits)
         {
-            if (hit.transform == transform || hit.transform.IsChildOf(transform))
-                continue;
-            // 目标本体（玩家或嘲讽幻象）视为可见；幻象无碰撞体时射线自然穿透到目标位置
-            if (hit.transform == PlayerTarget)
-                return true;
-            if (hit.transform.TryGetComponent(out PlayerController _))
-                return true;
-            return false;
+            if (hit.collider == null) continue;
+            if (hit.transform == transform || hit.transform.IsChildOf(transform)) continue;   // 跳过自身
+            if (hit.transform == PlayerTarget) return true;
+            if (hit.collider.GetComponent<PlayerController>() != null) return true;
+            return false;   // 第一个非自身障碍(墙等)挡住视线
         }
-        return true;
+        return false;
     }
 
     public bool PlayerInAttackRange()
@@ -1419,32 +1367,22 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
         Vector3 pos = transform.position;
 
-        // 检测矩形（黄色半透明填充 + 线框）
-        DrawRectGizmo(pos, detectionWidth, detectionHeight,
-            new Color(1f, 1f, 0f, 0.08f), new Color(1f, 1f, 0f, 0.3f));
-
         // 攻击矩形（红色半透明填充 + 线框）
         DrawRectGizmo(pos, attackWidth, attackHeight,
             new Color(1f, 0f, 0f, 0.08f), new Color(1f, 0f, 0f, 0.5f));
 
-        // 巡逻悬崖检测射线（橙色；仅辅助调试 Inspector 参数）
+        // 巡逻悬崖检测射线（绿色）
         float footY = col != null ? col.bounds.min.y : pos.y - 0.5f;
         Vector2 cliffOrigin = new Vector2(pos.x + Facing * cliffCheckForward, footY);
-        Gizmos.color = new Color(1f, 0.6f, 0f, 0.9f);
+        Gizmos.color = new Color(0f, 1f, 0f, 0.9f);
         Gizmos.DrawLine(cliffOrigin, cliffOrigin + Vector2.down * cliffCheckDown);
         Gizmos.DrawSphere(cliffOrigin, 0.05f);
 
-        // 移动范围边界（绿色竖线；以出生锚点 homeX 为中心 ± homeRange，与近战 patrolRange 蓝色竖线区分）
-        // homeX 已由 OnValidate 同步为摆放位置（可手动改），编辑/运行态一致
-        if (homeRange > 0f)
-        {
-            float h = col != null ? col.bounds.size.y : 2f;
-            Gizmos.color = new Color(0f, 1f, 0f, 0.7f);
-            Vector3 left = new Vector3(homeX - homeRange, footY, 0f);
-            Vector3 right = new Vector3(homeX + homeRange, footY, 0f);
-            Gizmos.DrawLine(left, left + Vector3.up * h);
-            Gizmos.DrawLine(right, right + Vector3.up * h);
-        }
+        // 巡逻/追击管道检测射线（绿色水平线；与 HasChannelAhead 同参数,同时兼玩家检测）
+        Vector2 channelOrigin = new Vector2(pos.x + Facing * 0.1f, pos.y + channelRayHeightOffset);
+        Gizmos.color = new Color(0f, 1f, 0f, 0.9f);
+        Gizmos.DrawLine(channelOrigin, channelOrigin + Vector2.right * Facing * channelCheckForward);
+        Gizmos.DrawSphere(channelOrigin, 0.05f);
     }
 
     /// <summary>绘制矩形 Gizmo：半透明填充 Cube + 四条边线框</summary>
