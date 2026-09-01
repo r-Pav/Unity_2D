@@ -49,4 +49,8 @@ public class AnimationRelay : MonoBehaviour
 
     // 输入门事件帧(攻击动画命中帧之后挂,转发到 PlayerCombat → 当前攻击状态)
     public void OnAttackInputOpen() => _combat?.OnAttackInputOpen();
+
+    // 重音背刺(动画事件下拉里选这些,转发到 PlayerCombat → 当前背刺状态)
+    public void OnBackstabHitFrame() => _combat?.OnBackstabHitFrame();
+    public void OnBackstabEnd() => _combat?.OnBackstabEnd();
 }

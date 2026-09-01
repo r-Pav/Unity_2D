@@ -60,7 +60,9 @@ public class MusicPointManager : MonoBehaviour
     private Coroutine _bossLoopRoutine;  // Boss 双源交叠循环协程
     private Coroutine _introRoutine;     // 两段式前奏协程(前奏→切主体)
     private Coroutine _fadeRoutine;      // 界面静音淡入淡出协程
+    private Coroutine _autoBarRoutine;   // 自动重音调度协程(barIntervalSeconds>0 的场景曲)
     private bool _inWindow;              // 当前是否在触发窗口内
+    private bool _autoBarActive;         // 当前窗口是否由自动重音开启(IsAutoBarWindow 区分背刺窗口)
     private float _activePointTime;      // 当前窗口对应的点时刻
     private bool _bossMode;              // Boss 战模式(双源交叠)
     private bool _inIntroPhase;          // 两段式:当前是否处于前奏段(恢复/仲裁用)
@@ -97,6 +99,9 @@ public class MusicPointManager : MonoBehaviour
         pointTime = _activePointTime;
         return _inWindow;
     }
+
+    /// <summary>当前是否在「自动重音窗口」内(背刺判定用;Boss 标点窗口不满足,不干扰 PlayerBeatJudge)</summary>
+    public bool IsAutoBarWindow => _inWindow && _autoBarActive;
 
     /// <summary>下一个音乐点时刻(-1 = 无点)</summary>
     public float NextPointTime
@@ -269,6 +274,7 @@ public class MusicPointManager : MonoBehaviour
         else
         {
             RestartSchedule();
+            RestartAutoBar();   // 恢复前台:按恢复后的 TrackTime 重新对齐自动重音窗口
             if (_bossMode)
             {
                 if (_bossLoopRoutine != null) StopCoroutine(_bossLoopRoutine);
@@ -293,7 +299,10 @@ public class MusicPointManager : MonoBehaviour
         audioSourceA.Play();
 
         StopSource(audioSourceB);          // 副源清空,防残留
+        StopAutoBar();                     // 切曲:停旧自动重音协程
+        _inWindow = false;                 // 旧窗口残留清掉,新排程重新管理
         RestartSchedule();
+        RestartAutoBar();                  // 新曲 barIntervalSeconds>0 时启动自动重音
     }
 
     /// <summary>重启点表排程(切曲/切圈时调用):排当前曲主体 points,合并所有组标点</summary>
@@ -374,6 +383,59 @@ public class MusicPointManager : MonoBehaviour
         }
     }
 
+    // ============================================================
+    // 自动重音(普通场景曲 barIntervalSeconds>0):按小节对齐开窗,复用 OnWindowEnter/Passed 事件。
+    // 与标点排程互斥设计(场景曲配置自动重音时 points 一般留空);loop 回绕天然安全:
+    // next 每轮按 TrackTime 重新对齐(Floor 取整),TrackTime 倒退后 next 仍指向未来时刻,不会卡死。
+    // 曲目切换(PlayTrack/CrossFadeTo/EnterBossMusic)时 StopAutoBar 停掉旧协程,防新曲时间内误开窗。
+    // ============================================================
+
+    /// <summary>停止自动重音协程并复位标志(不碰 _inWindow — 由各切曲点显式复位,防误关刚由排程打开的手工窗口)</summary>
+    private void StopAutoBar()
+    {
+        if (_autoBarRoutine != null)
+            StopCoroutine(_autoBarRoutine);
+        _autoBarRoutine = null;
+        _autoBarActive = false;
+    }
+
+    /// <summary>按当前曲重启自动重音(barIntervalSeconds>0 才启动;曲目切换/恢复前台后调用)</summary>
+    private void RestartAutoBar()
+    {
+        StopAutoBar();
+        if (_currentTrack != null && _currentTrack.barIntervalSeconds > 0f)
+            _autoBarRoutine = StartCoroutine(AutoBarRoutine());
+    }
+
+    /// <summary>自动重音调度:每隔 barIntervalSeconds 开一个窗口(对齐小节,窗口时长与标点窗口一致 = 2×半宽)</summary>
+    private IEnumerator AutoBarRoutine()
+    {
+        float interval = _currentTrack != null ? _currentTrack.barIntervalSeconds : 0f;
+        if (interval <= 0f) yield break;
+        float windowDuration = windowHalfWidth * 2f;
+
+        _autoBarActive = true;
+        while (_currentTrack != null && _currentTrack.barIntervalSeconds > 0f)
+        {
+            float next = Mathf.Floor(TrackTime / interval) * interval + interval;   // 下一个窗口时刻(对齐小节)
+            while (_currentTrack != null && TrackTime < next) yield return null;     // 等窗口(TrackTime 倒退也安全)
+            if (_currentTrack == null) break;
+
+            _inWindow = true;
+            _autoBarActive = true;
+            OnWindowEnter?.Invoke(next);
+
+            while (_currentTrack != null && TrackTime < next + windowDuration) yield return null;
+            if (_currentTrack == null) break;
+
+            _inWindow = false;
+            _autoBarActive = false;
+            OnWindowPassed?.Invoke(next);
+        }
+        _autoBarActive = false;
+        _autoBarRoutine = null;
+    }
+
     /// <summary>缓入缓出切曲(管道/场景切换用):当前主源淡出,副源淡入新曲,完成后主源切换</summary>
     public void CrossFadeTo(MusicTrackData track)
     {
@@ -384,6 +446,8 @@ public class MusicPointManager : MonoBehaviour
             return;
         }
         if (_crossFadeRoutine != null) StopCoroutine(_crossFadeRoutine);
+        StopAutoBar();                     // 切曲开始:停旧自动重音协程(新曲协程在 fade 结束按新曲重启)
+        _inWindow = false;                 // 过渡期无窗口
         _crossFadeRoutine = StartCoroutine(CrossFadeRoutine(track));
     }
 
@@ -425,6 +489,7 @@ public class MusicPointManager : MonoBehaviour
         fadeIn.volume = targetVol;
         _crossFadeRoutine = null;
         RestartSchedule();
+        RestartAutoBar();                // 新曲 barIntervalSeconds>0 时启动自动重音
     }
 
     /// <summary>进入 Boss 战:场景曲缓出,指定曲目双源交叠循环缓入(进 Boss 房调用,曲目由触发处传入)</summary>
@@ -433,6 +498,8 @@ public class MusicPointManager : MonoBehaviour
         if (_bossMode || bossTrack == null || bossTrack.clip == null) return;
         _sceneTrack = _currentTrack;   // 保存场景曲(可能为 null,退 Boss 时直接停)
         _bossMode = true;
+        StopAutoBar();                 // Boss 曲无自动重音:停场景曲的自动重音协程
+        _inWindow = false;
         if (_crossFadeRoutine != null) StopCoroutine(_crossFadeRoutine);
         _crossFadeRoutine = StartCoroutine(EnterBossRoutine(bossTrack));
     }

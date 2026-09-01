@@ -15,6 +15,10 @@ public class BeatFlashPoint : MonoBehaviour
     [Tooltip("闪烁时长(秒)")]
     public float flashDuration = 0.25f;
 
+    [Header("订阅")]
+    [Tooltip("自动订阅全局窗口(仅 Boss 用;普通敌人由 EnemyBeatIndicator 手动触发)")]
+    public bool autoSubscribe = true;
+
     private Color _originalColor;
     private Coroutine _flashRoutine;
     private bool _subscribed;
@@ -29,6 +33,7 @@ public class BeatFlashPoint : MonoBehaviour
 
     private void Start()
     {
+        if (!autoSubscribe) return;
         var mgr = MusicPointManager.Instance;
         if (mgr != null)
         {
@@ -47,8 +52,13 @@ public class BeatFlashPoint : MonoBehaviour
     /// <summary>重音窗口开启 → 闪烁(防重:连续窗口只重启协程)</summary>
     private void OnWindowEnter(float pointTime)
     {
-        if (flashSprite == null) return;
-        if (!gameObject.activeInHierarchy) return;
+        Flash();
+    }
+
+    /// <summary>手动触发闪烁(EnemyBeatIndicator 在自动重音窗口调用;不依赖自动订阅)</summary>
+    public void Flash()
+    {
+        if (flashSprite == null || !gameObject.activeInHierarchy) return;
         if (_flashRoutine != null)
             StopCoroutine(_flashRoutine);
         _flashRoutine = StartCoroutine(FlashRoutine());

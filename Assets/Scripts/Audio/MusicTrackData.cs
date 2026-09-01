@@ -20,6 +20,10 @@ public class MusicTrackData : ScriptableObject
     [Tooltip("音乐点时间秒,升序手工标。场景曲整曲范围;Boss 曲 0→loopPoint 内")]
     public float[] points;
 
+    [Header("自动重音(普通场景曲)")]
+    [Tooltip("自动重音间隔(秒):普通场景曲每隔此秒数开一个重音窗口(背刺判定/头顶标识用);0 = 不启用(用 points/标点组)")]
+    public float barIntervalSeconds = 0f;
+
     [Header("两段式(Boss 曲可选)")]
     [Tooltip("第一首(前奏,可空)。空=Boss 模式退化为单曲交叠循环,场景曲不受影响")]
     public AudioClip introClip;

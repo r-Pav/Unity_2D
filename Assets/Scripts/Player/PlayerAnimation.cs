@@ -52,7 +52,8 @@ public class PlayerAnimation : MonoBehaviour
         bool inCombatState = cur is PlayerAttackState
                           || cur is PlayerAirAttackState
                           || cur is PlayerBlockState
-                          || cur is PlayerGroundPoundState;
+                          || cur is PlayerGroundPoundState
+                          || cur is PlayerBackstabState;
 
         bool isMove = !(_pc.IsJumping || _pc.IsFalling)
                    && !inCombatState

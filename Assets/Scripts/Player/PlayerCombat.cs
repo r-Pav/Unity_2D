@@ -207,6 +207,9 @@ public class PlayerCombat : MonoBehaviour
     /// <summary>终结重击攻击标签（供 ICombatant.CurrentAttackLabel 查询）</summary>
     public string MeleeFinisherAttackType => meleeFinisherAttackType;
 
+    /// <summary>敌人 Layer(供 PlayerBackstabState 目标搜索用)</summary>
+    public LayerMask EnemyLayer => enemyLayer;
+
     // ============================================================
     // 动画事件薄转发 — 正式事件迁移在 P5,P2 先转发给 FSM 当前状态类
     // ============================================================
@@ -269,6 +272,20 @@ public class PlayerCombat : MonoBehaviour
             isAir = true;
         }
         OnMeleeHitFrame(idx, 3, isAir);
+    }
+
+    /// <summary>背刺动画命中帧事件(AnimationRelay 转发)→ 转发当前背刺状态结算(高伤害+强制硬直)</summary>
+    public void OnBackstabHitFrame()
+    {
+        if (_owner != null && _owner.PlayerFsm?.CurrentState is PlayerBackstabState bs)
+            bs.OnBackstabHitFrame();
+    }
+
+    /// <summary>背刺动画结束事件(AnimationRelay 转发)→ 转发当前背刺状态退出(回 Idle/Move)</summary>
+    public void OnBackstabEnd()
+    {
+        if (_owner != null && _owner.PlayerFsm?.CurrentState is PlayerBackstabState bs)
+            bs.OnBackstabEnd();
     }
 
     /// <summary>攻击朝向：优先当前输入,否则取玩家朝向（供状态类/伤害核心读取）</summary>
@@ -527,6 +544,39 @@ public class PlayerCombat : MonoBehaviour
         }
 
         rangeIndicator.Flash();
+    }
+
+    /// <summary>
+    /// 重音背刺伤害结算(PlayerBackstabState 命中帧调用)— 高伤害 + 强制硬直。
+    /// 伤害 = 玩家当前基础伤害 × 倍率(默认 3x),走 RollCrit;攻击标签用重击标签(meleeFinisherAttackType,
+    /// Poise.IsMeleeAttack → OnHitBy 近战路径 → EnterStunState 强制硬直)。
+    /// 只打选中的目标(不扫范围框,背刺是精准打击)。
+    /// </summary>
+    public void ExecuteBackstab(EnemyControllerBase target, float damageMultiplier, float knockbackForce)
+    {
+        if (target == null || target.IsDead) return;
+
+        float dmg = RollCrit(GetEffectiveDamage() * damageMultiplier);
+
+        // 击退方向:水平远离玩家(与弹反重击同款,Y 轴归零)
+        Vector2 knockDir = ((Vector2)(target.transform.position - transform.position)).normalized;
+        knockDir.y = 0f;
+        if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
+
+        Knockback knock = new Knockback
+        {
+            direction = knockDir,
+            force = knockbackForce,
+            duration = 0f,
+            ignoreResistance = false
+        };
+        var info = BuildDamageInfo(dmg, meleeFinisherAttackType, knock);
+        CombatResolver.Resolve(info.source, target, info);
+
+        // 命中本地冻结(独立卡帧):与普通近战路径一致,只冻被命中的这只敌人
+        float localFreeze = target.IsBoss ? bossLocalHitStopDuration : enemyLocalHitStopDuration;
+        if (localFreeze > 0f)
+            target.ApplyLocalFreeze(localFreeze);
     }
 
     // ============================================================

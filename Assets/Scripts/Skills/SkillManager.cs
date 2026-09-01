@@ -331,6 +331,9 @@ public class SkillManager : MonoBehaviour
     {
         if (owner != null && !owner.InputEnabled) return;
 
+        // [重音背刺] 当前曲启用自动重音(barIntervalSeconds>0)时,F 归背刺/普攻挥空用,不再触发技能槽 3(背刺优先)
+        bool fReserved = IsFReservedByBackstab();
+
         // [P7] 硬编码按键映射：Q=0, E=1, R=2, F=3
         KeyCode[] hudKeys = { KeyCode.Q, KeyCode.E, KeyCode.R, KeyCode.F };
         for (int i = 0; i < skillSlots.Length; i++)
@@ -338,9 +341,17 @@ public class SkillManager : MonoBehaviour
             var slot = skillSlots[i];
             if (slot.data == null) continue;
             if (!IsActivatableType(slot.data.type)) continue;
+            if (fReserved && hudKeys[i] == KeyCode.F) continue;
             if (Input.GetKeyDown(hudKeys[i]))
                 TryActivate(i);
         }
+    }
+
+    /// <summary>F 是否被重音背刺占用:当前曲 barIntervalSeconds>0(自动重音启用)时为 true</summary>
+    private static bool IsFReservedByBackstab()
+    {
+        var mgr = MusicPointManager.Instance;
+        return mgr != null && mgr.CurrentTrack != null && mgr.CurrentTrack.barIntervalSeconds > 0f;
     }
 
     private static bool IsActivatableType(SkillType type) =>

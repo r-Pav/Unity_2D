@@ -56,6 +56,23 @@ public class PlayerController : PlayerCharacterBase
     public float AirMaxSpeed => airMaxSpeed;
 
     // ============================================================
+    // 重音背刺(F 键)
+    // ============================================================
+
+    [Header("重音背刺")]
+    [Tooltip("背刺目标搜索半径(米)")]
+    [SerializeField] private float backstabSearchRadius = 6f;
+
+    [Tooltip("背刺落点偏移(米):敌人背后距离")]
+    [SerializeField] private float backstabBehindOffset = 1.5f;
+
+    [Tooltip("背刺伤害倍率(基础伤害 × 此值)")]
+    [SerializeField] private float backstabDamageMultiplier = 3f;
+
+    [Tooltip("背刺击退力")]
+    [SerializeField] private float backstabKnockbackForce = 8f;
+
+    // ============================================================
     // 子模块引用
     // ============================================================
 
@@ -68,6 +85,7 @@ public class PlayerController : PlayerCharacterBase
     private PlayerJump jump;
     private PlayerDash dash;
     private PlayerHealth health;
+    private PlayerTeleport teleport;
 
     // [P4/P5] 武器技能联动 & 组合合成系统
     private WeaponSkillLink weaponSkillLink;
@@ -105,6 +123,9 @@ public class PlayerController : PlayerCharacterBase
 
     // [阶段7] 瞄准选点状态（传送后慢动作选点；由 ComboLv3Executor 切入/退出）
     public PlayerAimingState AimingState { get; private set; }
+
+    // [重音背刺] 自动重音窗口内 F 触发的背刺状态(方案 v2,无连打)
+    public PlayerBackstabState BackstabState { get; private set; }
 
     // ============================================================
     // 状态转发属性 — 动画聚合 / 敌人 AI 查询统一走这里
@@ -177,6 +198,9 @@ public class PlayerController : PlayerCharacterBase
         jump = GetComponent<PlayerJump>();
         dash = GetComponent<PlayerDash>();
         health = GetComponent<PlayerHealth>();
+        // 传送组件(重音背刺复用 PlayerTeleport):优先获取已有,无则创建(与 PlayerDetectionConfig 同款)
+        teleport = GetComponent<PlayerTeleport>();
+        if (teleport == null) teleport = gameObject.AddComponent<PlayerTeleport>();
 
         // ── 战斗态锁定：攻击/受伤时触发，timer 清零后退出 ──
         if (combat != null)
@@ -209,6 +233,8 @@ public class PlayerController : PlayerCharacterBase
             dash != null ? dash.DashDuration : 0.15f);
         SkillCastState = new PlayerSkillCastState(this, PlayerFsm, _animator);
         AimingState = new PlayerAimingState(this, PlayerFsm, _animator);
+        BackstabState = new PlayerBackstabState(this, PlayerFsm, _animator, combat, teleport,
+            backstabSearchRadius, backstabBehindOffset, backstabDamageMultiplier, backstabKnockbackForce);
         PlayerFsm.ChangeState(IdleState);
     }
 
@@ -231,6 +257,10 @@ public class PlayerController : PlayerCharacterBase
         // 计时器递减必须先于锁定判定：FreezeTimer 在 IsActionLocked 里被检查，
         // 若递减在锁定 return 之后则永远无法归零 → 永久锁死（蹬墙跳后卡下落动画）
         UpdateCooldowns();
+
+        // 重音背刺 F 键:任何状态都检测(窗口内可强制打断普攻/格挡/冲刺等;死亡/受击硬直/背刺中除外)。
+        // 放在锁定分支之前,保证攻击等 LocksInput 状态下窗口内 F 仍能强制打断。
+        HandleBackstabInput();
 
         if (IsActionLocked())
         {
@@ -327,6 +357,59 @@ public class PlayerController : PlayerCharacterBase
     private void UpdateSubModules()
     {
         skillManager?.CheckHotkeys();
+    }
+
+    // ============================================================
+    // 重音背刺 F 键入口(方案 v2)
+    // 窗口内 F:强制打断进 PlayerBackstabState;窗口外 F:普攻挥空(不吞输入)。
+    // 仅当当前曲启用自动重音(barIntervalSeconds>0)时接管 F;Boss 曲/未配置曲 F 保持原行为
+    // (技能槽 3 由 SkillManager 处理、Boss 战判定由 PlayerBeatJudge 处理)。
+    // ============================================================
+
+    /// <summary>每帧 F 键分发:自动重音窗口内 → 背刺;窗口外 → 普攻挥空</summary>
+    private void HandleBackstabInput()
+    {
+        if (!Input.GetKeyDown(KeyCode.F)) return;
+
+        var mgr = MusicPointManager.Instance;
+        if (mgr == null || mgr.CurrentTrack == null || mgr.CurrentTrack.barIntervalSeconds <= 0f)
+            return;   // 未启用自动重音(Boss 曲/普通曲未配置):F 保持原行为
+
+        if (mgr.IsAutoBarWindow)
+            TryEnterBackstab();
+        else
+            TryAttackSwing();
+    }
+
+    /// <summary>窗口内 F:强制打断进背刺状态(死亡/受击硬直/背刺自身执行中除外,防重入)</summary>
+    private void TryEnterBackstab()
+    {
+        if (PlayerFsm == null || BackstabState == null) return;
+        var cur = PlayerFsm.CurrentState;
+        if (cur is PlayerDeadState
+            || cur is PlayerHurtState
+            || cur is PlayerAirHurtState
+            || cur is PlayerBackstabState) return;
+        PlayerFsm.ChangeState(BackstabState);
+    }
+
+    /// <summary>窗口外 F:普攻挥空 — 仅可攻击状态(Idle/Move/Jump/Fall)且冷却就绪才触发第 1 段;动作中按 F 无反应</summary>
+    private void TryAttackSwing()
+    {
+        if (PlayerFsm == null || Combat == null) return;
+        if (!Combat.AttackCooldownReady) return;
+
+        var cur = PlayerFsm.CurrentState;
+        if (cur is PlayerIdleState || cur is PlayerMoveState)
+        {
+            PlayerFsm.ChangeState(AttackState);
+        }
+        else if (cur is PlayerJumpState || cur is PlayerFallState)
+        {
+            // 空中:与左键一致走空中攻击第 1 段(一滞空一次限制)
+            if (JumpComp != null && !JumpComp.AirAttackUsed)
+                PlayerFsm.ChangeState(AirAttackState);
+        }
     }
 
     protected override void OnFixedUpdate()
