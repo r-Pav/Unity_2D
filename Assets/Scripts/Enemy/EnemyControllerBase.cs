@@ -94,6 +94,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     [Header("空中受击")]
     [Tooltip("空中受击滞空时长(秒):击飞中再受击停住后继续击退轨迹;0 = 关闭")]
     [SerializeField] protected float airHitHangDuration = 0.3f;
+    [Tooltip("空中滞空重力倍率(缓慢下落):滞空期间 gravityScale = 此值,敌人缓缓飘落而不是定身停住(0.3 ≈ 玩家空中攻击悬停;0 = 关重力完全定身)")]
+    [SerializeField] protected float airHangGravityScale = 0.3f;
     [Tooltip("空中受击吸附玩家速度(向玩家前方拉 x,保持连段距离;0 = 关闭)")]
     [SerializeField] protected float airHitPullSpeed = 8f;
     [Tooltip("空中吸附偏移(玩家前方距离,编辑器可调;目标 x = 玩家位置 + 朝向 × 此值)")]
@@ -132,6 +134,12 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
     [Tooltip("射线发射高度偏移(腰部)")]
     [SerializeField] private float channelRayHeightOffset = 0.5f;
+
+    [Tooltip("战斗态垂直容差(Y 轴):战斗中有仇恨时任意方向检测玩家,垂直差在此范围内算可见(玩家绕后/跳起不丢仇恨)")]
+    [SerializeField] private float combatSightHeight = 3f;
+
+    [Tooltip("朝向死区(X 轴):玩家水平距离小于此值时视为重合(如玩家在头顶),DirectionToPlayer 返回 0 = 停住不转身,防左右疯狂抖动")]
+    [SerializeField] private float facingDeadZone = 0.3f;
 
     /// <summary>管道检测射线命中缓冲（团结引擎 ContactFilter2D 重载需结果数组；静态复用防每帧 GC）</summary>
     private static readonly RaycastHit2D[] channelCheckHits = new RaycastHit2D[1];
@@ -295,18 +303,22 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         if (_animator != null) _animator.speed = 1f;
         if (_airHangFreeze)
         {
-            // 滞空模式:恢复重力(冻结期间关闭定身)
+            // 滞空模式:恢复重力(缓慢下落期间速度从未清零,不恢复保存速度,避免速度倒退到滞空开始)
             if (rb != null) rb.gravityScale = 1f;
             _airHangFreeze = false;
         }
-        // 恢复击退速度(滞空 = 停住后继续正常击退轨迹;普通冻结 = 恢复原行为)
-        if (rb != null) rb.velocity = _localFreezeSavedVelocity;
+        else
+        {
+            // 普通冻结:恢复击退速度
+            if (rb != null) rb.velocity = _localFreezeSavedVelocity;
+        }
         _localFreezeSavedVelocity = Vector2.zero;
     }
 
     /// <summary>
-    /// 空中滞空冻结 — 击飞中的敌人再受击:停住(动画/速度/FSM 停、关重力定身),结束恢复击退速度继续正常击退轨迹。
-    /// 只对空中生效;地面受击走原硬直逻辑。冻结中再次调用取更长的剩余时长(空中连段滞空)。
+    /// 空中滞空 — 击飞中的敌人再受击:改为缓慢下落(小重力+保留水平速度,不再定身停住),
+    /// 结束恢复原重力。避免定身停住与二次击飞的冲突(速度从 0 累加/视觉定格)。
+    /// 只对空中生效;地面受击走原硬直逻辑。滞空中再次调用取更长的剩余时长(空中连段滞空)。
     /// </summary>
     public void ApplyAirHangFreeze(float duration)
     {
@@ -314,19 +326,17 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         if (_localFreezeRemaining > 0f)
         {
             if (duration > _localFreezeRemaining) _localFreezeRemaining = duration;
-            // 冻结中再次受击:ApplyKnockback 已直接赋值新击退速度,保存速度跟着更新
-            if (rb != null) _localFreezeSavedVelocity = rb.velocity;
+            // 滞空中再次受击:ApplyKnockback 已在保留速度上累加,无需额外处理
             return;
         }
         _localFreezeRemaining = duration;
         _airHangFreeze = true;
         _pullToPlayer = true;   // 空中受击:吸附玩家检测矩形中心,保持连段距离
-        if (_animator != null) _animator.speed = 0f;
+        if (_animator != null) _animator.speed = 0f;   // 受击动画冻结(保持受击姿态缓慢飘落)
         if (rb != null)
         {
-            _localFreezeSavedVelocity = rb.velocity;   // 击退已直接赋值,存当前速度,结束恢复
-            rb.velocity = Vector2.zero;
-            rb.gravityScale = 0f;   // 无全局卡帧时也必须定身:关重力防下落,结束恢复
+            _localFreezeSavedVelocity = rb.velocity;   // 存档(普通冻结路径用;滞空缓慢下落不清速度)
+            rb.gravityScale = airHangGravityScale;     // 小重力:缓慢下落,不清速度(二次击飞从当前速度累加,不冲突)
         }
     }
 
@@ -549,8 +559,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
             }
         }
 
-        // 空中吸附:玩家空中连段时把敌人往玩家前方拉 x(目标 = 玩家位置 + 朝向 × airHitPullOffset,
-        // 只吸水平,不碰 y 下落,仅空中),防止玩家前冲移动超过敌人导致错位/判定丢失。落地/死亡自动解除。
+        // 空中吸附:玩家空中连段时把敌人往玩家前方拉 x + 吊住 y(目标 = 玩家位置 + 朝向 × airHitPullOffset;
+        // x 防玩家前冲错位,y 向玩家攻击高度缓慢靠拢,敌人不掉出连段范围;仅空中)。落地/死亡自动解除。
         if (_pullToPlayer && airHitPullSpeed > 0f && !isDead && rb != null && !IsGrounded)
         {
             var pc = PlayerController.Instance;
@@ -559,6 +569,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
                 float targetX = pc.transform.position.x + pc.GetFacing() * airHitPullOffset;
                 Vector2 pos = rb.position;
                 pos.x = Mathf.Lerp(pos.x, targetX, airHitPullSpeed * Time.deltaTime);
+                // 吊住 y:向玩家当前高度缓慢靠拢(系数减半,连段期间 enemy 不掉出攻击范围)
+                pos.y = Mathf.Lerp(pos.y, pc.transform.position.y, airHitPullSpeed * Time.deltaTime * 0.5f);
                 rb.position = pos;
             }
         }
@@ -1110,6 +1122,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
             // ── 近战路径：始终进入 stun 硬直（不受霸体影响）──
             //    注意：不立即 fsm.ChangeState(CreateChaseState())，让 stun 真正执行 0.5s
             //          EnemyStunState.OnUpdate 会在 timer 归零后自动转 Chase/Fallback
+            // 受击即标记战斗仇恨:stun 结束 IsInCombatState=true → 转 Chase 追击(玩家在身后偷袭也能转身还手,不再回 idle 挨打)
+            OnEnterCombatState();
             EnterStunState();
         }
         else
@@ -1273,7 +1287,18 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     {
         if (!IsPlayerAlive()) return false;
         if (PlayerTarget == null) return false;
+        // 战斗态(有仇恨):任意方向距离检测 — 玩家绕后/跳起不丢仇恨(单向射线扫不到身后)
+        if (IsInCombatState)
+            return PlayerInRange();
         return PlayerInSightRay();
+    }
+
+    /// <summary>战斗态可见:任意方向,水平距离 <= channelCheckForward 且垂直差 <= combatSightHeight(绕后/跳起不丢仇恨)</summary>
+    private bool PlayerInRange()
+    {
+        float deltaX = Mathf.Abs(PlayerTarget.position.x - transform.position.x);
+        float deltaY = Mathf.Abs(PlayerTarget.position.y - transform.position.y);
+        return deltaX <= channelCheckForward && deltaY <= combatSightHeight;
     }
 
     /// <summary>水平射线检测玩家 — 与管道检测同一条射线(同起点/同高度/同长度 channelCheckForward,方向 = Facing)。
@@ -1306,7 +1331,10 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     public float DirectionToPlayer()
     {
         if (PlayerTarget == null) return 0f;
-        return PlayerTarget.position.x > transform.position.x ? 1f : -1f;
+        float dx = PlayerTarget.position.x - transform.position.x;
+        // 重合死区:玩家水平距离过小(头顶/重叠)时返回 0 → 停住不转身,防每帧 1/-1 翻转导致朝向疯狂抖动
+        if (Mathf.Abs(dx) < facingDeadZone) return 0f;
+        return dx > 0f ? 1f : -1f;
     }
 
     /// <summary>
@@ -1383,6 +1411,18 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         Gizmos.color = new Color(0f, 1f, 0f, 0.9f);
         Gizmos.DrawLine(channelOrigin, channelOrigin + Vector2.right * Facing * channelCheckForward);
         Gizmos.DrawSphere(channelOrigin, 0.05f);
+
+        // 背刺落点检测射线(蓝色):enemy 背后方向,长度 = 玩家 WeaponThrow 的背刺偏移配置。
+        // 命中墙/管道等 = 背刺会改到 enemy 正面(PlayerBackstabState.ResolveBackstabLanding)
+        float backstabOffset = 1.5f;
+        var backstabPlayer = PlayerController.Instance;
+        var backstabWeapon = backstabPlayer != null ? backstabPlayer.GetComponentInChildren<WeaponThrow>() : null;
+        if (backstabWeapon != null) backstabOffset = backstabWeapon.BackstabBehindOffset;
+        Vector2 backstabOrigin = pos;
+        Vector2 backstabTip = backstabOrigin + Vector2.right * (-Facing) * backstabOffset;
+        Gizmos.color = Color.blue;
+        Gizmos.DrawLine(backstabOrigin, backstabTip);
+        Gizmos.DrawSphere(backstabTip, 0.08f);
     }
 
     /// <summary>绘制矩形 Gizmo：半透明填充 Cube + 四条边线框</summary>

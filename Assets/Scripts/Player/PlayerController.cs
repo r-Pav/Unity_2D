@@ -56,25 +56,8 @@ public class PlayerController : PlayerCharacterBase
     public float AirMaxSpeed => airMaxSpeed;
 
     // ============================================================
-    // 重音背刺(F 键)
-    // ============================================================
-
-    [Header("重音背刺")]
-    [Tooltip("背刺目标搜索半径(米)")]
-    [SerializeField] private float backstabSearchRadius = 6f;
-
-    [Tooltip("背刺落点偏移(米):敌人背后距离")]
-    [SerializeField] private float backstabBehindOffset = 1.5f;
-
-    [Tooltip("背刺伤害倍率(基础伤害 × 此值)")]
-    [SerializeField] private float backstabDamageMultiplier = 3f;
-
-    [Tooltip("背刺击退力")]
-    [SerializeField] private float backstabKnockbackForce = 8f;
-
-    // ============================================================
-    // 子模块引用
-    // ============================================================
+// 子模块引用
+// ============================================================
 
     private PlayerCombat combat;
     private PlayerGroundPound groundPound;
@@ -233,8 +216,14 @@ public class PlayerController : PlayerCharacterBase
             dash != null ? dash.DashDuration : 0.15f);
         SkillCastState = new PlayerSkillCastState(this, PlayerFsm, _animator);
         AimingState = new PlayerAimingState(this, PlayerFsm, _animator);
+        // 背刺参数统一从 WeaponThrow 读(和其他攻击的击退/位移配置放一起,Inspector 在武器上调)
+        var backstabWeapon = GetComponentInChildren<WeaponThrow>();
         BackstabState = new PlayerBackstabState(this, PlayerFsm, _animator, combat, teleport,
-            backstabSearchRadius, backstabBehindOffset, backstabDamageMultiplier, backstabKnockbackForce);
+            backstabWeapon != null ? backstabWeapon.BackstabSearchRadius : 6f,
+            backstabWeapon != null ? backstabWeapon.BackstabBehindOffset : 1.5f,
+            backstabWeapon != null ? backstabWeapon.BackstabDamageMultiplier : 3f,
+            backstabWeapon != null ? backstabWeapon.BackstabKnockback : new Vector2(8f, 0f),
+            backstabWeapon != null ? backstabWeapon.BackstabHoverDuration : 0.2f);
         PlayerFsm.ChangeState(IdleState);
     }
 
@@ -325,6 +314,7 @@ public class PlayerController : PlayerCharacterBase
             {
                 combatTimer = 0f;
                 passiveEquipManager?.SetCombatState(false);
+                AreaChannelTrigger.SetAllSolid(false);   // 退出战斗:管道恢复 trigger(可传送)
             }
         }
 
@@ -361,12 +351,12 @@ public class PlayerController : PlayerCharacterBase
 
     // ============================================================
     // 重音背刺 F 键入口(方案 v2)
-    // 窗口内 F:强制打断进 PlayerBackstabState;窗口外 F:普攻挥空(不吞输入)。
+    // 窗口内 F:强制打断进 PlayerBackstabState;窗口外 F:无效,什么也不触发。
     // 仅当当前曲启用自动重音(barIntervalSeconds>0)时接管 F;Boss 曲/未配置曲 F 保持原行为
     // (技能槽 3 由 SkillManager 处理、Boss 战判定由 PlayerBeatJudge 处理)。
     // ============================================================
 
-    /// <summary>每帧 F 键分发:自动重音窗口内 → 背刺;窗口外 → 普攻挥空</summary>
+    /// <summary>每帧 F 键分发:仅自动重音窗口内触发背刺;窗口外按 F 无效果</summary>
     private void HandleBackstabInput()
     {
         if (!Input.GetKeyDown(KeyCode.F)) return;
@@ -377,8 +367,7 @@ public class PlayerController : PlayerCharacterBase
 
         if (mgr.IsAutoBarWindow)
             TryEnterBackstab();
-        else
-            TryAttackSwing();
+        // 窗口外 F:无效,什么都不触发(2026-09-01 saika 确认,不再普攻挥空)
     }
 
     /// <summary>窗口内 F:强制打断进背刺状态(死亡/受击硬直/背刺自身执行中除外,防重入)</summary>
@@ -393,32 +382,12 @@ public class PlayerController : PlayerCharacterBase
         PlayerFsm.ChangeState(BackstabState);
     }
 
-    /// <summary>窗口外 F:普攻挥空 — 仅可攻击状态(Idle/Move/Jump/Fall)且冷却就绪才触发第 1 段;动作中按 F 无反应</summary>
-    private void TryAttackSwing()
-    {
-        if (PlayerFsm == null || Combat == null) return;
-        if (!Combat.AttackCooldownReady) return;
-
-        var cur = PlayerFsm.CurrentState;
-        if (cur is PlayerIdleState || cur is PlayerMoveState)
-        {
-            PlayerFsm.ChangeState(AttackState);
-        }
-        else if (cur is PlayerJumpState || cur is PlayerFallState)
-        {
-            // 空中:与左键一致走空中攻击第 1 段(一滞空一次限制)
-            if (JumpComp != null && !JumpComp.AirAttackUsed)
-                PlayerFsm.ChangeState(AirAttackState);
-        }
-    }
-
     protected override void OnFixedUpdate()
     {
         if (!InputEnabled) return;
 
         if (health != null && health.IsAirHurt) return;
-        if (IsActionLocked()) return;
-        // 冲刺中(PlayerDashState.LocksInput=true)已被 IsActionLocked 覆盖,无需单独排除
+        if (IsActionLocked()) return;        // 冲刺中(PlayerDashState.LocksInput=true)已被 IsActionLocked 覆盖,无需单独排除
 
         float h = Input.GetAxisRaw("Horizontal");
 
@@ -521,6 +490,7 @@ public class PlayerController : PlayerCharacterBase
         }
         combatTimer = CombatExitDelay;
         passiveEquipManager?.SetCombatState(true);
+        AreaChannelTrigger.SetAllSolid(true);   // 进入战斗:管道变空气墙(不触发传送,物理挡住)
     }
 
     // ============================================================
@@ -537,6 +507,42 @@ public class PlayerController : PlayerCharacterBase
             Gizmos.DrawRay(
                 transform.position + Vector3.up * 0.5f,
                 Vector3.right * facing * 2f);
+        }
+
+        DrawBackstabLandingGizmos();
+    }
+
+    /// <summary>背刺落点可视化(选中玩家时):蓝圈 = 最近 enemy 背后落点 + 连线;
+    /// 背后被挡(墙/管道)时绿圈 = 正面替代落点。仅运行时显示(物理查询编辑模式不稳定)。</summary>
+    private void DrawBackstabLandingGizmos()
+    {
+        if (!Application.isPlaying) return;
+        var weapon = GetComponentInChildren<WeaponThrow>();
+        if (weapon == null) return;
+
+        EnemyControllerBase nearest = null;
+        float best = float.MaxValue;
+        foreach (var e in FindObjectsOfType<EnemyControllerBase>())
+        {
+            if (e == null || e.IsDead) continue;
+            float d = ((Vector2)e.transform.position - (Vector2)transform.position).sqrMagnitude;
+            if (d < best) { best = d; nearest = e; }
+        }
+        if (nearest == null) return;
+
+        float offset = weapon.BackstabBehindOffset;
+        Vector2 behind = new Vector2(nearest.transform.position.x - nearest.Facing * offset, nearest.transform.position.y);
+        Gizmos.color = Color.blue;
+        Gizmos.DrawWireSphere(behind, 0.3f);
+        Gizmos.DrawLine(nearest.transform.position, behind);
+
+        Collider2D hit = Physics2D.OverlapPoint(behind);
+        bool blocked = AreaChannelTrigger.IsPointInChannel(behind) || (hit != null && !hit.isTrigger);
+        if (blocked)
+        {
+            Vector2 front = new Vector2(nearest.transform.position.x + nearest.Facing * offset, nearest.transform.position.y);
+            Gizmos.color = Color.green;
+            Gizmos.DrawWireSphere(front, 0.3f);
         }
     }
 }

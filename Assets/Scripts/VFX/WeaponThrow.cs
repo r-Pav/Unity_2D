@@ -90,8 +90,31 @@ public class WeaponThrow : MonoBehaviour
     [Tooltip("空中第三击击退力度倍率(编辑器手动调;实际速度 = airAttack3.knockbackForce × 此值 ÷ 敌人质量)")]
     [SerializeField] private float airFinisherKnockbackMultiplier = 1f;
 
+    [Header("重音背刺(F 键)")]
+    [Tooltip("背刺目标搜索半径(米)")]
+    [SerializeField] private float backstabSearchRadius = 6f;
+    [Tooltip("背刺落点偏移(米):敌人背后距离")]
+    [SerializeField] private float backstabBehindOffset = 1.5f;
+    [Tooltip("背刺伤害倍率(基础伤害 × 此值)")]
+    [SerializeField] private float backstabDamageMultiplier = 3f;
+    [Tooltip("背刺击退向量(x=水平远离敌人,按朝向自动镜像;y=垂直上挑)。与三连击 knockbackForce 同语义")]
+    [SerializeField] private Vector2 backstabKnockback = new Vector2(8f, 0f);
+    [Tooltip("空中背刺命中后的滞空停顿(秒):玩家和敌人一起在空中停一下,再继续下落/连击。0 = 关闭")]
+    [SerializeField] private float backstabHoverDuration = 0.2f;
+
     /// <summary>空中第三击击退力度倍率(PlayerCombat 命中时通过 GetKnockbackBonus 生效)</summary>
     public float AirFinisherKnockbackMultiplier => airFinisherKnockbackMultiplier;
+
+    /// <summary>背刺目标搜索半径(PlayerBackstabState 读)</summary>
+    public float BackstabSearchRadius => backstabSearchRadius;
+    /// <summary>背刺落点偏移:敌人背后距离(PlayerBackstabState 读)</summary>
+    public float BackstabBehindOffset => backstabBehindOffset;
+    /// <summary>背刺伤害倍率(PlayerBackstabState 读)</summary>
+    public float BackstabDamageMultiplier => backstabDamageMultiplier;
+    /// <summary>背刺击退向量(PlayerBackstabState 读)</summary>
+    public Vector2 BackstabKnockback => backstabKnockback;
+    /// <summary>空中背刺命中后的滞空停顿秒数(PlayerBackstabState 读)</summary>
+    public float BackstabHoverDuration => backstabHoverDuration;
 
     [Header("重生")]
     [Tooltip("攻击 end 后,若此秒数内没有新的攻击 start,剑才重新出现(连击中断判定)")]

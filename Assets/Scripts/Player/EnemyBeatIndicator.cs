@@ -40,11 +40,14 @@ public class EnemyBeatIndicator : MonoBehaviour
         if (mgr == null || !mgr.IsAutoBarWindow) return;   // 只响应自动重音窗口
         _current = FindNearestEnemy();
         if (_current != null)
-            _current.GetComponentInChildren<BeatFlashPoint>()?.Flash();
+            _current.GetComponentInChildren<BeatFlashPoint>(true)?.Flash();   // true:物体 inactive 也能找到组件(显示由 Flash 内部处理)
     }
 
     private void OnWindowPassed(float pointTime)
     {
+        // 窗口正常结束:当前 enemy 头顶标识消失(生命周期消失时机 1)
+        if (_current != null)
+            _current.GetComponentInChildren<BeatFlashPoint>(true)?.Hide();
         _current = null;
     }
 

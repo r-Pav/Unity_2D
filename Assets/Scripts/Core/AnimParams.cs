@@ -20,6 +20,7 @@ public static class AnimParams
     public const string IsAirAttacking = "IsAirAttacking";
     public const string IsHurt = "IsHurt";
     public const string IsAirHurt = "IsAirHurt";
+    public const string IsBackstabbing = "IsBackstabbing";
     public const string IsAttack1 = "IsAttack1"; // 远程敌人 attack1（近战）路由
     public const string IsAttack2 = "IsAttack2"; // 远程敌人 attack2（远程）路由
 

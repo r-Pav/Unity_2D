@@ -19,7 +19,8 @@ public class PlayerBackstabState : EntityState
     private readonly float searchRadius;      // 目标搜索半径
     private readonly float behindOffset;      // 背后落点偏移(米)
     private readonly float damageMultiplier;  // 背刺伤害倍率(基础伤害 × 此值)
-    private readonly float knockbackForce;    // 背刺击退力
+    private readonly Vector2 knockback;       // 背刺击退向量(x 水平镜像,y 上挑,与三连击同语义)
+    private readonly float hoverDuration;     // 空中背刺命中后的滞空停顿(玩家+敌人一起停)
 
     private EnemyControllerBase _target;
     private bool _hitResolved;    // 命中帧已结算(防重复;目标死亡/空时跳过)
@@ -30,15 +31,16 @@ public class PlayerBackstabState : EntityState
 
     public PlayerBackstabState(CharacterBase owner, StateMachine stateMachine, Animator anim,
         PlayerCombat combat, PlayerTeleport teleport, float searchRadius, float behindOffset,
-        float damageMultiplier, float knockbackForce)
-        : base(owner, stateMachine, anim)
+        float damageMultiplier, Vector2 knockback, float hoverDuration)
+        : base(owner, stateMachine, anim, new[] { AnimParams.IsBackstabbing })   // Entry 路由:IsBackstabbing=true 进 Backstab,Exit 清 false
     {
         this.combat = combat;
         this.teleport = teleport;
         this.searchRadius = searchRadius;
         this.behindOffset = behindOffset;
         this.damageMultiplier = damageMultiplier;
-        this.knockbackForce = knockbackForce;
+        this.knockback = knockback;
+        this.hoverDuration = hoverDuration;
     }
 
     public override void OnEnter()
@@ -57,11 +59,14 @@ public class PlayerBackstabState : EntityState
             Vector2 dest = new Vector2(
                 _target.transform.position.x - _target.Facing * behindOffset,
                 _target.transform.position.y);
+            dest = ResolveBackstabLanding(dest);   // 落点避开管道(PlayerTeleport 只钳制墙层,管道 Channel 层会直接传进去)
             if (teleport != null)
                 teleport.TeleportTo(dest);
             else
                 pc.transform.position = dest;   // 未挂 PlayerTeleport 时兜底直接位移(无敌帧等由挂载后生效)
-            pc.UpdateFacing(_target.Facing);    // 强制转向敌人
+            // 强制转向敌人:按玩家与 enemy 相对位置(不能用 enemy.Facing——靠墙时落点改到 enemy 正面,
+            // enemy.Facing 朝玩家,用它玩家会背朝 enemy)
+            pc.UpdateFacing(_target.transform.position.x >= pc.transform.position.x ? 1f : -1f);
         }
         else
         {
@@ -71,8 +76,7 @@ public class PlayerBackstabState : EntityState
             float h = Input.GetAxisRaw("Horizontal");
             if (Mathf.Abs(h) > 0.1f) pc.UpdateFacing(h);
         }
-
-        anim?.Play("Backstab", 0, 0f);
+        // 动画:Entry 路由(IsBackstabbing=true 由基类 OnEnter 设置,动画器 Entry → Backstab),不代码直切
     }
 
     public override void OnUpdate()
@@ -86,13 +90,55 @@ public class PlayerBackstabState : EntityState
         // 目标在背刺动画中死亡(被环境/其他伤害击杀):命中帧判空跳过,动画自然结束
     }
 
-    /// <summary>背刺命中帧(动画事件 OnBackstabHitFrame → PlayerCombat → 本状态):对目标结算高伤害+强制硬直</summary>
+    /// <summary>背刺命中帧(动画事件 OnBackstabHitFrame → PlayerCombat → 本状态):对目标结算高伤害+强制硬直;
+    /// 命中后目标头顶标识立即消失(消失时机 2:被刺伤害帧事件);
+    /// 空中背刺命中:只刷新空中攻击计数(AirAttackUsed,跳跃次数不动)+ 玩家与敌人一起短滞空停顿(hoverDuration)</summary>
     public void OnBackstabHitFrame()
     {
         if (_hitResolved) return;
         _hitResolved = true;
         if (_target == null || _target.IsDead) return;
-        combat?.ExecuteBackstab(_target, damageMultiplier, knockbackForce);
+        combat?.ExecuteBackstab(_target, damageMultiplier, knockback);
+        _target.GetComponentInChildren<BeatFlashPoint>(true)?.Hide();
+
+        var pc = (PlayerController)owner;
+        if (pc == null || pc.IsGrounded()) return;
+
+        // 空中背刺:刷新空中攻击计数 + 玩家/敌人一起短滞空
+        if (pc.JumpComp != null)
+            pc.JumpComp.ResetAirAttackOnly();
+        if (hoverDuration > 0f)
+        {
+            pc.StartCoroutine(HoverRoutine(pc, hoverDuration));   // EntityState 非 MonoBehaviour,协程挂宿主启动
+            if (!_target.IsGrounded)
+                _target.ApplyAirHangFreeze(hoverDuration);
+        }
+    }
+
+    /// <summary>玩家背刺后缓落:小重力缓慢下落(不清速度,避免定身后突然坠落)+ 期间每帧吸附敌人身后
+    /// (敌人被击退飞走,玩家跟着飘,保持连段距离),停 hoverDuration 秒后恢复原重力(真实时间,卡帧不影响)</summary>
+    private System.Collections.IEnumerator HoverRoutine(PlayerController pc, float duration)
+    {
+        var rb = pc.GetRigidbody();
+        float origGravity = rb != null ? rb.gravityScale : 1f;
+        if (rb != null)
+            rb.gravityScale = Mathf.Min(origGravity, 0.3f);   // 缓落:小重力(参考空中攻击悬停),不清速度
+        float t = 0f;
+        while (t < duration)
+        {
+            t += Time.unscaledDeltaTime;
+            // 跟随目标:保持敌人背后(与落点同款计算),敌人被击退移动时玩家跟着;吸附位置同样避开管道
+            if (_target != null && !_target.IsDead)
+            {
+                float behindX = _target.transform.position.x - _target.Facing * behindOffset;
+                Vector2 follow = new Vector2(behindX, _target.transform.position.y);
+                follow = ResolveBackstabLanding(follow);   // 防吸附进管道(和落点同款避让)
+                pc.transform.position = new Vector3(follow.x, follow.y, pc.transform.position.z);
+            }
+            yield return null;
+        }
+        if (rb != null)
+            rb.gravityScale = origGravity;
     }
 
     /// <summary>背刺动画结束(动画事件 OnBackstabEnd → PlayerCombat → 本状态):回 Idle/Move</summary>
@@ -109,7 +155,8 @@ public class PlayerBackstabState : EntityState
         _target = null;
     }
 
-    /// <summary>退出背刺:贴地回 Idle/Move(带朝向输入),空中回 FallState(对齐 PlayerAirAttackState 落态)</summary>
+    /// <summary>退出背刺:贴地回 Idle/Move(带朝向输入),空中回 FallState(对齐 PlayerAirAttackState 落态)。
+    /// 动画器由基类 OnExit 清 IsBackstabbing=false → Backstab → Exit → Entry 重判(IsIdle/IsMove),不代码直切。</summary>
     private void ExitBackstab()
     {
         var pc = (PlayerController)owner;
@@ -118,6 +165,27 @@ public class PlayerBackstabState : EntityState
             stateMachine.ChangeState(Mathf.Abs(h) > 0.1f ? pc.MoveState : pc.IdleState);
         else
             stateMachine.ChangeState(pc.FallState);
+    }
+
+    /// <summary>背刺落点避让(射线版):从 enemy 位置朝背后(-Facing)发射射线,
+    /// 命中墙/地面/实心管道等(非 trigger collider)或管道 trigger → 背后被挡 → 落点改到 enemy 正面;
+    /// 背后空 → 原落点(enemy 背后)。防背刺被传进管道/墙内。</summary>
+    private Vector2 ResolveBackstabLanding(Vector2 dest)
+    {
+        if (_target == null) return dest;
+        Vector2 behindDir = Vector2.right * (-_target.Facing);
+        RaycastHit2D hit = Physics2D.Raycast(_target.transform.position, behindDir, behindOffset + 0.3f);
+        if (hit.collider == null) return dest;   // 背后空 → 原落点
+        // 命中自身 collider(射线从 enemy 中心发出可能扫到自身):忽略
+        if (hit.transform == _target.transform || hit.transform.IsChildOf(_target.transform))
+            return dest;
+        // 命中其他 trigger(非管道):忽略,不算挡
+        if (hit.collider.isTrigger && !AreaChannelTrigger.IsPointInChannel(hit.point))
+            return dest;
+        // 背后被挡(墙/地面/实心管道/管道 trigger)→ 改到 enemy 正面(面朝玩家方向,通常空地)
+        return new Vector2(
+            _target.transform.position.x + _target.Facing * behindOffset,
+            _target.transform.position.y);
     }
 
     /// <summary>选最近非死亡敌人(Boss 也可,普通场景无 Boss;空中敌人同样可作目标,允许空中背刺)</summary>

@@ -15,3 +15,8 @@ MonoBehaviour:
   clip: {fileID: 8300000, guid: e90caa8f9324cbb4f952d12f8aa38532, type: 3}
   loopPoint: 0
   points: []
+  barIntervalSeconds: 6
+  introClip: {fileID: 0}
+  introSwitchTime: 0
+  introPoints: []
+  pointGroups: []

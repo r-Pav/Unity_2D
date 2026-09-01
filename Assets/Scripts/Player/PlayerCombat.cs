@@ -552,21 +552,22 @@ public class PlayerCombat : MonoBehaviour
     /// Poise.IsMeleeAttack → OnHitBy 近战路径 → EnterStunState 强制硬直)。
     /// 只打选中的目标(不扫范围框,背刺是精准打击)。
     /// </summary>
-    public void ExecuteBackstab(EnemyControllerBase target, float damageMultiplier, float knockbackForce)
+    public void ExecuteBackstab(EnemyControllerBase target, float damageMultiplier, Vector2 knockback)
     {
         if (target == null || target.IsDead) return;
 
         float dmg = RollCrit(GetEffectiveDamage() * damageMultiplier);
 
-        // 击退方向:水平远离玩家(与弹反重击同款,Y 轴归零)
-        Vector2 knockDir = ((Vector2)(target.transform.position - transform.position)).normalized;
-        knockDir.y = 0f;
-        if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
+        // 击退向量:x 水平远离玩家(按玩家→敌人方向镜像),y 垂直上挑 — 与 WeaponAttackConfig.knockbackForce 同语义
+        Vector2 kb = knockback;
+        float dirX = target.transform.position.x >= transform.position.x ? 1f : -1f;
+        kb.x *= dirX;
+        if (kb.sqrMagnitude < 0.0001f) kb = Vector2.right;
 
         Knockback knock = new Knockback
         {
-            direction = knockDir,
-            force = knockbackForce,
+            direction = kb.normalized,
+            force = kb.magnitude,
             duration = 0f,
             ignoreResistance = false
         };

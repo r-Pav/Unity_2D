@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 859019e2c3227664c856f59e2290b248, type: 3}
+  m_Name: MusicTrack_Boss_1
+  m_EditorClassIdentifier: 
+  clip: {fileID: 8300000, guid: 5e6827f6e52aba3419a1602509bd17d5, type: 3}
+  loopPoint: 65.13
+  points:
+  - 0
+  introClip: {fileID: 8300000, guid: 90c374dfef7129e49a626b3523af376d, type: 3}
+  introSwitchTime: 111.06
+  introPoints: []
+  pointGroups:
+  - groupName: BossHeavySound
+    points:
+    - 10
+  - groupName: PlayerCombo
+    points:
+    - 11
+    - 11.5
+    - 12
+    - 12.5
+    - 13
+    - 13.5
+  - groupName: BossHeavy
+    points:
+    - 20
+  - groupName: BossOrb1
+    points:
+    - 90

@@ -59,6 +59,34 @@ public class AreaChannelTrigger : MonoBehaviour
     public static Vector3? PendingSavePosition => _pendingSavePosition;
 
     /// <summary>
+    /// 战斗中管道变空气墙:全部管道 trigger 切实心 collider(物理挡住玩家,不触发传送);
+    /// 退出战斗恢复 trigger(可传送)。由 PlayerController 战斗态切换调用。
+    /// </summary>
+    public static void SetAllSolid(bool solid)
+    {
+        foreach (var t in FindObjectsOfType<AreaChannelTrigger>())
+            t.SetSolid(solid);
+    }
+
+    /// <summary>切换本 trigger 实心/触发器(战斗空气墙用)</summary>
+    private void SetSolid(bool solid)
+    {
+        var col = GetComponent<Collider2D>();
+        if (col != null) col.isTrigger = !solid;
+    }
+
+    /// <summary>点是否在任意管道 collider 内(含 trigger 与战斗实心)。背刺落点检测用:防玩家被传进管道。</summary>
+    public static bool IsPointInChannel(Vector2 point)
+    {
+        foreach (var t in FindObjectsOfType<AreaChannelTrigger>())
+        {
+            var col = t.GetComponent<Collider2D>();
+            if (col != null && col.OverlapPoint(point)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
     /// 取消管道移动（SaveSystem 读档时调用）：停协程 + 清存档位置 + 恢复玩家输入/速度。
     /// 管道内读档时移动协程仍在 VCam 上跑（菜单暂停只是 timeScale=0 空转），
     /// 读档恢复位置后协程继续推玩家 → 玩家自动 walk 被接管。读档必须先取消。

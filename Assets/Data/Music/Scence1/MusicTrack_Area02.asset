@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 859019e2c3227664c856f59e2290b248, type: 3}
+  m_Name: MusicTrack_Area02
+  m_EditorClassIdentifier: 
+  clip: {fileID: 8300000, guid: 2dc58b6b429ffca4592c71a49a047a73, type: 3}
+  loopPoint: 0
+  points: []
+  barIntervalSeconds: 6
+  introClip: {fileID: 0}
+  introSwitchTime: 0
+  introPoints: []
+  pointGroups: []

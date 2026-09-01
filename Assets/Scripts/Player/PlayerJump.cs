@@ -39,6 +39,10 @@ public class PlayerJump : MonoBehaviour
     /// <summary>标记本次滞空已用过空中攻击(进入 AirAttackState 时调用)</summary>
     public void MarkAirAttackUsed() => AirAttackUsed = true;
 
+    /// <summary>仅刷新空中攻击计数(空中背刺命中时调用):跳跃次数不动,本次滞空可重新空中攻击。
+    /// 与 ResetJumps 区别:不清 jumpsLeft(二段跳次数保持),只恢复空中攻击资格。</summary>
+    public void ResetAirAttackOnly() => AirAttackUsed = false;
+
     /// <summary>锁定期间调用(PlayerController.IsActionLocked 分支):处理跳跃打断/缓冲。
     /// [2026-08-21 扩展] 所有锁定状态统一响应空格,不再只认攻击:
     ///   - 攻击类(PlayerAttackState/PlayerAirAttackState):jumpBreaksAttack=true 打断直接跳(跳>攻优先级),false 走缓冲
