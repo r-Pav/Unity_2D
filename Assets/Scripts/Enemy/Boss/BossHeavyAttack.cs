@@ -49,6 +49,9 @@ public class BossHeavyAttack : MonoBehaviour
     private bool _heavyActive;   // 重击施放中(霸体)
     private bool _cancelled;     // 被 player 攻击抵消(该次重击不造成伤害)
 
+    /// <summary>攻击持续 VFX 锚点(attack_VFX 子物体上的 AttackVFXAnchor;未配置时为 null,空安全)</summary>
+    private AttackVFXAnchor _vfx;
+
     public bool IsActive => _heavyActive;
 
     private void Awake()
@@ -71,6 +74,9 @@ public class BossHeavyAttack : MonoBehaviour
     private void OnDisable()
     {
         if (_loopRoutine != null) StopCoroutine(_loopRoutine);
+
+        // 中断/被抵消/死亡:收起持续特效,防残留
+        _vfx?.Hide();
         _heavyActive = false;
     }
 
@@ -120,6 +126,10 @@ public class BossHeavyAttack : MonoBehaviour
         _heavyActive = true;
         _cancelled = false;
 
+        // 攻击持续 VFX:重击全程播 slot_heavy
+        if (_vfx == null) _vfx = GetComponentInChildren<AttackVFXAnchor>(true);
+        _vfx?.Show("slot_heavy");
+
         TeleportToPlayer();
 
         // 播放动画:优先重击动画,未配置则用普攻 Attack 代替(测试用)
@@ -140,6 +150,8 @@ public class BossHeavyAttack : MonoBehaviour
         // 短后摇(动画播完由动画器接管,这里给个最小间隔)
         yield return new WaitForSeconds(0.3f);
 
+        // 重击结束:收起持续特效
+        _vfx?.Hide();
         _heavyActive = false;
     }
 

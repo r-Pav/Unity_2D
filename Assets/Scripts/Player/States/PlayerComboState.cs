@@ -19,6 +19,9 @@ public abstract class PlayerComboState : EntityState
     protected float _exitBufferTimer;    // 动画结束后的预输入缓冲（方案 7.4）
     protected float _stateTimer;         // 状态存活时长:超 MaxAttackDuration 强制退出(防动画事件链断裂永久锁死)
 
+    /// <summary>攻击持续 VFX 锚点(attack_VFX 子物体上的 AttackVFXAnchor;未配置时为 null,空安全)</summary>
+    private AttackVFXAnchor _vfx;
+
     /// <summary>输入门:攻击动画事件帧(OnAttackInputOpen)到达前 = false,此期间跳跃/冲刺输入只记录不执行</summary>
     public bool InputOpen { get; protected set; }
     protected bool _jumpQueued;   // 输入门前按下的跳跃意图(事件帧到达后自动执行)
@@ -60,6 +63,10 @@ public abstract class PlayerComboState : EntityState
         OnComboEnter();
         combat?.ConsumeAttackCooldown();
         combat?.OnAttack?.Invoke();
+
+        // 攻击持续 VFX:进入连击播第 1 段槽(空中 slot_Air;未配置锚点则跳过)
+        if (_vfx == null) _vfx = owner.GetComponentInChildren<AttackVFXAnchor>(true);
+        _vfx?.Show(IsAirAttack ? "slot_Air" : "slot_1");
     }
 
     public override void OnUpdate()
@@ -116,6 +123,9 @@ public abstract class PlayerComboState : EntityState
         AdvanceComboOnExit();
         timeLastExit = Time.time;
         OnComboExit();
+
+        // 攻击结束:收起持续特效(淡出)
+        _vfx?.Hide();
     }
 
     // ── AnimationEvent 回调(经 PlayerCombat 薄转发) ──
@@ -179,7 +189,13 @@ public abstract class PlayerComboState : EntityState
     protected virtual void OnComboEnter() { }
     protected virtual void OnComboUpdate() { }
     protected virtual void OnComboExit() { }
-    protected virtual void OnComboCut() { }
+
+    /// <summary>连段切换(COMBO-CUT 直切/排队直切共走此路径):换对应槽特效(地面 slot_1/2/3,空中 slot_Air)</summary>
+    protected virtual void OnComboCut()
+    {
+        if (_vfx == null) _vfx = owner.GetComponentInChildren<AttackVFXAnchor>(true);
+        _vfx?.Show(IsAirAttack ? "slot_Air" : "slot_" + comboIndex);
+    }
 
     /// <summary>连段段数推进(OnExit):地面推进续段(0.6s 内再攻击延续段数);空中不推进(一滞空一套)</summary>
     protected virtual void AdvanceComboOnExit()

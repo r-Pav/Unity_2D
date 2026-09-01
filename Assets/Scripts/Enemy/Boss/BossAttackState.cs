@@ -12,6 +12,9 @@ public class BossAttackState : EntityState
     private float _lastNormalized;   // 上一帧动画进度(loop 回绕检测)
     private bool _hitDone;           // 本次攻击是否已结算伤害(命中帧一次性)
 
+    /// <summary>攻击持续 VFX 锚点(attack_VFX 子物体上的 AttackVFXAnchor;未配置时为 null,空安全)</summary>
+    private AttackVFXAnchor _vfx;
+
     public BossAttackState(CharacterBase owner, StateMachine stateMachine, Animator anim = null)
         : base(owner, stateMachine, anim, new[] { AnimParams.IsAttacking })
     {
@@ -31,6 +34,10 @@ public class BossAttackState : EntityState
 
         _lastNormalized = 0f;
         _hitDone = false;
+
+        // 攻击持续 VFX:普攻播 slot_attack
+        if (_vfx == null) _vfx = owner.GetComponentInChildren<AttackVFXAnchor>(true);
+        _vfx?.Show("slot_attack");
     }
 
     public override void OnUpdate()
@@ -90,5 +97,8 @@ public class BossAttackState : EntityState
         base.OnExit(); // IsAttacking=false → 动画器 Exit,Entry 重判
         var boss = (FirstBoss)owner;
         boss.moveInput = 0f;
+
+        // 攻击结束:收起持续特效(淡出)
+        _vfx?.Hide();
     }
 }

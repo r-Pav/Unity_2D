@@ -88,7 +88,8 @@ public class PlayerAirAttackState : PlayerComboState
 
     protected override void OnComboCut()
     {
-        ApplyLift();   // 切段出手:再给一次上挑力(累加,越打越高)
+        base.OnComboCut();   // 特效换槽(空中 slot_Air;基类统一处理,否则空中切段不换槽)
+        ApplyLift();         // 切段出手:再给一次上挑力(累加,越打越高)
     }
 
     protected override void OnComboExit()

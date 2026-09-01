@@ -41,6 +41,9 @@ public class BossSkillSlots : MonoBehaviour
     private BossSkillExecutor currentExecutor;
     private GameObject currentInstance;
 
+    /// <summary>攻击持续 VFX 锚点(attack_VFX 子物体上的 AttackVFXAnchor;未配置时为 null,空安全)</summary>
+    private AttackVFXAnchor _vfx;
+
     // ============================================================
     // 属性
     // ============================================================
@@ -163,6 +166,10 @@ public class BossSkillSlots : MonoBehaviour
         StopCoroutine(currentCoroutine);
         currentCoroutine = null;
 
+        // 先停特效,再杀技能体(顺序:防特效残留)
+        if (_vfx == null) _vfx = GetComponentInChildren<AttackVFXAnchor>(true);
+        _vfx?.Hide();
+
         if (currentInstance != null)
             Destroy(currentInstance);
         currentInstance = null;
@@ -212,6 +219,10 @@ public class BossSkillSlots : MonoBehaviour
             currentExecutor = currentInstance.GetComponent<BossSkillExecutor>();
         }
 
+        // 攻击持续 VFX:技能动画期间播对应槽(slot_<skillName>)
+        if (_vfx == null) _vfx = GetComponentInChildren<AttackVFXAnchor>(true);
+        _vfx?.Show("slot_" + so.skillName);
+
         if (currentExecutor != null)
         {
             currentExecutor.Data = so;
@@ -239,6 +250,9 @@ public class BossSkillSlots : MonoBehaviour
         currentExecutor = null;
         currentSkill = null;
         currentCoroutine = null;
+
+        // 技能正常结束:收起持续特效
+        _vfx?.Hide();
 
         if (logSkillExecutions)
             Debug.Log($"[BossSkillSlots] 技能 [{index}] {so.skillName} 执行完毕");
