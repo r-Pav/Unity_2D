@@ -1178,6 +1178,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         if (isInCombatState) return;
         isInCombatState = true;
         passiveEquipManager?.SetCombatState(true);
+        AttackingStat.Instance?.Notify(true);   // 敌人仇恨 → 玩家 attackingStat(管道空气墙由它驱动)
     }
 
     /// <summary>退出战斗状态（回到 Idle/Patrol 或死亡）。仅首次退出时通知 PassiveEquipManager。</summary>
@@ -1186,6 +1187,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         if (!isInCombatState) return;
         isInCombatState = false;
         passiveEquipManager?.SetCombatState(false);
+        AttackingStat.Instance?.Notify(false);  // 脱战/死亡 → attackingStat 减计数
 
         // 退出战斗时重置霸体计数器，确保每次战斗独立计算
         _poise?.ResetPoise();

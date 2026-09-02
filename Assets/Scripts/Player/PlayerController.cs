@@ -160,6 +160,11 @@ public class PlayerController : PlayerCharacterBase
     /// <summary>脱离战斗等待秒数</summary>
     private const float CombatExitDelay = 3f;
 
+    /// <summary>attackingStat(战斗状态标识):敌人仇恨全局状态位,管道实心由它驱动。Awake 自动创建。</summary>
+    private AttackingStat attackingStat;
+    /// <summary>公开访问 attackingStat 组件</summary>
+    public AttackingStat AttackingStatComp => attackingStat;
+
     // ============================================================
     // 生命周期
     // ============================================================
@@ -184,6 +189,10 @@ public class PlayerController : PlayerCharacterBase
         // 传送组件(重音背刺复用 PlayerTeleport):优先获取已有,无则创建(与 PlayerDetectionConfig 同款)
         teleport = GetComponent<PlayerTeleport>();
         if (teleport == null) teleport = gameObject.AddComponent<PlayerTeleport>();
+
+        // attackingStat(战斗状态标识):优先获取已有,无则创建(与 detect/teleport 同款)。
+        // 由敌人仇恨上报驱动管道实心;组件不存在则管道永不锁,故必须确保创建。
+        if (attackingStat == null) attackingStat = gameObject.AddComponent<AttackingStat>();
 
         // ── 战斗态锁定：攻击/受伤时触发，timer 清零后退出 ──
         if (combat != null)
@@ -314,7 +323,7 @@ public class PlayerController : PlayerCharacterBase
             {
                 combatTimer = 0f;
                 passiveEquipManager?.SetCombatState(false);
-                AreaChannelTrigger.SetAllSolid(false);   // 退出战斗:管道恢复 trigger(可传送)
+                // 管道恢复由 attackingStat(AttackingStat)驱动,不在此处(挥空攻击不再锁管道)
             }
         }
 
@@ -490,7 +499,7 @@ public class PlayerController : PlayerCharacterBase
         }
         combatTimer = CombatExitDelay;
         passiveEquipManager?.SetCombatState(true);
-        AreaChannelTrigger.SetAllSolid(true);   // 进入战斗:管道变空气墙(不触发传送,物理挡住)
+        // 管道实心由 attackingStat(AttackingStat,敌人仇恨)驱动,不在此处(挥空攻击不再锁管道)
     }
 
     // ============================================================
