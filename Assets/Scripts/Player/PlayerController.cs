@@ -256,9 +256,13 @@ public class PlayerController : PlayerCharacterBase
         // 若递减在锁定 return 之后则永远无法归零 → 永久锁死（蹬墙跳后卡下落动画）
         UpdateCooldowns();
 
+        // F 键双消费方分发(石碑系统 T4,方案 §3.5):石碑传送优先于背刺。
+        // HandleWaypointInput() 返回 true = 本帧 F 已被石碑消费(开传送页),不再走背刺;
+        // 返回 false(非石碑/战斗中/锁定态/未按 F)→ 落回原背刺逻辑,行为与改前逐帧一致。
         // 重音背刺 F 键:任何状态都检测(窗口内可强制打断普攻/格挡/冲刺等;死亡/受击硬直/背刺中除外)。
         // 放在锁定分支之前,保证攻击等 LocksInput 状态下窗口内 F 仍能强制打断。
-        HandleBackstabInput();
+        if (!HandleWaypointInput())
+            HandleBackstabInput();
 
         if (IsActionLocked())
         {
@@ -356,6 +360,37 @@ public class PlayerController : PlayerCharacterBase
     private void UpdateSubModules()
     {
         skillManager?.CheckHotkeys();
+    }
+
+    // ============================================================
+    // 石碑 F 键入口(石碑系统 T4,方案 §3.5)— F 判定注入
+    // 由 OnUpdate 在 HandleBackstabInput 之前调用:返回 true = 本帧 F 已被石碑消费(打开传送页)。
+    // 门控:已激活石碑旁 + 非战斗(敌人仇恨) + 非锁定态;任一不满足 → false,F 落回原背刺逻辑,
+    // 保证非石碑/战斗中的 F 行为与改前逐帧一致(背刺窗口/技能槽 3 照旧)。
+    // ============================================================
+
+    /// <summary>
+    /// 石碑 F:站在已激活石碑 trigger 内 + 非战斗 → 开传送页并消费本帧 F。
+    /// 战斗中不弹页(规则2:F 落回背刺,战斗中最需要背刺);锁定态(攻击/受击硬直)不弹页(风险 R12,本期不做打断)。
+    /// </summary>
+    private bool HandleWaypointInput()
+    {
+        if (!Input.GetKeyDown(KeyCode.F)) return false;
+
+        var wp = WaypointSystem.Instance;
+        if (wp == null) return false;
+        var near = WaypointSystem.CurrentNearby;   // static 只读属性(避免经实例访问的 CS0176)
+        if (near == null || !near.Activated) return false;   // 不在已激活石碑旁 → 零侵入
+
+        // 战斗态(任意敌人仇恨)不弹传送页:F 落回背刺
+        if (AttackingStat.Instance != null && AttackingStat.Instance.InCombat) return false;
+
+        // 攻击/受击硬直等锁定态不弹页
+        if (IsActionLocked()) return false;
+
+        // 开面板(LockInput=true → PanelManager 置 InputEnabled=false,技能槽3 CheckHotkeys 同帧短路)
+        wp.OpenTeleportPanel();
+        return true;   // 消费 F:本帧不再走背刺
     }
 
     // ============================================================

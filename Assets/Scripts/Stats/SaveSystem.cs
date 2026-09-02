@@ -43,6 +43,10 @@ public class SaveSystem : MonoBehaviour
     private WeaponSkillLink weaponSkillLink;
     // [阶段8] 元素模块引用（可空：Player 未挂 ElementModule 时存档/读档跳过元素数据，不报错）
     private ElementModule elementModule;
+    // [石碑系统 T2] 石碑系统引用（可空：方案 A — Inspector 拖场景根 WaypointSystem GO；
+    // SaveSystem 挂 Player 上、WaypointSystem 挂场景根，GetComponent 拿不到，故用拖引用；
+    // 未拖引用时存档/读档跳过石碑数据，不报错）
+    [SerializeField] private WaypointSystem waypointSystem;
 
     // Debug 触发计数器（≤3 帧限制）
     private int _debugCount;
@@ -61,6 +65,10 @@ public class SaveSystem : MonoBehaviour
         weaponSkillLink = GetComponent<WeaponSkillLink>();
         // [阶段8] 元素模块（可空：未挂时存档/读档跳过元素数据）
         elementModule = GetComponent<ElementModule>();
+        // [石碑系统 T2] 石碑系统:优先 Inspector 拖引用(方案 A);未拖(编辑器接线前)回退单例懒查(方案 B)。
+        // 场景内确无 WaypointSystem 时保持 null → Collect/Restore 跳过不报错
+        if (waypointSystem == null)
+            waypointSystem = WaypointSystem.Instance;
     }
 
     private void OnEnable()
@@ -104,7 +112,9 @@ public class SaveSystem : MonoBehaviour
 
         var data = new SaveData();
         data.saveTime = System.DateTime.Now.ToString("MM-dd HH:mm");
-        data.areaName = ""; // 地区名追踪属后续优化（存档点自动定位），字段预留
+        // [石碑系统 T3] 当前所在地区 = ZoneManager.CurrentAreaId(运行时状态源;复用了预留的 areaName 字段)。
+        // ZoneManager 未挂(纯技能/无区域场景)时留空,不报错
+        data.areaName = ZoneManager.Instance != null ? ZoneManager.Instance.CurrentAreaId : "";
         Transform playerT = PlayerController.Instance != null ? PlayerController.Instance.transform : null;
         if (playerT != null)
         {
@@ -133,6 +143,8 @@ public class SaveSystem : MonoBehaviour
         CollectWeapon(data);
         // [阶段8] 元素状态（决策 D17：走 ElementModule 导出接口，SaveSystem 不直接管字段语义）
         CollectElement(data);
+        // [石碑系统 T2] 已激活石碑（WaypointSystem 导出；未拖引用 → 跳过，字段保持 null）
+        CollectWaypoints(data);
 
         // [Phase5] 保存属性分配点
         CollectAttributePoints(data);
@@ -207,6 +219,15 @@ public class SaveSystem : MonoBehaviour
         // 管道移动中读档:先取消移动协程——否则恢复位置后协程继续推玩家 → 自动 walk 被接管。
         // 必须在恢复位置前调用(移动协程挂 VCam,菜单暂停只是 timeScale=0 空转,协程还活着)
         AreaChannelTrigger.CancelMove();
+
+        // [石碑系统 T2] 恢复已激活石碑（旧档 null → 空列表；需在恢复位置前调，
+        // 石碑 Activated 状态恢复与场景内注册表就绪——LoadGame 在场景内运行，注册已发生）
+        RestoreWaypoints(data);
+
+        // [石碑系统 T3] 恢复当前地区:走静默版 SetCurrentAreaSilent(只写不广播)。
+        // 不能用 NotifyAreaEntered(广播版)——会触发 AreaEnterEvent → SaveSystem.AutoSave,
+        // 反向覆盖刚读的档(方案风险 R5)。areaName 空(旧档)→ 不动,保持 ZoneManager.initialAreaId。
+        RestoreCurrentArea(data);
 
         // 恢复位置：延迟一帧等地区显隐稳定后再设置，防止与地区显隐冲突
         StartCoroutine(RestorePositionNextFrame(data));
@@ -436,6 +457,18 @@ public class SaveSystem : MonoBehaviour
     }
 
     // ============================================================
+    // [石碑系统 T2] 收集 — 已激活石碑（决策：WaypointSystem 导出 ActivatedWaypoints 只读列表，
+    // SaveSystem 只搬运复制，不解释 id 语义；可空：Inspector 未拖引用 → 跳过）
+    // ============================================================
+
+    private void CollectWaypoints(SaveData data)
+    {
+        if (waypointSystem == null) return; // 未拖场景根 WaypointSystem 引用 → 跳过，字段保持 null（视为空）
+        // 复制构造，防引用别名——否则下次激活改动 _activationOrder 会污染已序列化的存档数据
+        data.activatedWaypoints = new List<string>(waypointSystem.ActivatedWaypoints);
+    }
+
+    // ============================================================
     // 恢复 — 技能点
     // ============================================================
 
@@ -595,6 +628,32 @@ public class SaveSystem : MonoBehaviour
 
         // 2. 恢复当前元素（None 恒可用；旧档默认 None；异常档当前元素未解锁由 SetElement 内部校验忽略）
         elementModule.SetElement(data.currentElement);
+    }
+
+    // ============================================================
+    // [石碑系统 T2] 恢复 — 已激活石碑（决策：走 WaypointSystem.RestoreActivated 导入接口，
+    // SaveSystem 不直接管集合语义；旧档 activatedWaypoints==null → RestoreActivated 内部视为空，不报错）
+    // ============================================================
+
+    private void RestoreWaypoints(SaveData data)
+    {
+        if (waypointSystem == null) return; // 未拖引用 → 跳过，不报错
+        waypointSystem.RestoreActivated(data.activatedWaypoints);
+    }
+
+    // ============================================================
+    // [石碑系统 T3] 恢复 — 当前地区(CurrentAreaId)
+    // 决策:走 ZoneManager.SetCurrentAreaSilent 静默版(只写不广播)——广播版会触发
+    // AreaEnterEvent → AutoSave → 反向覆盖刚读的档(方案风险 R5)。areaName 空(旧档)→ 不动,
+    // CurrentAreaId 保持 ZoneManager.Awake 兜底的 initialAreaId(兼容矩阵 R6)。
+    // ============================================================
+
+    private void RestoreCurrentArea(SaveData data)
+    {
+        var zm = ZoneManager.Instance;
+        if (zm == null) return; // ZoneManager 未挂(纯技能场景) → 跳过,不报错
+        if (string.IsNullOrEmpty(data.areaName)) return; // 旧档无地区名 → 保持 initialAreaId
+        zm.SetCurrentAreaSilent(data.areaName);
     }
 
     // ============================================================
@@ -787,6 +846,9 @@ public class SaveSystem : MonoBehaviour
         public string saveTime;  // DateTime.Now.ToString("MM-dd HH:mm")
         public string areaName;  // 玩家所在地区名（地区名追踪后续优化，字段预留）
         public float posX, posY, posZ; // 玩家位置（读档恢复）
+        // [石碑系统 T2] 已激活石碑 id（"area#index" 形式，按激活顺序）；
+        // 旧档无此字段 → null → RestoreActivated 内部视为空列表，不报错
+        public List<string> activatedWaypoints;
     }
 
     /// <summary>存档槽元数据 — 供存档槽 UI 显示（时间/章节/技能点/三属性摘要）</summary>

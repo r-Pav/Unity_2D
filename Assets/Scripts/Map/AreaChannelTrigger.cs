@@ -293,6 +293,15 @@ public class AreaChannelTrigger : MonoBehaviour
         //    目标背景已在进管道 ShowArea 时随地区激活(淡入),位置由 ParallaxLayer 锚定修复保证
         zm?.HideArea(sourceArea);
 
+        // 3a. [石碑系统 T3] 到达目标区:CurrentAreaId 写入 + 触发 AreaEnterEvent → SaveSystem.AutoSave 到自动槽。
+        //     (SaveSystem.OnEnable 订阅 AreaEnterEvent → AutoSave,此即原「管道自动存档」死代码接线)
+        //     放 HideArea 之后、恢复输入之前:此时玩家已到目标区出口,位置/区显隐均已定型。
+        //     取 areaId:targetArea 根挂 AreaIdentity 则读其 areaId;未挂回退 targetArea.name
+        //     (与 WaypointTrigger.ResolveAreaId 同策略)。瞬移管道(ChannelTeleportTrigger)同样
+        //     收尾于此 → 天然覆盖,无需单独接线。
+        if (zm != null)
+            zm.NotifyAreaEntered(ResolveAreaId(targetArea));
+
         // 4. 恢复 orthoSize(进入前的用户设置值) + 恢复速度/输入
         StartZoom(_defaultOrthoSize);
         player.SetMoveSpeedOverride(null); // 恢复原速
@@ -300,6 +309,20 @@ public class AreaChannelTrigger : MonoBehaviour
         _isMoving = false;
         _moveRoutine = null;
         if (_movingPlayer == player) _movingPlayer = null;
+    }
+
+    /// <summary>
+    /// [石碑系统 T3] 从 Area 根解析 areaId:根挂 AreaIdentity 则读其 areaId(为空视为未配置);
+    /// 未挂/为空回退 GameObject.name(与 WaypointTrigger.ResolveAreaId 同策略,保证恒有非空值)。
+    /// targetArea 为 null(编辑器未拖)返回 null,NotifyAreaEntered 侧防御。
+    /// </summary>
+    private static string ResolveAreaId(GameObject areaRoot)
+    {
+        if (areaRoot == null) return null;
+        var identity = areaRoot.GetComponentInParent<AreaIdentity>();
+        if (identity != null && !string.IsNullOrEmpty(identity.AreaId))
+            return identity.AreaId;
+        return areaRoot.name;
     }
 
     /// <summary>平滑缩放 VCam orthoSize(新缩放打断旧的,避免并发竞争)。
