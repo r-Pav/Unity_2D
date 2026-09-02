@@ -115,6 +115,25 @@ public class AreaChannelTrigger : MonoBehaviour
         }
     }
 
+    // ============================================================
+    // 瞬移兼容(无缝传送管道):深处 ChannelTeleportTrigger 把玩家瞬移到对侧后,
+    // 本类 AutoMoveChannel 的 elapsed 需重置,防撞 MaxMoveTime=5s 上限提前结束
+    // ============================================================
+
+    /// <summary>瞬移发生标记:ChannelTeleportTrigger 瞬移玩家后置位,移动循环读到后重置 elapsed。
+    /// static 足够——同一时刻只有一个 AutoMoveChannel 协程在跑(InputEnabled 锁 = 跨实例防重入,
+    /// 见 OnTriggerEnter2D 注释),不存在多实例竞争。</summary>
+    private static bool _teleportOccurred;
+
+    /// <summary>
+    /// 标记玩家刚被瞬移(ChannelTeleportTrigger.TeleportPlayer 调用)。
+    /// 选择"主动标记"而非"玩家 x 与目标 x 距离差突增"检测:
+    /// 瞬移落点在对侧管道深处,相对本侧 ExitPoint 目标,剩余距离可能骤减(落点更靠近目标)
+    /// 也可能骤增(落点越过目标),距离差阈值法无法同时覆盖两种情况,且阈值是魔法数;
+    /// 主动标记确定、无阈值、零误判,侵入最小(只加一个 static 置位)。
+    /// </summary>
+    public static void NotifyPlayerTeleported() => _teleportOccurred = true;
+
     /// <summary>场景唯一 VCam（懒查找缓存；相机简化后全场景仅一个 Virtual Camera）</summary>
     private CinemachineVirtualCamera _vcam;
 
@@ -245,6 +264,16 @@ public class AreaChannelTrigger : MonoBehaviour
             const float MaxMoveTime = 5f;
             while (Mathf.Abs(target.x - player.transform.position.x) > 0.1f && elapsed < MaxMoveTime)
             {
+                // 瞬移兼容(无缝传送管道):玩家在管道深处被 ChannelTeleportTrigger 瞬移到对侧,
+                // 位置突变——若不重计 elapsed,瞬移前 A 段已耗的时间会继续累积,
+                // 对侧剩余路程可能提前撞 MaxMoveTime=5s 上限 → 玩家停在管道内 + 输入不恢复。
+                // 消费一次性标记(瞬移组件已置位),不做"x 距离差突增"猜测:
+                // 落点在对侧管道深处,相对本 target 可能更近也可能越过,阈值法不可靠。
+                if (_teleportOccurred)
+                {
+                    _teleportOccurred = false;
+                    elapsed = 0f;
+                }
                 elapsed += Time.deltaTime;
                 // 每帧强制锁输入:PanelManager._ApplyInteractionState 在面板开/关时会重设
                 // _player.InputEnabled = !shouldLockInput——管道内 ESC 开菜单再关闭后,
