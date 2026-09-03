@@ -4,6 +4,8 @@ using UnityEngine;
 /// 空中攻击状态 — 三连击单状态(与地面同构,复用 Attack1/2/3 动画 clip),继承 PlayerComboState。
 /// 差异:悬停(重力小值缓沉)/ 上挑(ApplyLift,越打越高)/ 一滞空一套(每次进入强制从第 1 段)/
 /// OnEnter 强制直切 AirAttack 子机(坑 39 兜底)/ 连段结束恢复重力落态。
+/// 空中闪击(2026-09-03):每段挥击前 TryBlinkToAirEnemy —— 闪现到攻击范围内"距玩家最远"的
+/// 空中 enemy 侧面(左右交替),y 居中对齐,再挥击;范围内无空中 enemy → 不闪,原地攻击。
 /// </summary>
 public class PlayerAirAttackState : PlayerComboState
 {
@@ -12,6 +14,7 @@ public class PlayerAirAttackState : PlayerComboState
     private float _airAttackOriginalGravity = 1f;   // 空中攻击前的重力(连段结束/退出时恢复)
     private bool _airAttackGravityRestored = true;  // 重力是否已恢复(防重复恢复)
     private float _hoverTimer;                      // 滞空计时:落地退出需先滞空最小时间(防低空攻击瞬间退出)
+    private WeaponThrow _weaponThrow;               // 武器配置缓存(空中闪击侧面间距读取;延迟解析,未挂时为 null 走兜底)
 
     private const float MinHoverTime = 0.25f;
     private const float InputOpenTimeout = 0.5f;    // 输入门事件帧兜底超时(动画事件丢失时自动开门+恢复重力)
@@ -63,6 +66,9 @@ public class PlayerAirAttackState : PlayerComboState
 
         // 一滞空一套:标记本次滞空已用过空中攻击(落地 ResetJumps 时清)
         jump?.MarkAirAttackUsed();
+
+        // 空中闪击:第 1 段挥击前闪现到攻击范围内最远的空中 enemy 侧面(无空中目标 → 不闪,原地攻击)
+        TryBlinkToAirEnemy();
     }
 
     protected override void OnComboUpdate()
@@ -90,6 +96,10 @@ public class PlayerAirAttackState : PlayerComboState
     {
         base.OnComboCut();   // 特效换槽(空中 slot_Air;基类统一处理,否则空中切段不换槽)
         ApplyLift();         // 切段出手:再给一次上挑力(累加,越打越高)
+
+        // 空中闪击:第 2/3 段切段瞬间再闪到下一目标侧面(玩家在 enemy 哪侧就闪另一侧 → 左右交替;
+        // 无空中目标 → 不闪,原地攻击)。已在上段末尾由 ApplyLift 给了上挑,闪现不清 y,悬停不破坏
+        TryBlinkToAirEnemy();
     }
 
     protected override void OnComboExit()
@@ -116,6 +126,65 @@ public class PlayerAirAttackState : PlayerComboState
         {
             stateMachine.ChangeState(pc.FallState);
         }
+    }
+
+    /// <summary>
+    /// 空中闪击(每段挥击前调用一次,非每帧):闪现到攻击范围内"距玩家最远"的空中 enemy 侧面,再挥击。
+    /// - 目标:MeleeHitDetector 扫 combat.RangeIndicator(与命中同源的方框)+ EnemyLayer → GetComponentInParent
+    ///   拿 EnemyControllerBase,筛 !IsDead && !IsGrounded(空中);取距玩家最远的一只(多 enemy 防闪进中间)
+    /// - 落点:玩家在 enemy 哪一侧就闪到另一侧(左右交替);y 与 enemy 居中对齐;
+    ///   水平间距读 WeaponThrow.airBlinkSideGap(未挂 WeaponThrow 兜底 1.5)
+    /// - 执行:物理体瞬移(rb.position,防 transform 插值撕裂;不用 PlayerTeleport——无敌帧/清速/事件副作用都不要)
+    ///   + 清水平速度防滑(保留 y:悬停/上挑惯性不清)+ 朝向敌人
+    /// - 无空中目标(范围内全是地面 enemy / 目标死亡落地)→ return,不闪,原地攻击照旧
+    /// 闪现不重置状态机/动画/悬停重力:动画正在播,位置跳变靠玩家视觉(闪=瞬移)掩盖。
+    /// </summary>
+    private void TryBlinkToAirEnemy()
+    {
+        var pc = (PlayerController)owner;
+        if (pc == null || combat == null) return;
+
+        Collider2D[] cols = MeleeHitDetector.Detect(combat.RangeIndicator, combat.EnemyLayer);
+        if (cols == null || cols.Length == 0) return;
+
+        // 目标 = 距玩家最远的非死亡空中 enemy(目标死亡/落地后检测自然为空 → 不闪,不报错)
+        EnemyControllerBase target = null;
+        float bestSqr = -1f;
+        Vector2 playerPos = pc.transform.position;
+        foreach (var col in cols)
+        {
+            var e = col != null ? col.GetComponentInParent<EnemyControllerBase>() : null;
+            if (e == null || e.IsDead || e.IsGrounded) continue;
+            float d = ((Vector2)e.transform.position - playerPos).sqrMagnitude;
+            if (d > bestSqr)
+            {
+                bestSqr = d;
+                target = e;
+            }
+        }
+        if (target == null) return;   // 范围内没有空中 enemy → 不闪,原地攻击
+
+        // 落点:玩家在 enemy 右侧 → 闪到左侧(side=-1),反之闪到右侧 → 左右交替
+        float side = playerPos.x >= target.transform.position.x ? -1f : 1f;
+        // 武器配置延迟解析(有目标才查;缓存,重复调用不重复 GetComponentInChildren)
+        if (_weaponThrow == null && owner != null)
+            _weaponThrow = owner.GetComponentInChildren<WeaponThrow>();
+        float gap = (_weaponThrow != null) ? _weaponThrow.AirBlinkSideGap : 1.5f;
+        if (gap <= 0f) gap = 1.5f;    // 配置异常(0/负)兜底,防重叠进 enemy
+        Vector2 dest = new Vector2(target.transform.position.x + side * gap, target.transform.position.y);
+
+        // 物理体瞬移(设置 rb.position 而非 transform.position,防物理插值在两位置间撕裂)
+        Rigidbody2D rb = pc.GetRigidbody();
+        if (rb == null) return;
+        rb.position = dest;
+
+        // 清水平速度防滑(保留 y,悬停/上挑惯性不清)
+        pc.SetVelocityPublic(x: 0f);
+
+        // 朝向敌人(按玩家与 enemy 相对位置,同背刺落点转向逻辑)。
+        // 坑:必须用 dest 判定,不能读 pc.transform.position——rb.position 赋值后同帧
+        // transform.position 尚未同步(还是闪前旧值),读它会朝向判反 → 攻击矩形朝敌人反侧 → 打空
+        pc.UpdateFacing(target.transform.position.x >= dest.x ? 1f : -1f);
     }
 
     /// <summary>出手上挑:每段攻击开始时给一个向上的力(累加,连段越打越高)。

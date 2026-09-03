@@ -214,6 +214,9 @@ public class PlayerCombat : MonoBehaviour
     /// <summary>敌人 Layer(供 PlayerBackstabState 目标搜索用)</summary>
     public LayerMask EnemyLayer => enemyLayer;
 
+    /// <summary>近战范围指示器(供 PlayerAirAttackState 空中闪击检测目标用)</summary>
+    public MeleeRangeIndicator RangeIndicator => rangeIndicator;
+
     // ============================================================
     // 动画事件薄转发 — 正式事件迁移在 P5,P2 先转发给 FSM 当前状态类
     // ============================================================

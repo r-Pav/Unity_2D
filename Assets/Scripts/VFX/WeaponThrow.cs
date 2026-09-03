@@ -116,6 +116,13 @@ public class WeaponThrow : MonoBehaviour
     /// <summary>空中背刺命中后的滞空停顿秒数(PlayerBackstabState 读)</summary>
     public float BackstabHoverDuration => backstabHoverDuration;
 
+    [Header("空中闪击")]
+    [Tooltip("空中攻击每段闪现到 enemy 侧面的水平间距(米,参考背刺 behindOffset 1.5;Inspector 可调)")]
+    [SerializeField] private float airBlinkSideGap = 1.5f;
+
+    /// <summary>空中闪击侧面间距(PlayerAirAttackState 每段闪现读;null 兜底 1.5)</summary>
+    public float AirBlinkSideGap => airBlinkSideGap;
+
     [Header("重生")]
     [Tooltip("攻击 end 后,若此秒数内没有新的攻击 start,剑才重新出现(连击中断判定)")]
     [SerializeField] private float respawnDelay = 1f;

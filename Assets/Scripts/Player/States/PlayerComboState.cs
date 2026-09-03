@@ -74,8 +74,10 @@ public abstract class PlayerComboState : EntityState
         var pc = (PlayerController)owner;
 
         // 攻击中朝向跟随输入(连击转向灵敏:伤害判定 OnMeleeHitFrame 读 AttackDir,同步新方向)
+        // 空中攻击例外:朝向由闪击定位(闪后朝 enemy)/进入朝向决定,输入 h 只算速度不翻转朝向
+        // (闪到 enemy 另一侧后若还按原方向键,h 会把 facing 翻回背对 enemy → 攻击矩形朝反 → 连段断)
         float h = Input.GetAxisRaw("Horizontal");
-        if (Mathf.Abs(h) > 0.1f) pc.UpdateFacing(h);
+        if (Mathf.Abs(h) > 0.1f && !IsAirAttack) pc.UpdateFacing(h);
 
         OnComboUpdate();
 
@@ -130,9 +132,10 @@ public abstract class PlayerComboState : EntityState
 
     // ── AnimationEvent 回调(经 PlayerCombat 薄转发) ──
 
-    /// <summary>动画事件:进入攻击表现 — 朝向跟随当前输入</summary>
+    /// <summary>动画事件:进入攻击表现 — 朝向跟随当前输入(空中跳过:空中朝向由闪击/进入决定,AttackDir 按输入会把闪后朝向翻反)</summary>
     public void OnAnimStart()
     {
+        if (IsAirAttack) return;
         var pc = (PlayerController)owner;
         if (combat != null)
             pc.UpdateFacing(combat.AttackDir);
