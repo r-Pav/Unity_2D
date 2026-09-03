@@ -59,6 +59,18 @@ public class PlayerBackstabState : EntityState
             Vector2 dest = new Vector2(
                 _target.transform.position.x - _target.Facing * behindOffset,
                 _target.transform.position.y);
+            // 空中 enemy 靠墙标记优先(WallSide):背后侧被墙/管道堵 → 落点改到"远离墙的安全侧",
+            // 防背刺闪现进墙/管道里(原 ResolveBackstabLanding 只会在背后被挡时翻 enemy 正面,
+            // 无两侧墙信息,靠墙时翻正面仍可能落进墙侧)。地面 enemy:ResolveSafeSide 返回 behindSide,
+            // 标记不介入,走原射线逻辑,行为与之前一致。
+            int behindSide = -_target.Facing;   // 背刺背后 = enemy 面朝反方向
+            int safeSide = _target.ResolveSafeSide(behindSide);
+            if (safeSide != 0 && safeSide != behindSide)
+                dest = new Vector2(
+                    _target.transform.position.x + safeSide * behindOffset,
+                    _target.transform.position.y);
+            // 背后安全(safeSide==behindSide)或空中夹缝两侧都堵(safeSide==0)时 dest 保持背后原样,
+            // 继续走原射线兜底(防标记过期/距离差异;夹缝射线自然翻正面)
             dest = ResolveBackstabLanding(dest);   // 落点避开管道(PlayerTeleport 只钳制墙层,管道 Channel 层会直接传进去)
             if (teleport != null)
                 teleport.TeleportTo(dest);

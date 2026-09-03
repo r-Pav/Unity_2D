@@ -91,6 +91,10 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     [Tooltip("远程攻击击退力度（近战击退由 PoiseComponent 控制；0 = 未设置）")]
     [SerializeField] protected float rangedKnockbackForce = 0f;
 
+    [Tooltip("靠墙探测射线长度(米):enemy 进空/空中受击时向左右各发一条水平射线,命中实心/管道=该侧靠墙;比落点间距(1.5)略长即可")]
+    [SerializeField] protected float wallProbeDistance = 2f;
+    public float WallProbeDistance => wallProbeDistance;
+
     [Header("空中受击")]
     [Tooltip("空中受击滞空时长(秒):击飞中再受击停住后继续击退轨迹;0 = 关闭")]
     [SerializeField] protected float airHitHangDuration = 0.3f;
@@ -275,6 +279,12 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     /// <summary>是否正在本地冻结中</summary>
     public bool IsLocallyFrozen => _localFreezeRemaining > 0f;
 
+    // ── 空中靠墙标记(WallSide,2026-09-03:背刺/空中闪击统一安全侧落点用)──
+    /// <summary>左侧(朝向 -1)探测命中实心/管道 → 左侧靠墙;仅空中有效(地面时公共属性返回 0)</summary>
+    private bool _leftBlocked;
+    /// <summary>右侧(朝向 +1)探测命中实心/管道 → 右侧靠墙</summary>
+    private bool _rightBlocked;
+
     /// <summary>
     /// 命中本地冻结 — 只冻结本敌人自身：FSM 停更新、移动停止、动画停播。
     /// duration ≤ 0 忽略；冻结中再次调用取更长的剩余时长；已死亡忽略（死亡动画正常播放）。
@@ -323,6 +333,9 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     public void ApplyAirHangFreeze(float duration)
     {
         if (isDead || duration <= 0f || IsGrounded) return;
+        // 空中受击滞空瞬间刷新靠墙标记(WallSide):被再受击/滞空期间吸附平移后墙距可能变化,
+        // 背刺/空中闪击的安全侧选择需要最新标记(事件驱动,不每帧;滞空延长分支同样已由 ApplyKnockback 刷过)
+        RefreshWallSide();
         if (_localFreezeRemaining > 0f)
         {
             if (duration > _localFreezeRemaining) _localFreezeRemaining = duration;
@@ -345,6 +358,63 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     {
         _localFreezeRemaining = 0f;
         EndLocalFreeze();
+    }
+
+    // ============================================================
+    // 空中靠墙标记(WallSide)公共 API — 背刺/空中闪击等瞬移技能选"远离墙的安全侧"落点
+    // ============================================================
+
+    /// <summary>靠墙侧(1=右,-1=左,0=无);enemy 在地面时不返回标记(标记只在空中有效,地面背刺走原射线逻辑)</summary>
+    public int WallSide => IsGrounded ? 0 : (_rightBlocked ? 1 : (_leftBlocked ? -1 : 0));
+
+    /// <summary>两侧都靠墙(夹缝,侧向落点不可用;仅空中,地面恒 false)</summary>
+    public bool WallBlockedBothSides => !IsGrounded && _leftBlocked && _rightBlocked;
+
+    /// <summary>
+    /// 解析安全落点侧:preferred 侧可用返回 preferred;preferred 靠墙则返回另一侧;两侧都堵返回 0
+    /// (调用方不瞬移/原地);enemy 在地面直接返回 preferred(不介入)。
+    /// </summary>
+    public int ResolveSafeSide(int preferredSide)
+    {
+        if (IsGrounded) return preferredSide;
+        if (_leftBlocked && _rightBlocked) return 0;
+        if (preferredSide == 0) preferredSide = 1;
+        if (SideBlocked(preferredSide)) return -preferredSide;   // 首选侧靠墙 → 对侧
+        return preferredSide;
+    }
+
+    /// <summary>指定侧(+1 右/-1 左)是否靠墙(内部用探测 bool,公共 API 不依赖 _wallSide int 编码)</summary>
+    private bool SideBlocked(int side) => side > 0 ? _rightBlocked : _leftBlocked;
+
+    /// <summary>
+    /// 刷新靠墙标记:向 enemy 左右各发一条水平射线(高度=碰撞体中心 y,无碰撞体回退 transform.y+0.5),
+    /// 长度 wallProbeDistance。命中实心(非自身/非子物体)= 该侧靠墙;命中 trigger 且
+    /// AreaChannelTrigger.IsPointInChannel(命中点)= 管道靠墙;普通 trigger 不算。
+    /// 注意团结引擎 m_QueriesStartInColliders=0:射线从 enemy 自身 collider 内部出发会命中自己,
+    /// 命中 collider 的 root 是自身或子物体时必须跳过再继续(用 RaycastAll 取第一个非自身命中)。
+    /// 调用点 = 事件驱动(击飞/空中受击瞬间),不做每帧轮询。
+    /// </summary>
+    public void RefreshWallSide()
+    {
+        _rightBlocked = ProbeSide(1);
+        _leftBlocked = ProbeSide(-1);
+    }
+
+    /// <summary>单侧探测:朝 side(+1 右/-1 左)发水平射线,实心/管道命中返回 true(该侧靠墙)</summary>
+    private bool ProbeSide(int side)
+    {
+        float rayY = col != null ? col.bounds.center.y : transform.position.y + 0.5f;
+        Vector2 origin = new Vector2(transform.position.x, rayY);
+        RaycastHit2D[] hits = Physics2D.RaycastAll(origin, Vector2.right * side, wallProbeDistance);
+        foreach (RaycastHit2D hit in hits)
+        {
+            if (hit.collider == null) continue;
+            if (hit.transform == transform || hit.transform.IsChildOf(transform)) continue;   // 跳过自身/子物体
+            if (!hit.collider.isTrigger) return true;                         // 实心 = 靠墙
+            if (AreaChannelTrigger.IsPointInChannel(hit.point)) return true;  // 管道 trigger = 靠墙
+            // 普通 trigger(门/攻击判定框等)不算挡
+        }
+        return false;
     }
 
     // ============================================================
@@ -989,8 +1059,12 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         // 移动系统让位(不清 x),斜向击退速度自由飞。
         if (!IsGrounded || rb.velocity.y < -0.5f)
         {
+            // 打飞/击飞瞬间刷新靠墙标记(WallSide):后续背刺/空中闪击要按最新墙距选"远离墙的安全侧",
+            // 此刻 enemy 刚被击退可能正贴近墙/从墙边起飞(事件驱动,不做每帧轮询)
+            RefreshWallSide();
             float targetX = rb.velocity.x + knockDir.x * (knockback.force / Mathf.Max(0.01f, rb.mass));
             float targetY = rb.velocity.y + knockDir.y * (knockback.force / Mathf.Max(0.01f, rb.mass));
+            // 只限上升(y 分量>0),向下不受限(落地冲击依赖高速下落)
             rb.velocity = new Vector2(targetX, targetY);
             _airKnockbackActive = true;
             return;
