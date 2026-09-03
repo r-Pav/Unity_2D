@@ -91,9 +91,13 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     [Tooltip("远程攻击击退力度（近战击退由 PoiseComponent 控制；0 = 未设置）")]
     [SerializeField] protected float rangedKnockbackForce = 0f;
 
-    [Tooltip("靠墙探测射线长度(米):enemy 进空/空中受击时向左右各发一条水平射线,命中实心/管道=该侧靠墙;比落点间距(1.5)略长即可")]
-    [SerializeField] protected float wallProbeDistance = 2f;
-    public float WallProbeDistance => wallProbeDistance;
+    [Tooltip("最高击飞上升速度上限(米/秒):空中多次击退叠加(普攻第三击+背刺等,ApplyKnockback 速度累加)后\n向上速度钳到该值,防敌人飞太高;只限上升(y 分量>0),向下/落地不限,不影响落地冲击")]
+    [SerializeField] protected float maxLaunchUpSpeed = 10f;
+    public float MaxLaunchUpSpeed => maxLaunchUpSpeed;
+
+    [Tooltip("靠墙检测半宽(米):以 enemy 为中心左右各此距离的水平带,带内有墙/地面/管道 = 该侧堵(空中闪/背刺落点检测用)")]
+    [SerializeField] protected float wallCheckHalfWidth = 2.5f;
+    public float WallCheckHalfWidth => wallCheckHalfWidth;
 
     [Header("空中受击")]
     [Tooltip("空中受击滞空时长(秒):击飞中再受击停住后继续击退轨迹;0 = 关闭")]
@@ -279,12 +283,6 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     /// <summary>是否正在本地冻结中</summary>
     public bool IsLocallyFrozen => _localFreezeRemaining > 0f;
 
-    // ── 空中靠墙标记(WallSide,2026-09-03:背刺/空中闪击统一安全侧落点用)──
-    /// <summary>左侧(朝向 -1)探测命中实心/管道 → 左侧靠墙;仅空中有效(地面时公共属性返回 0)</summary>
-    private bool _leftBlocked;
-    /// <summary>右侧(朝向 +1)探测命中实心/管道 → 右侧靠墙</summary>
-    private bool _rightBlocked;
-
     /// <summary>
     /// 命中本地冻结 — 只冻结本敌人自身：FSM 停更新、移动停止、动画停播。
     /// duration ≤ 0 忽略；冻结中再次调用取更长的剩余时长；已死亡忽略（死亡动画正常播放）。
@@ -333,9 +331,6 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     public void ApplyAirHangFreeze(float duration)
     {
         if (isDead || duration <= 0f || IsGrounded) return;
-        // 空中受击滞空瞬间刷新靠墙标记(WallSide):被再受击/滞空期间吸附平移后墙距可能变化,
-        // 背刺/空中闪击的安全侧选择需要最新标记(事件驱动,不每帧;滞空延长分支同样已由 ApplyKnockback 刷过)
-        RefreshWallSide();
         if (_localFreezeRemaining > 0f)
         {
             if (duration > _localFreezeRemaining) _localFreezeRemaining = duration;
@@ -361,60 +356,56 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     }
 
     // ============================================================
-    // 空中靠墙标记(WallSide)公共 API — 背刺/空中闪击等瞬移技能选"远离墙的安全侧"落点
+    // 靠墙检测(WallCheck)公共 API — 空中闪击/背刺等瞬移技能落点前实时判定"某侧是否有堵"
     // ============================================================
 
-    /// <summary>靠墙侧(1=右,-1=左,0=无);enemy 在地面时不返回标记(标记只在空中有效,地面背刺走原射线逻辑)</summary>
-    public int WallSide => IsGrounded ? 0 : (_rightBlocked ? 1 : (_leftBlocked ? -1 : 0));
-
-    /// <summary>两侧都靠墙(夹缝,侧向落点不可用;仅空中,地面恒 false)</summary>
-    public bool WallBlockedBothSides => !IsGrounded && _leftBlocked && _rightBlocked;
-
     /// <summary>
-    /// 解析安全落点侧:preferred 侧可用返回 preferred;preferred 靠墙则返回另一侧;两侧都堵返回 0
-    /// (调用方不瞬移/原地);enemy 在地面直接返回 preferred(不介入)。
+    /// 指定方向(±1)的水平半带内是否有堵(实心墙/地面/管道 trigger)。
+    /// 带 = 以 enemy 中心为原点、朝 side 一侧宽度 wallCheckHalfWidth、高覆盖本碰撞体整高的矩形
+    /// (side=1 覆盖 x∈[enemy.x, enemy.x+wallCheckHalfWidth];side=-1 同理)。返回 true = 该方向不能落点。
+    /// 规则:实心碰撞(墙/地面/实体)一律算堵;管道 trigger(AreaChannelTrigger)算堵;带内其它 enemy/玩家不算墙;
+    /// 普通 trigger(门/攻击判定框等)不算。不缓存、不每帧调用,由调用方在需要判定的瞬间(空中闪每段/背刺)调一次。
     /// </summary>
-    public int ResolveSafeSide(int preferredSide)
+    public bool IsWallBlockedOnSide(int side)
     {
-        if (IsGrounded) return preferredSide;
-        if (_leftBlocked && _rightBlocked) return 0;
-        if (preferredSide == 0) preferredSide = 1;
-        if (SideBlocked(preferredSide)) return -preferredSide;   // 首选侧靠墙 → 对侧
-        return preferredSide;
-    }
+        side = side >= 0 ? 1 : -1;
+        // 检测矩形:中心 x = enemy.x 朝 side 平移半宽的一半(覆盖 [enemy.x, enemy.x+side×halfWidth]);
+        // y 用碰撞体中心(敌人贴墙时墙在 0.3m 处,带从 enemy 中心开始必然覆盖到);高 = 碰撞体整高(只测 enemy 身高范围)
+        float bandY = col != null ? col.bounds.center.y : transform.position.y + 0.5f;
+        float bandH = col != null ? col.bounds.size.y : 1f;
+        Vector2 center = new Vector2(transform.position.x + side * wallCheckHalfWidth * 0.5f, bandY);
+        Vector2 size = new Vector2(wallCheckHalfWidth, bandH);
 
-    /// <summary>指定侧(+1 右/-1 左)是否靠墙(内部用探测 bool,公共 API 不依赖 _wallSide int 编码)</summary>
-    private bool SideBlocked(int side) => side > 0 ? _rightBlocked : _leftBlocked;
-
-    /// <summary>
-    /// 刷新靠墙标记:向 enemy 左右各发一条水平射线(高度=碰撞体中心 y,无碰撞体回退 transform.y+0.5),
-    /// 长度 wallProbeDistance。命中实心(非自身/非子物体)= 该侧靠墙;命中 trigger 且
-    /// AreaChannelTrigger.IsPointInChannel(命中点)= 管道靠墙;普通 trigger 不算。
-    /// 注意团结引擎 m_QueriesStartInColliders=0:射线从 enemy 自身 collider 内部出发会命中自己,
-    /// 命中 collider 的 root 是自身或子物体时必须跳过再继续(用 RaycastAll 取第一个非自身命中)。
-    /// 调用点 = 事件驱动(击飞/空中受击瞬间),不做每帧轮询。
-    /// </summary>
-    public void RefreshWallSide()
-    {
-        _rightBlocked = ProbeSide(1);
-        _leftBlocked = ProbeSide(-1);
-    }
-
-    /// <summary>单侧探测:朝 side(+1 右/-1 左)发水平射线,实心/管道命中返回 true(该侧靠墙)</summary>
-    private bool ProbeSide(int side)
-    {
-        float rayY = col != null ? col.bounds.center.y : transform.position.y + 0.5f;
-        Vector2 origin = new Vector2(transform.position.x, rayY);
-        RaycastHit2D[] hits = Physics2D.RaycastAll(origin, Vector2.right * side, wallProbeDistance);
-        foreach (RaycastHit2D hit in hits)
+        Collider2D[] hits = Physics2D.OverlapBoxAll(center, size, 0f);
+        foreach (Collider2D hit in hits)
         {
-            if (hit.collider == null) continue;
-            if (hit.transform == transform || hit.transform.IsChildOf(transform)) continue;   // 跳过自身/子物体
-            if (!hit.collider.isTrigger) return true;                         // 实心 = 靠墙
-            if (AreaChannelTrigger.IsPointInChannel(hit.point)) return true;  // 管道 trigger = 靠墙
+            if (hit == null) continue;
+            if (hit.transform == transform || hit.transform.IsChildOf(transform)) continue;   // 自身/子物体不算墙
+            if (hit.GetComponentInParent<EnemyControllerBase>() != null) continue;             // 其它 enemy 不算墙
+            if (hit.GetComponentInParent<PlayerController>() != null) continue;                // 玩家不算墙
+            if (!hit.isTrigger) return true;                                                   // 实心(墙/地面/实体)= 堵
+            if (hit.GetComponentInParent<AreaChannelTrigger>() != null) return true;           // 管道 trigger = 堵
             // 普通 trigger(门/攻击判定框等)不算挡
         }
         return false;
+    }
+
+    /// <summary>
+    /// 强制瞬移本体位置并清零速度(空中闪击"占位推敌"用):玩家占 enemy 原位时把 enemy 沿推开方向硬挪,
+    /// 清速度防旧击退把它拉回墙边。只动物理体位 + 速度,不动状态机/动画/滞空冻结(后续命中结算接管)。
+    /// 注意:空中滞空冻结(_airHangFreeze)结束时不会恢复保存速度,清零在此模式下持久有效。
+    /// </summary>
+    public void ForceSetPosition(Vector2 pos)
+    {
+        if (rb != null)
+        {
+            rb.position = pos;
+            rb.velocity = Vector2.zero;
+        }
+        else
+        {
+            transform.position = pos;
+        }
     }
 
     // ============================================================
@@ -1059,12 +1050,12 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         // 移动系统让位(不清 x),斜向击退速度自由飞。
         if (!IsGrounded || rb.velocity.y < -0.5f)
         {
-            // 打飞/击飞瞬间刷新靠墙标记(WallSide):后续背刺/空中闪击要按最新墙距选"远离墙的安全侧",
-            // 此刻 enemy 刚被击退可能正贴近墙/从墙边起飞(事件驱动,不做每帧轮询)
-            RefreshWallSide();
             float targetX = rb.velocity.x + knockDir.x * (knockback.force / Mathf.Max(0.01f, rb.mass));
             float targetY = rb.velocity.y + knockDir.y * (knockback.force / Mathf.Max(0.01f, rb.mass));
+            // 击飞上限:多次击退叠加(普攻第三击+背刺等)的向上速度钳到 maxLaunchUpSpeed,防飞太高;
             // 只限上升(y 分量>0),向下不受限(落地冲击依赖高速下落)
+            if (knockDir.y > 0f && targetY > maxLaunchUpSpeed)
+                targetY = maxLaunchUpSpeed;
             rb.velocity = new Vector2(targetX, targetY);
             _airKnockbackActive = true;
             return;

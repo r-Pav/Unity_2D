@@ -119,9 +119,13 @@ public class WeaponThrow : MonoBehaviour
     [Header("空中闪击")]
     [Tooltip("空中攻击每段闪现到 enemy 侧面的水平间距(米,参考背刺 behindOffset 1.5;Inspector 可调)")]
     [SerializeField] private float airBlinkSideGap = 1.5f;
+    [Tooltip("空中闪击占位推敌距离(米):enemy 靠墙且首选闪侧被堵时,玩家闪到 enemy 原位、enemy 沿远离墙方向硬挪此距离;0.8 ≈ 一个身位,后续挥击命中并把 enemy 继续推离墙")]
+    [SerializeField] private float airBlinkPushDistance = 0.8f;
 
     /// <summary>空中闪击侧面间距(PlayerAirAttackState 每段闪现读;null 兜底 1.5)</summary>
     public float AirBlinkSideGap => airBlinkSideGap;
+    /// <summary>空中闪击占位推敌距离(PlayerAirAttackState 墙侧堵时读;null 兜底 0.8)</summary>
+    public float AirBlinkPushDistance => airBlinkPushDistance;
 
     [Header("重生")]
     [Tooltip("攻击 end 后,若此秒数内没有新的攻击 start,剑才重新出现(连击中断判定)")]
