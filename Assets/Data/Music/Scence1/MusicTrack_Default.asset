@@ -12,6 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 859019e2c3227664c856f59e2290b248, type: 3}
   m_Name: MusicTrack_Default
   m_EditorClassIdentifier: 
-  clip: {fileID: 8300000, guid: 8dd00c85f213d4d4abb8d8d6a16fb3af, type: 3}
+  clip: {fileID: 8300000, guid: 96db7892d03808e4e8494d04099961c6, type: 3}
   loopPoint: 0
   points: []
+  barIntervalSeconds: 0
+  introClip: {fileID: 0}
+  introSwitchTime: 0
+  introPoints: []
+  pointGroups: []

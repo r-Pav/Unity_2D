@@ -99,6 +99,9 @@ public class PlayerBackstabState : EntityState
         _hitResolved = true;
         if (_target == null || _target.IsDead) return;
         combat?.ExecuteBackstab(_target, damageMultiplier, knockback);
+        // 重音成功:头顶 combo 计数 +1(BeatComboIndicator,不存在则跳过);
+        // 在 _target 非空非死分支内执行,挥空/目标死亡不计数,天然满足"挥空无效"
+        owner.GetComponentInChildren<BeatComboIndicator>(true)?.NotifyBeatHit();
         _target.GetComponentInChildren<BeatFlashPoint>(true)?.Hide();
 
         var pc = (PlayerController)owner;

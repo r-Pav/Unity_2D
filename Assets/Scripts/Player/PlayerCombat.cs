@@ -49,6 +49,10 @@ public class PlayerCombat : MonoBehaviour
     [Tooltip("近战挥砍命中特效 Prefab — 在 OverlapBox 检测到敌人时生成")]
     [SerializeField] private GameObject slashVFXPrefab;
 
+    [Header("背刺")]
+    [Tooltip("重音命中特效:背刺命中帧在敌人位置(击飞点)生成的一次性粒子;允许空")]
+    [SerializeField] private GameObject backstabHitVFX;
+
     [Header("近战")]
     [Tooltip("近战伤害")]
     [SerializeField] private float meleeDamage = 1f;
@@ -573,6 +577,10 @@ public class PlayerCombat : MonoBehaviour
         };
         var info = BuildDamageInfo(dmg, meleeFinisherAttackType, knock);
         CombatResolver.Resolve(info.source, target, info);
+
+        // 重音背刺命中特效:在敌人位置(击飞点)生成一次性粒子(VFXSpawner 对 null prefab 静默返回,允许空槽)
+        if (backstabHitVFX != null)
+            VFXSpawner.SpawnInWorld(backstabHitVFX, target.transform.position);
 
         // 命中本地冻结(独立卡帧):与普通近战路径一致,只冻被命中的这只敌人
         float localFreeze = target.IsBoss ? bossLocalHitStopDuration : enemyLocalHitStopDuration;
