@@ -87,7 +87,7 @@ public class PlayerStepClimb : MonoBehaviour
     /// <summary>同台阶防抖锁到期时刻（Time.time）</summary>
     private float _jitterLockUntil = float.NegativeInfinity;
 
-    /// <summary>本次翻越开始时刻（超时兜底）</summary>
+    /// <summary>本次翻越开始时刻(超时兜底)</summary>
     private float _climbStartTime;
 
     private void Awake()
@@ -195,7 +195,7 @@ public class PlayerStepClimb : MonoBehaviour
         return lowHit && !highHit;
     }
 
-    /// <summary>水平射线只命中实体（忽略 trigger，防管道等 trigger 误判为台阶）</summary>
+    /// <summary>水平射线只命中实体(忽略 trigger,防管道等 trigger 误判为台阶)</summary>
     private bool RayHitLayer(Vector2 origin, Vector2 dir)
     {
         // 排除自身层：层配置为 Everything(~0) 时也不会把玩家自己当台阶
@@ -203,7 +203,16 @@ public class PlayerStepClimb : MonoBehaviour
         if (mask.value == 0) return false;
 
         var filter = new ContactFilter2D { useTriggers = false, layerMask = mask };
-        return Physics2D.Raycast(origin, dir, filter, _raycastHits, rayLength) > 0;
+        if (Physics2D.Raycast(origin, dir, filter, _raycastHits, rayLength) <= 0) return false;
+        var hit = _raycastHits[0];
+        if (hit.collider == null) return false;
+
+        // 命中自己(玩家根或其子物体,如武器/特效挂点带 collider)不算台阶。
+        // 团结引擎 m_QueriesStartInColliders=0 时射线会命中起点所在的自身 collider,
+        // 冲刺高速帧低射线起点可能落入自己 Capsule → 误判台阶 → 平地小跳(2026-09-03 日志实测)
+        if (hit.collider.transform.root == transform.root) return false;
+
+        return true;
     }
 
     // ============================================================
