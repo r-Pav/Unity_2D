@@ -201,8 +201,22 @@ public class AreaChannelTrigger : MonoBehaviour
         //    FSM 不再跑 → 不再写 velocity,协程独享控制权。无需 player.enabled=false。
         player.InputEnabled = false;
 
-        // 音乐:进管道,切换器换曲(缓入缓出)。同物体挂 MusicSwitchTrigger 时自动调用
-        GetComponent<MusicSwitchTrigger>()?.TriggerSwitch();
+        // 音乐:进管道,淡入淡出切换。优先读对侧区域根(AreaMusicSlot)的槽位音乐;
+        // 对侧未配槽 → 回退自身 MusicSwitchTrigger(Boss 房/旧 Scene 配置兼容)。
+        // 不新写淡入淡出,直接复用 MusicPointManager.CrossFadeTo(现有 Scene 模式)。
+        bool switched = false;
+        if (targetArea != null)
+        {
+            var slot = targetArea.GetComponentInChildren<AreaMusicSlot>();
+            var mgr = MusicPointManager.Instance;
+            if (slot != null && slot.AreaMusic != null && mgr != null)
+            {
+                mgr.CrossFadeTo(slot.AreaMusic);
+                switched = true;
+            }
+        }
+        if (!switched)
+            GetComponent<MusicSwitchTrigger>()?.TriggerSwitch();
 
         // 1a. 强制归位玩家状态:跳跃/攻击/受击等非 walk 状态进管道时,
         //     InputEnabled=false 只短路 Update,FSM 状态与 Animator 参数残留
