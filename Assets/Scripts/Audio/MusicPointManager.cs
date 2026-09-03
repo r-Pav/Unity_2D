@@ -63,6 +63,7 @@ public class MusicPointManager : MonoBehaviour
     private Coroutine _autoBarRoutine;   // 自动重音调度协程(barIntervalSeconds>0 的场景曲)
     private bool _inWindow;              // 当前是否在触发窗口内
     private bool _autoBarActive;         // 当前窗口是否由自动重音开启(IsAutoBarWindow 区分背刺窗口)
+    private bool _autoBarConsumed;       // 当前自动重音窗口是否已被消费(F 背刺用:每 bar 限一次,防窗口内连按 F 连触发)
     private float _activePointTime;      // 当前窗口对应的点时刻
     private bool _bossMode;              // Boss 战模式(双源交叠)
     private bool _inIntroPhase;          // 两段式:当前是否处于前奏段(恢复/仲裁用)
@@ -101,7 +102,15 @@ public class MusicPointManager : MonoBehaviour
     }
 
     /// <summary>当前是否在「自动重音窗口」内(背刺判定用;Boss 标点窗口不满足,不干扰 PlayerBeatJudge)</summary>
-    public bool IsAutoBarWindow => _inWindow && _autoBarActive;
+    public bool IsAutoBarWindow => _inWindow && _autoBarActive && !_autoBarConsumed;
+
+    /// <summary>消费当前自动重音窗口:背刺成功进入状态后调用,本窗口内不再响应 F(每 bar 一次);
+    /// 下一窗口开窗时自动重置</summary>
+    public void ConsumeAutoBarWindow()
+    {
+        if (_inWindow && _autoBarActive)
+            _autoBarConsumed = true;
+    }
 
     /// <summary>下一个音乐点时刻(-1 = 无点)</summary>
     public float NextPointTime
@@ -397,6 +406,7 @@ public class MusicPointManager : MonoBehaviour
             StopCoroutine(_autoBarRoutine);
         _autoBarRoutine = null;
         _autoBarActive = false;
+        _autoBarConsumed = false;
     }
 
     /// <summary>按当前曲重启自动重音(barIntervalSeconds>0 才启动;曲目切换/恢复前台后调用)</summary>
@@ -423,6 +433,7 @@ public class MusicPointManager : MonoBehaviour
 
             _inWindow = true;
             _autoBarActive = true;
+            _autoBarConsumed = false;   // 新窗口重置消费标记(每 bar 可触发一次背刺)
             OnWindowEnter?.Invoke(next);
 
             while (_currentTrack != null && TrackTime < next + windowDuration) yield return null;

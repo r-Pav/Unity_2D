@@ -68,12 +68,18 @@ public class PlayerFallState : EntityState
             stateMachine.ChangeState(pc.JumpState);
         }
 
-        // 空中左键 → 空中攻击(带冷却判断 + 一滞空一次限制;原 TryAttack 空中分支)
-        if (Input.GetMouseButtonDown(0) && pc.Combat != null && pc.Combat.AttackCooldownReady
-            && !jump.AirAttackUsed)
+        // 空中左键 → 攻击(带冷却判断)。追击优先:背刺命中后窗口内按攻击 → 玩家吸附 enemy 身边,
+        // 按 enemy 状态分流(空中 enemy → AirAttackState 第 1 段;落地 enemy → AttackState 第 1 段);
+        // 非追击(窗口未开/过期/目标死亡/两侧堵)走原普通空中攻击(一滞空一次限制)
+        if (Input.GetMouseButtonDown(0) && pc.Combat != null && pc.Combat.AttackCooldownReady)
         {
-            stateMachine.ChangeState(pc.AirAttackState);
-            return;
+            if (pc.TryBackstabChaseAttack())
+                return;
+            if (!jump.AirAttackUsed)
+            {
+                stateMachine.ChangeState(pc.AirAttackState);
+                return;
+            }
         }
 
         // 下坠攻击:空中按 S 且高度够(原 PlayerGroundPound.HandleInput;冷却/高度/非贴墙检查在组件内)

@@ -212,6 +212,11 @@ public class PlayerStepClimb : MonoBehaviour
         // 冲刺高速帧低射线起点可能落入自己 Capsule → 误判台阶 → 平地小跳(2026-09-03 日志实测)
         if (hit.collider.transform.root == transform.root) return false;
 
+        // 命中活体角色(EnemyControllerBase 及其子物体 collider)不算台阶:敌人是移动单位
+        // (可被击飞/会走动),不是静态可攀爬立面;player 从 enemy 身边走过时低射线扫到其
+        // collider、高射线在其头顶之上 → 误判"台阶立面"→ 平地小跳(2026-09-03 用户复现,与自身 collider 同族)
+        if (hit.collider.GetComponentInParent<EnemyControllerBase>() != null) return false;
+
         return true;
     }
 

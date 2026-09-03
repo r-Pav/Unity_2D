@@ -11,7 +11,9 @@ using UnityEngine;
 ///   → PlayerTeleport.TeleportTo(复用:瞬移+贴墙钳制+清速度+无敌帧+传送事件) → 强制转向敌人 → 播 Backstab 动画;
 ///   无目标:原地闪现(不位移,短无敌帧),播空挥动画。
 /// 命中帧(动画事件 OnBackstabHitFrame → PlayerCombat → 本状态):对目标结算高伤害(3x)+ 强制硬直
-///   (攻击标签 Sword_Heavy → Poise 近战路径 → EnterStunState)。
+///   (攻击标签 Sword_Heavy → Poise 近战路径 → EnterStunState);命中成功且未击杀 → 开启追击窗口
+///   (PlayerController.BeginBackstabChase,时长 WeaponThrow.backstabChaseWindow 默认 2s):窗口内按攻击,
+///   玩家吸附到 enemy 身边分流开打(空中 enemy → 空中攻击第 1 段;落地 enemy → 地面攻击第 1 段),消灭击飞后接不上普攻的空窗。
 /// 结束(动画事件 OnBackstabEnd / 超时兜底 2.5s):回 Idle/Move。
 /// </summary>
 public class PlayerBackstabState : EntityState
@@ -26,6 +28,8 @@ public class PlayerBackstabState : EntityState
     private readonly float damageMultiplier;  // 背刺伤害倍率(基础伤害 × 此值)
     private readonly Vector2 knockback;       // 背刺击退向量(x 水平镜像,y 上挑,与三连击同语义)
     private readonly float hoverDuration;     // 空中背刺命中后的滞空停顿(玩家+敌人一起停)
+    private readonly float chaseWindow;       // 背刺追击窗口时长(秒;0 = 关闭)
+    private readonly bool chaseEnabled;       // 背刺追击总开关(调试关闭用)
 
     private EnemyControllerBase _target;
     private bool _hitResolved;    // 命中帧已结算(防重复;目标死亡/空时跳过)
@@ -36,7 +40,8 @@ public class PlayerBackstabState : EntityState
 
     public PlayerBackstabState(CharacterBase owner, StateMachine stateMachine, Animator anim,
         PlayerCombat combat, PlayerTeleport teleport, float searchRadius, float behindOffset,
-        float damageMultiplier, Vector2 knockback, float hoverDuration)
+        float damageMultiplier, Vector2 knockback, float hoverDuration,
+        float chaseWindow, bool chaseEnabled)
         : base(owner, stateMachine, anim, new[] { AnimParams.IsBackstabbing })   // Entry 路由:IsBackstabbing=true 进 Backstab,Exit 清 false
     {
         this.combat = combat;
@@ -46,6 +51,8 @@ public class PlayerBackstabState : EntityState
         this.damageMultiplier = damageMultiplier;
         this.knockback = knockback;
         this.hoverDuration = hoverDuration;
+        this.chaseWindow = chaseWindow;
+        this.chaseEnabled = chaseEnabled;
     }
 
     public override void OnEnter()
@@ -145,6 +152,14 @@ public class PlayerBackstabState : EntityState
         // 在 _target 非空非死分支内执行,挥空/目标死亡不计数,天然满足"挥空无效"
         owner.GetComponentInChildren<BeatComboIndicator>(true)?.NotifyBeatHit();
         _target.GetComponentInChildren<BeatFlashPoint>(true)?.Hide();
+
+        // 背刺命中成功 → 开启追击窗口(玩家侧共享数据,PlayerController.BeginBackstabChase):
+        // 窗口内按攻击 → 玩家吸附到 enemy 身边开打,消灭"背刺把 enemy 击飞后玩家在原地接不上攻击"的空窗。
+        // 数据放 PlayerController(攻击输入分发侧),本状态 OnExit 只清 _target 不影响窗口;
+        // 开关/时长由 WeaponThrow 背刺参数区配置(backstabChaseEnabled/backstabChaseWindow),命中帧读取,
+        // 不在状态内每帧轮询,只用过期时间戳(输入事件时校验)。目标若被背刺这刀直接击杀 → 不开窗(按攻击走普攻)。
+        if (chaseEnabled && chaseWindow > 0f && !_target.IsDead)
+            ((PlayerController)owner)?.BeginBackstabChase(_target, chaseWindow);
 
         var pc = (PlayerController)owner;
         if (pc == null || pc.IsGrounded()) return;

@@ -101,6 +101,10 @@ public class WeaponThrow : MonoBehaviour
     [SerializeField] private Vector2 backstabKnockback = new Vector2(8f, 0f);
     [Tooltip("空中背刺命中后的滞空停顿(秒):玩家和敌人一起在空中停一下,再继续下落/连击。0 = 关闭")]
     [SerializeField] private float backstabHoverDuration = 0.2f;
+    [Tooltip("背刺追击窗口(秒):背刺命中后此时间内按攻击,玩家吸附到 enemy 身边开打(空中/地面分流),消灭背刺后接不上普攻的空窗;0 = 关闭")]
+    [SerializeField] private float backstabChaseWindow = 2f;
+    [Tooltip("背刺追击总开关(调试用):false = 不吸附,窗口功能整体关闭")]
+    [SerializeField] private bool backstabChaseEnabled = true;
 
     /// <summary>空中第三击击退力度倍率(PlayerCombat 命中时通过 GetKnockbackBonus 生效)</summary>
     public float AirFinisherKnockbackMultiplier => airFinisherKnockbackMultiplier;
@@ -115,6 +119,10 @@ public class WeaponThrow : MonoBehaviour
     public Vector2 BackstabKnockback => backstabKnockback;
     /// <summary>空中背刺命中后的滞空停顿秒数(PlayerBackstabState 读)</summary>
     public float BackstabHoverDuration => backstabHoverDuration;
+    /// <summary>背刺追击窗口秒数(PlayerBackstabState 命中帧开启窗口读;0 = 关闭)</summary>
+    public float BackstabChaseWindow => backstabChaseWindow;
+    /// <summary>背刺追击总开关(PlayerBackstabState 命中帧读;false = 不开窗口,功能整体关闭)</summary>
+    public bool BackstabChaseEnabled => backstabChaseEnabled;
 
     [Header("空中闪击")]
     [Tooltip("空中攻击每段闪现到 enemy 侧面的水平间距(米,参考背刺 behindOffset 1.5;Inspector 可调)")]

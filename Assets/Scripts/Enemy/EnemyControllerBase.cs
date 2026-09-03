@@ -344,6 +344,12 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         if (rb != null)
         {
             _localFreezeSavedVelocity = rb.velocity;   // 存档(普通冻结路径用;滞空缓慢下落不清速度)
+            // 下落中被命中(背刺追击/空中连段):若不清 y,enemy 会带着下落速度"穿过"滞空继续下坠,
+            // 玩家三段闪击落点 y 对齐 enemy → 越打越靠下(2026-09-03 saika 复现)。
+            // 把负 y 清零:滞空从当前高度开始缓落,enemy 段间基本停住;
+            // 保留 x(击退水平),正 vy(上升中/二次上挑)保留累加不打断。
+            if (rb.velocity.y < 0f)
+                rb.velocity = new Vector2(rb.velocity.x, 0f);
             rb.gravityScale = airHangGravityScale;     // 小重力:缓慢下落,不清速度(二次击飞从当前速度累加,不冲突)
         }
     }
@@ -360,19 +366,21 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     // ============================================================
 
     /// <summary>
-    /// 指定方向(±1)的水平半带内是否有堵(实心墙/地面/管道 trigger)。
-    /// 带 = 以 enemy 中心为原点、朝 side 一侧宽度 wallCheckHalfWidth、高覆盖本碰撞体整高的矩形
+    /// 指定方向(±1)的水平半带内是否有堵(实心墙/管道 trigger)。
+    /// 带 = 以 enemy 中心为原点、朝 side 一侧宽度 wallCheckHalfWidth、高覆盖 enemy 碰撞体"中上段"的矩形
     /// (side=1 覆盖 x∈[enemy.x, enemy.x+wallCheckHalfWidth];side=-1 同理)。返回 true = 该方向不能落点。
-    /// 规则:实心碰撞(墙/地面/实体)一律算堵;管道 trigger(AreaChannelTrigger)算堵;带内其它 enemy/玩家不算墙;
+    /// 规则:实心碰撞(墙/实体)一律算堵;管道 trigger(AreaChannelTrigger)算堵;带内其它 enemy/玩家不算墙;
     /// 普通 trigger(门/攻击判定框等)不算。不缓存、不每帧调用,由调用方在需要判定的瞬间(空中闪每段/背刺)调一次。
     /// </summary>
     public bool IsWallBlockedOnSide(int side)
     {
         side = side >= 0 ? 1 : -1;
-        // 检测矩形:中心 x = enemy.x 朝 side 平移半宽的一半(覆盖 [enemy.x, enemy.x+side×halfWidth]);
-        // y 用碰撞体中心(敌人贴墙时墙在 0.3m 处,带从 enemy 中心开始必然覆盖到);高 = 碰撞体整高(只测 enemy 身高范围)
-        float bandY = col != null ? col.bounds.center.y : transform.position.y + 0.5f;
-        float bandH = col != null ? col.bounds.size.y : 1f;
+        // 检测矩形:中心 x = enemy.x 朝 side 平移半宽的一半(覆盖 [enemy.x, enemy.x+side×halfWidth])。
+        // y 只测碰撞体"中上段"(中心到中心上方半高):带底抬高到地面之上——若带取整高,地面 enemy 的带底边
+        // 与脚下地面重叠,开阔地也会把"地面"判成墙 → 普通背刺误触发换位(2026-09-03 用户复现);
+        // 真墙/管道从地面向上延伸,中上段必然命中,不受影响。空中 enemy 同样适用。
+        float bandH = col != null ? col.bounds.size.y * 0.5f : 1f;
+        float bandY = col != null ? col.bounds.center.y + col.bounds.size.y * 0.25f : transform.position.y + 0.75f;
         Vector2 center = new Vector2(transform.position.x + side * wallCheckHalfWidth * 0.5f, bandY);
         Vector2 size = new Vector2(wallCheckHalfWidth, bandH);
 

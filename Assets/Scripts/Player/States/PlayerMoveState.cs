@@ -55,9 +55,12 @@ public class PlayerMoveState : EntityState
             }
         }
 
-        // 左键 → 攻击(带冷却判断;冲刺中不会进入本状态,天然禁止冲刺攻击)
+        // 左键 → 攻击(带冷却判断;冲刺中不会进入本状态,天然禁止冲刺攻击)。
+        // 背刺追击优先:背刺命中后窗口内按攻击 → 玩家吸附 enemy 身边开打(目标死亡/过期/两侧堵返回 false 走普攻)
         if (Input.GetMouseButtonDown(0) && pc.Combat != null && pc.Combat.AttackCooldownReady)
         {
+            if (pc.TryBackstabChaseAttack())
+                return;
             stateMachine.ChangeState(pc.AttackState);
             return;
         }

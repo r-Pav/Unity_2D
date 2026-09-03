@@ -39,6 +39,14 @@ public abstract class PlayerComboState : EntityState
     /// <summary>当前连击段(伤害判定核心读取)</summary>
     public int ComboIndex => comboIndex;
 
+    /// <summary>取消待处理的连段输入(背刺最高优先级打断时清残留:排队的下一段 + 末帧预输入缓冲),
+    /// 防被打断连段的旧点击在背刺后污染追击窗口/下一轮攻击</summary>
+    public void CancelPendingComboInput()
+    {
+        comboQueued = false;
+        _exitBufferTimer = 0f;
+    }
+
     public override bool LocksInput => true;
 
     protected PlayerComboState(CharacterBase owner, StateMachine stateMachine, Animator anim,

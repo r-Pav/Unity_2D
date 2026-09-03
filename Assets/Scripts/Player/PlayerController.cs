@@ -111,6 +111,40 @@ public class PlayerController : PlayerCharacterBase
     public PlayerBackstabState BackstabState { get; private set; }
 
     // ============================================================
+    // 背刺追击窗口(backstab chase)— 背刺命中后窗口内按攻击 → 吸附 enemy 身边开打
+    // 共享数据放玩家根(攻击输入分发侧):背刺状态命中帧写入,退出背刺状态后仍可读;
+    // 无每帧轮询/无协程,只用过期时间戳(输入事件时校验)。清除由输入侧顺路做。
+    // ============================================================
+
+    private EnemyControllerBase _chaseTarget;   // 追击目标(背刺命中的那只 enemy;null = 无窗口)
+    private float _chaseEndTime;                // 窗口过期时间戳(Time.time 基准)
+
+    /// <summary>追击窗口当前是否有效(未过期 + 目标存活;输入分发快速判断用)</summary>
+    public bool BackstabChaseActive
+    {
+        get
+        {
+            if (_chaseTarget == null || _chaseTarget.IsDead) return false;
+            return Time.time <= _chaseEndTime;
+        }
+    }
+
+    /// <summary>开启追击窗口(PlayerBackstabState 命中帧调用):写目标 + 过期时间戳。
+    /// 调用侧已校验 WeaponThrow.BackstabChaseEnabled / window>0 / 目标存活</summary>
+    public void BeginBackstabChase(EnemyControllerBase target, float windowSeconds)
+    {
+        _chaseTarget = target;
+        _chaseEndTime = Time.time + Mathf.Max(0f, windowSeconds);
+    }
+
+    /// <summary>清除追击窗口(目标死亡/过期/追击已消费时;输入侧顺路清,防过期残留)</summary>
+    public void ClearBackstabChase()
+    {
+        _chaseTarget = null;
+        _chaseEndTime = 0f;
+    }
+
+    // ============================================================
     // 状态转发属性 — 动画聚合 / 敌人 AI 查询统一走这里
     // ============================================================
 
@@ -232,7 +266,9 @@ public class PlayerController : PlayerCharacterBase
             backstabWeapon != null ? backstabWeapon.BackstabBehindOffset : 1.5f,
             backstabWeapon != null ? backstabWeapon.BackstabDamageMultiplier : 3f,
             backstabWeapon != null ? backstabWeapon.BackstabKnockback : new Vector2(8f, 0f),
-            backstabWeapon != null ? backstabWeapon.BackstabHoverDuration : 0.2f);
+            backstabWeapon != null ? backstabWeapon.BackstabHoverDuration : 0.2f,
+            backstabWeapon != null ? backstabWeapon.BackstabChaseWindow : 2f,
+            backstabWeapon != null ? backstabWeapon.BackstabChaseEnabled : true);
         PlayerFsm.ChangeState(IdleState);
     }
 
@@ -414,7 +450,8 @@ public class PlayerController : PlayerCharacterBase
         // 窗口外 F:无效,什么都不触发(2026-09-01 saika 确认,不再普攻挥空)
     }
 
-    /// <summary>窗口内 F:强制打断进背刺状态(死亡/受击硬直/背刺自身执行中除外,防重入)</summary>
+    /// <summary>窗口内 F:强制打断进背刺状态(死亡/受击硬直/背刺自身执行中除外,防重入)。
+    /// 背刺最高优先级:打断攻击连段前清掉其排队/缓冲输入,防旧点击在背刺后污染追击窗口(2026-09-03 saika)</summary>
     private void TryEnterBackstab()
     {
         if (PlayerFsm == null || BackstabState == null) return;
@@ -423,7 +460,87 @@ public class PlayerController : PlayerCharacterBase
             || cur is PlayerHurtState
             || cur is PlayerAirHurtState
             || cur is PlayerBackstabState) return;
+        // 背刺最高优先级:当前若在连段中(地面/空中攻击),清掉待处理输入,打断前不留残留
+        if (cur is PlayerComboState comboState)
+            comboState.CancelPendingComboInput();
         PlayerFsm.ChangeState(BackstabState);
+        // 消费当前自动重音窗口:本 bar 限一次背刺,防窗口内连按 F 连触发(空挥也消耗,miss 就过)
+        MusicPointManager.Instance?.ConsumeAutoBarWindow();
+    }
+
+    // ============================================================
+    // 背刺追击攻击分发 — Idle/Move/Jump/Fall 状态"发起新攻击"分支最前调用
+    // (左键按下 + 攻击冷却就绪已由调用方校验;返回 true = 本帧攻击已被追击消费)
+    // ============================================================
+
+    /// <summary>
+    /// 追击攻击尝试:背刺追击窗口内按攻击 → 玩家瞬移到 enemy 侧旁(gap 复用 WeaponThrow.AirBlinkSideGap,
+    /// y 对齐 enemy;enemy 贴地/低空时落点抬到"enemy 底 + 玩家半高"可站立高度防嵌地),
+    /// 按 enemy 状态分流进新攻击:
+    ///   - enemy 仍在空中 → AirAttackState(空中第 1 段,OnComboEnter 自带 comboIndex=1/悬停/第 1 段不闪;
+    ///     玩家落空后攻击框可罩住 enemy → 第一击命中,后续正常空中三段闪击流);
+    ///   - enemy 已落地(被击飞到平台/地面)→ AttackState(地面第 1 段,后续正常地面连段)。
+    /// 窗口过期 / 目标死亡 / 两侧都堵 → 清窗口返回 false,调用方走原普通攻击(不硬追)。
+    /// 只拦截"新攻击发起",combo 推进在攻击状态内部(PlayerComboState),不经过此入口,天然不受影响。
+    /// </summary>
+    public bool TryBackstabChaseAttack()
+    {
+        if (PlayerFsm == null) return false;
+
+        // 窗口校验:过期 / 目标死亡 → 清窗口,走原逻辑(普通攻击)
+        if (_chaseTarget == null || _chaseTarget.IsDead || Time.time > _chaseEndTime)
+        {
+            ClearBackstabChase();
+            return false;
+        }
+        EnemyControllerBase target = _chaseTarget;
+
+        // a. 吸附点:首选玩家对侧(玩家在左 → 落右侧,左右交替与空中闪击视觉统一);
+        //    对侧被墙/管道堵(IsWallBlockedOnSide,含地面/管道)→ 翻另一侧;两侧都堵 → 放弃追击
+        int side = transform.position.x >= target.transform.position.x ? -1 : 1;
+        if (target.IsWallBlockedOnSide(side))
+            side = -side;
+        if (target.IsWallBlockedOnSide(side))
+        {
+            ClearBackstabChase();
+            return false;
+        }
+
+        // 侧面间距复用 WeaponThrow.AirBlinkSideGap(与空中闪击同视觉);组件缺失/配置异常兜底 1.5
+        var chaseWeapon = GetComponentInChildren<WeaponThrow>();
+        float gap = chaseWeapon != null ? chaseWeapon.AirBlinkSideGap : 1.5f;
+        if (gap <= 0f) gap = 1.5f;
+
+        // dest.y 对齐 enemy(空中 enemy → 玩家落空;落地 enemy → 玩家落 enemy 所在平台/地面)。
+        // 嵌地风险:enemy 贴地/低空时玩家落点会插进地面 → 抬到可站立高度(enemy 碰撞体底 + 玩家半高)
+        Vector2 dest = new Vector2(target.transform.position.x + side * gap, target.transform.position.y);
+        float enemyBottomY = target.transform.position.y
+            - (target.Col != null ? target.Col.bounds.extents.y : 0.5f);
+        float playerHalfY = col != null ? col.bounds.extents.y : 0.5f;
+        float standY = enemyBottomY + playerHalfY;
+        if (dest.y < standY) dest.y = standY;
+
+        // b. 玩家瞬移:物理体位(同帧不读 transform.position 判朝向)+ 清水平速度(保留 y 视落地/空中由状态接管)
+        Rigidbody2D rb2 = GetRigidbody();
+        if (rb2 == null)
+        {
+            ClearBackstabChase();
+            return false;
+        }
+        rb2.position = dest;
+        SetVelocityPublic(x: 0f);
+
+        // c. 玩家朝向 enemy(按 dest 与 enemy 相对位置,不能读 transform.position——rb.position 刚赋值未同步)
+        UpdateFacing(target.transform.position.x >= dest.x ? 1f : -1f);
+
+        // d. 分流进状态(PlayerFsm 上已持有的状态引用;地面可直接切空中攻击,AirAttackState 自带直切动画兜底)
+        PlayerFsm.ChangeState(target.IsGrounded
+            ? (IState)AttackState
+            : (IState)AirAttackState);
+
+        // e. 关窗口:追击单次消耗,防进入连段后再次误触发
+        ClearBackstabChase();
+        return true;
     }
 
     protected override void OnFixedUpdate()
