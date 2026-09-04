@@ -56,4 +56,79 @@ public static class SpikeSetup
         AssetDatabase.SaveAssets();
         Debug.Log("[URPMIG] ConfigureUrp done");
     }
+
+    public static void ConvertBuiltInToURP2D()
+    {
+        Debug.Log("[URPMIG] Convert start");
+        UnityEditor.Rendering.Universal.Converters.RunInBatchMode(
+            UnityEditor.Rendering.Universal.ConverterContainerId.BuiltInToURP2D);
+        AssetDatabase.SaveAssets();
+        Debug.Log("[URPMIG] Convert done");
+    }
+
+    public static void AuditMaterials()
+    {
+        Debug.Log("[URPMIG] AuditMaterials start");
+        var guids = AssetDatabase.FindAssets("t:Material", new[] { "Assets" });
+        foreach (var g in guids)
+        {
+            var p = AssetDatabase.GUIDToAssetPath(g);
+            var m = AssetDatabase.LoadAssetAtPath<Material>(p);
+            if (m == null || m.shader == null) continue;
+            Debug.Log($"[MAT] {p} | shader={m.shader.name}");
+        }
+        Debug.Log("[URPMIG] AuditMaterials done");
+    }
+
+    public static void ConvertLegacyParticles()
+    {
+        Debug.Log("[URPMIG] ConvertLegacyParticles start");
+        var targetShader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+        if (targetShader == null) throw new Exception("[URPMIG] URP Particles/Unlit shader not found");
+
+        var guids = AssetDatabase.FindAssets("t:Material", new[] { "Assets" });
+        int converted = 0;
+        foreach (var g in guids)
+        {
+            var p = AssetDatabase.GUIDToAssetPath(g);
+            var m = AssetDatabase.LoadAssetAtPath<Material>(p);
+            if (m == null || m.shader == null) continue;
+            string oldName = m.shader.name;
+            int blendMode; // 0=Alpha 2=Additive
+            if (oldName == "Legacy Shaders/Particles/Alpha Blended") blendMode = 0;
+            else if (oldName == "Legacy Shaders/Particles/Additive") blendMode = 2;
+            else if (oldName == "Legacy Shaders/Particles/Additive (Soft)") blendMode = 2;
+            else continue;
+
+            // 先拷贝旧属性(换 shader 后仍可读,但先取值更稳)
+            var tex = m.HasProperty("_MainTex") ? m.GetTexture("_MainTex") : null;
+            var col = m.HasProperty("_TintColor") ? m.GetColor("_TintColor")
+                   : m.HasProperty("_Color") ? m.GetColor("_Color") : Color.white;
+
+            m.shader = targetShader;
+            m.SetTexture("_BaseMap", tex);
+            m.SetColor("_BaseColor", col);
+            m.SetFloat("_Surface", 1f);
+            m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            m.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            m.DisableKeyword("_ALPHATEST_ON");
+            m.SetFloat("_AlphaClip", 0f);
+            m.SetFloat("_ColorMode", 0f);
+            m.SetFloat("_Cull", 0f);
+            m.SetFloat("_ZWrite", 0f);
+            m.SetFloat("_Blend", blendMode);
+            // BlendMode: SrcAlpha=5, One=1, OneMinusSrcAlpha=10
+            float src = 5f;
+            float dst = blendMode == 0 ? 10f : 1f;
+            m.SetFloat("_SrcBlend", src);
+            m.SetFloat("_DstBlend", dst);
+            m.SetFloat("_SrcBlendAlpha", src);
+            m.SetFloat("_DstBlendAlpha", dst);
+            EditorUtility.SetDirty(m);
+            Debug.Log($"[MATCONV] {p} | {oldName} -> URP Particles/Unlit blend={(blendMode == 0 ? "Alpha" : "Additive")}");
+            converted++;
+        }
+        AssetDatabase.SaveAssets();
+        Debug.Log($"[URPMIG] ConvertLegacyParticles done converted={converted}");
+    }
 }

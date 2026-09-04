@@ -94,7 +94,7 @@ SpriteRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10754, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -198,7 +198,7 @@ SpriteRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10754, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -547,7 +547,7 @@ SpriteRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10754, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -1029,19 +1029,48 @@ MonoBehaviour:
     m_Bits: 2056
   groundCheckDist: 1
   groundCheckColor: {r: 0, g: 1, b: 0, a: 1}
+  speedMultiplier: 1
+  config: {fileID: 0}
+  level: 1
   maxHealth: 50
   hitColor: {r: 0.3664868, g: 0.6509434, b: 0.22414559, a: 1}
   hitFlashDuration: 0.1
+  enemyHitPause: 0
+  chargeColor: {r: 1, g: 0.3, b: 0, a: 1}
+  chargeFlashBaseFreq: 4
+  chargeFlashAccel: 6
+  chargeFlashMaxFreq: 20
   hitVFXPrefab: {fileID: 5392022945574161087, guid: e8f48248225df154585da36eafed2bf4, type: 3}
   directionalHitVFXPrefab: {fileID: 0}
   deathVFXPrefab: {fileID: 0}
   hitVFXVariants: []
-  detectionWidth: 8
-  detectionHeight: 3
   attackWidth: 1.81
   attackHeight: 1.26
   attackCooldownDuration: 2
   rangedKnockbackForce: 5
+  maxLaunchUpSpeed: 10
+  wallCheckHalfWidth: 2.5
+  airHitHangDuration: 0.3
+  airHangGravityScale: 0.3
+  airHitPullSpeed: 8
+  airHitPullOffset: 1.5
+  groundImpactSpeedThreshold: -8
+  groundImpactVFX: {fileID: 0}
+  groundImpactHitStop: 0.05
+  groundImpactShakeDuration: 0.1
+  groundImpactShakeMagnitude: 0.1
+  groundImpactStun: 0.3
+  groundBounceForce: 3
+  groundImpactSquash: 0.3
+  cliffCheckForward: 0.8
+  cliffCheckDown: 0.8
+  channelLayer:
+    serializedVersion: 2
+    m_Bits: 0
+  channelCheckForward: 1.5
+  channelRayHeightOffset: 0.5
+  combatSightHeight: 3
+  facingDeadZone: 0.3
   moveInput: 0
   attackCooldownTimer: 0
   patrolRange: 3
@@ -1057,6 +1086,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c15c32f81d1777b4da7af9f8d721cfb7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  config: {fileID: 0}
   damage: 1
   attackFlashColor: {r: 1, g: 1, b: 1, a: 1}
   attackFlashDuration: 0.08
@@ -1109,9 +1139,9 @@ MonoBehaviour:
   poiseThresholdMin: 3
   poiseThresholdMax: 5
   poiseImmuneCount: 4
-  meleeKnockbackForce: 1.5
-  meleeAttackType: Sword
-  heavyAttackType: Sword_Heavy
+  meleeAttackLabels:
+  - Sword
+  - Sword_Heavy
 --- !u!114 &8290078363546304537
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1124,6 +1154,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 71967dfb11201aa42a3616c81763333e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  config: {fileID: 0}
   pushForce: 3
   cooldown: 0.3
   detectRadius: 0.5
@@ -1262,7 +1293,7 @@ SpriteRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10754, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -1417,25 +1448,53 @@ MonoBehaviour:
     m_Bits: 4294967295
   groundCheckDist: 1
   groundCheckColor: {r: 1, g: 0.36153615, b: 0, a: 1}
+  speedMultiplier: 1
+  config: {fileID: 0}
+  level: 1
   maxHealth: 1
   hitColor: {r: 0.6792453, g: 0.31719473, b: 0.31719473, a: 1}
   hitFlashDuration: 0.1
+  enemyHitPause: 0
+  chargeColor: {r: 1, g: 0.3, b: 0, a: 1}
+  chargeFlashBaseFreq: 4
+  chargeFlashAccel: 6
+  chargeFlashMaxFreq: 20
   hitVFXPrefab: {fileID: 5392022945574161087, guid: e8f48248225df154585da36eafed2bf4, type: 3}
   directionalHitVFXPrefab: {fileID: 0}
   deathVFXPrefab: {fileID: 0}
   hitVFXVariants: []
-  detectionWidth: 6
-  detectionHeight: 5
   attackWidth: 5
   attackHeight: 5
   attackCooldownDuration: 1
   rangedKnockbackForce: 5
+  maxLaunchUpSpeed: 10
+  wallCheckHalfWidth: 2.5
+  airHitHangDuration: 0.3
+  airHangGravityScale: 0.3
+  airHitPullSpeed: 8
+  airHitPullOffset: 1.5
+  groundImpactSpeedThreshold: -8
+  groundImpactVFX: {fileID: 0}
+  groundImpactHitStop: 0.05
+  groundImpactShakeDuration: 0.1
+  groundImpactShakeMagnitude: 0.1
+  groundImpactStun: 0.3
+  groundBounceForce: 3
+  groundImpactSquash: 0.3
+  cliffCheckForward: 0.8
+  cliffCheckDown: 0.8
+  channelLayer:
+    serializedVersion: 2
+    m_Bits: 0
+  channelCheckForward: 1.5
+  channelRayHeightOffset: 0.5
+  combatSightHeight: 3
+  facingDeadZone: 0.3
   moveInput: 0
   attackCooldownTimer: 0
-  retreatWidth: 3
-  retreatHeight: 3
-  retreatRecoverWidth: 10
-  retreatRecoverHeight: 6
+  patrolRange: 0
+  rangedAttackWidth: 0
+  rangedAttackHeight: 0
 --- !u!114 &853158970066929065
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1448,7 +1507,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ca179e6a7d78de14185cc968a783ff18, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  config: {fileID: 0}
   damage: 1
+  firePoint: {fileID: 0}
+  chargeVFXPrefab: {fileID: 0}
+  fireVFXPrefab: {fileID: 0}
   bulletSpeed: 6
   bulletRadius: 0.2
   bulletColor: {r: 1, g: 0, b: 0, a: 1}
@@ -1544,7 +1607,7 @@ SpriteRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10754, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -1740,7 +1803,7 @@ SpriteRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10754, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -1829,7 +1892,7 @@ SpriteRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10754, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0

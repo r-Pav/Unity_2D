@@ -129,6 +129,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   boss: {fileID: 6378061154001894833}
   cameraFollow: {fileID: 0}
+  roomCamera: {fileID: 0}
   airWalls:
   - {fileID: 8030892842376470623}
   cutsceneZoom: 7
@@ -278,12 +279,8 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 5ce06081002f8b848a41438df637fd07, type: 2}
   - {fileID: 11400000, guid: 8485034a8be724b4898a2e6168341386, type: 2}
   - {fileID: 11400000, guid: f8985d3b5d23bdf48a5c8dc47b913c19, type: 2}
-  defaultMelee: {fileID: 5928079618181773097}
-  chargeTrailVFXPrefab: {fileID: 0}
-  chargeImpactVFXPrefab: {fileID: 0}
-  showCooldownGizmos: 0
-  disableCooldowns: 0
   logSkillExecutions: 0
+  debugForceKeys: 0
 --- !u!114 &6378061154001894833
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -302,19 +299,48 @@ MonoBehaviour:
     m_Bits: 8
   groundCheckDist: 0.75
   groundCheckColor: {r: 0, g: 1, b: 0, a: 1}
+  speedMultiplier: 1
+  config: {fileID: 0}
+  level: 1
   maxHealth: 10
   hitColor: {r: 0.8018868, g: 0.056737266, b: 0.056737266, a: 1}
   hitFlashDuration: 0.1
+  enemyHitPause: 0
+  chargeColor: {r: 1, g: 0.3, b: 0, a: 1}
+  chargeFlashBaseFreq: 4
+  chargeFlashAccel: 6
+  chargeFlashMaxFreq: 20
   hitVFXPrefab: {fileID: 5392022945574161087, guid: e8f48248225df154585da36eafed2bf4, type: 3}
   directionalHitVFXPrefab: {fileID: 0}
   deathVFXPrefab: {fileID: 0}
   hitVFXVariants: []
-  detectionWidth: 6.2
-  detectionHeight: 2.25
   attackWidth: 2.29
   attackHeight: 1.38
   attackCooldownDuration: 1
   rangedKnockbackForce: 5
+  maxLaunchUpSpeed: 10
+  wallCheckHalfWidth: 2.5
+  airHitHangDuration: 0.3
+  airHangGravityScale: 0.3
+  airHitPullSpeed: 8
+  airHitPullOffset: 1.5
+  groundImpactSpeedThreshold: -8
+  groundImpactVFX: {fileID: 0}
+  groundImpactHitStop: 0.05
+  groundImpactShakeDuration: 0.1
+  groundImpactShakeMagnitude: 0.1
+  groundImpactStun: 0.3
+  groundBounceForce: 3
+  groundImpactSquash: 0.3
+  cliffCheckForward: 0.8
+  cliffCheckDown: 0.8
+  channelLayer:
+    serializedVersion: 2
+    m_Bits: 0
+  channelCheckForward: 1.5
+  channelRayHeightOffset: 0.5
+  combatSightHeight: 3
+  facingDeadZone: 0.3
   moveInput: 0
   attackCooldownTimer: 0
   hpThresholds:
@@ -324,13 +350,15 @@ MonoBehaviour:
   bossName: "\u03B1"
   knockbackResistance: 0.8
   deathDelay: 2
+  meleeIntervalDuration: 5
   combatAreaTrigger: {fileID: 1078518361268059669}
   skillSlots: {fileID: 207735709510986330}
+  attackDirector: {fileID: 0}
   defaultMelee: {fileID: 5928079618181773097}
+  heavyAttack: {fileID: 0}
   bossDeathVFXPrefab: {fileID: 0}
   hpMultiplier: 12
   moveSpeedMultiplier: 0.5
-  attackRangeMultiplier: 1.5
   p2MoveSpeedMult: 1.2
   p3MoveSpeedMult: 1.5
   p1Weights:
@@ -361,6 +389,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c15c32f81d1777b4da7af9f8d721cfb7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  config: {fileID: 0}
   damage: 1
   attackFlashColor: {r: 1, g: 1, b: 1, a: 1}
   attackFlashDuration: 0.08
@@ -474,7 +503,7 @@ SpriteRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10754, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -563,7 +592,7 @@ SpriteRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10754, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
