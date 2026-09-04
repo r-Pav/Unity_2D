@@ -11,7 +11,7 @@ Shader "Custom/SpriteDissolve"
     }
     SubShader
     {
-        Tags { "RenderType"="Transparent" "Queue"="Transparent" "PreviewType"="Plane" "CanUseSpriteAtlas"="True" }
+        Tags { "RenderType"="Transparent" "Queue"="Transparent" "PreviewType"="Plane" "CanUseSpriteAtlas"="True" "RenderPipeline"="UniversalPipeline" }
         Blend SrcAlpha OneMinusSrcAlpha
         Cull Off
         Lighting Off
@@ -19,18 +19,10 @@ Shader "Custom/SpriteDissolve"
 
         Pass
         {
-            CGPROGRAM
+            HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
-            #include "UnityCG.cginc"
-
-            sampler2D _MainTex;
-            float4 _MainTex_ST;
-            float _DissolveAmount;
-            float _DissolveDir;
-            float _EdgeWidth;
-            fixed4 _EdgeColor;
-            float _NoiseScale;
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
             struct appdata
             {
@@ -42,16 +34,25 @@ Shader "Custom/SpriteDissolve"
             struct v2f
             {
                 float4 vertex : SV_POSITION;
-                fixed4 color : COLOR;
+                half4 color : COLOR;
                 float2 uv : TEXCOORD0;
             };
+
+            TEXTURE2D(_MainTex);
+            SAMPLER(sampler_MainTex);
+            float4 _MainTex_ST;
+            float _DissolveAmount;
+            float _DissolveDir;
+            float _EdgeWidth;
+            half4 _EdgeColor;
+            float _NoiseScale;
 
             v2f vert (appdata v)
             {
                 v2f o;
-                o.vertex = UnityObjectToClipPos(v.vertex);
+                o.vertex = TransformObjectToHClip(v.vertex.xyz);
                 o.color = v.color;
-                o.uv = TRANSFORM_TEX(v.uv, _MainTex);
+                o.uv = v.uv * _MainTex_ST.xy + _MainTex_ST.zw;
                 return o;
             }
 
@@ -61,9 +62,9 @@ Shader "Custom/SpriteDissolve"
                 return frac(sin(dot(p, float2(127.1, 311.7))) * 43758.5453123);
             }
 
-            fixed4 frag (v2f i) : SV_Target
+            half4 frag (v2f i) : SV_Target
             {
-                fixed4 c = tex2D(_MainTex, i.uv) * i.color;
+                half4 c = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, i.uv) * i.color;
 
                 // 单向溶解方向选择(无分支,纯 step 数学,兼容性最好)
                 // 0=下→上 1=上→下 2=左→右 3=右→左
@@ -91,7 +92,7 @@ Shader "Custom/SpriteDissolve"
 
                 return c;
             }
-            ENDCG
+            ENDHLSL
         }
     }
 }
