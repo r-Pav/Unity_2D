@@ -8,7 +8,9 @@ using UnityEngine.UI;
 /// 行为：
 ///   - 开始游戏 → 新游戏标记（PendingLoadFlag.slot = -1）→ SceneTransition.ToGame()
 ///   - 读档 → 按钮组左滑 + 打开 LoadPanel（SaveLoadPanel mode=Load）
-///   - 设置 → 按钮组左滑 + 打开 SettingsPanel（纯显隐：TitleScene 无 PanelManager，不走栈管理；游戏内 ESC 设置仍走 PanelManager 栈，SampleScene 路径不变）
+///   - 设置 → 按钮组左滑 + 打开 SettingsPanel（TitleScene 无 PanelManager，不走栈管理；游戏内 ESC 设置仍走 PanelManager 栈，SampleScene 路径不变）
+/// 打开子面板：SetActive(true) 后若面板挂 UIPanelMotion → 调 PlayOpen 播打开动效（替代直接显示）；未挂则原样直接显示。
+/// 关闭子面板：走面板自身 ISlideClose.SlideClose（S3 起内部转调 UIPanelMotion.PlayClose，未挂则直接回调），播完 SetActive(false)。
 ///   - 退出 → Application.Quit()
 /// 按钮组滑动（抄 PauseMenu 模式）：点读档/设置 → buttonGroup 左滑到 leftPosition，面板在右侧显示；
 /// 面板关闭（active→inactive）→ 自动右滑回默认位置。Update 轮询检测面板状态变化，不依赖回调。
@@ -128,7 +130,16 @@ public class MainMenu : MonoBehaviour
         }
     }
 
-    /// <summary>关闭子面板（走 SlideClose 动画，播完 SetActive(false)；按钮组随之滑回）</summary>
+    /// <summary>打开子面板：TitleScene 无 PanelManager，需手动播打开动效（SetActive(true) 后若挂 UIPanelMotion → PlayOpen；未挂则原样直接显示）</summary>
+    private void OpenSubPanel(GameObject panel)
+    {
+        if (panel == null) return;
+        panel.SetActive(true);
+        UIPanelMotion motion = panel.GetComponent<UIPanelMotion>();
+        if (motion != null) motion.PlayOpen();
+    }
+
+    /// <summary>关闭子面板（ISlideClose.SlideClose → S3 起内部转调 UIPanelMotion.PlayClose 或直接回调；播完 SetActive(false)；按钮组随之滑回）</summary>
     private void CloseSubPanel(GameObject panel)
     {
         if (panel == null) return;
@@ -150,22 +161,22 @@ public class MainMenu : MonoBehaviour
         GoToGame();
     }
 
-    /// <summary>读档：按钮组左滑 + 打开读档面板（SaveLoadPanel mode=Load，面板内确认读档走 onLoadRequested 回调）</summary>
+    /// <summary>读档：按钮组左滑 + 打开读档面板（SaveLoadPanel mode=Load，面板内确认读档走 onLoadRequested 回调；打开动效由 OpenSubPanel 触发 UIPanelMotion）</summary>
     private void OnLoadClicked()
     {
         if (settingsPanel != null && settingsPanel.activeInHierarchy)
             settingsPanel.SetActive(false); // 切面板前先关另一个（Load/Set 互斥）
         SlideToLeft();
-        if (loadPanel != null) loadPanel.SetActive(true);
+        OpenSubPanel(loadPanel);
     }
 
-    /// <summary>设置：按钮组左滑 + 打开 SettingsPanel（纯显隐，TitleScene 无 PanelManager 不走栈管理；关闭由 SettingsPanel.OnBackClicked 兜底 SetActive(false)）</summary>
+    /// <summary>设置：按钮组左滑 + 打开 SettingsPanel（TitleScene 无 PanelManager 不走栈管理；打开动效由 OpenSubPanel 触发 UIPanelMotion；关闭由 SettingsPanel.OnBackClicked/SlideClose 兜底）</summary>
     private void OnSettingsClicked()
     {
         if (loadPanel != null && loadPanel.activeInHierarchy)
             loadPanel.SetActive(false); // 切面板前先关另一个（Load/Set 互斥）
         SlideToLeft();
-        if (settingsPanel != null) settingsPanel.SetActive(true);
+        OpenSubPanel(settingsPanel);
     }
 
     /// <summary>退出游戏</summary>

@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -8,8 +7,11 @@ using UnityEngine.UI;
 
 /// <summary>
 /// 存档/读档面板 — 挂 SavePanel（mode=Save）/ LoadPanel（mode=Load）。
-/// IPanel：FullScreen + Pause + Lock + Cursor；实现 ISlideClose（关闭时向右滑出，不拖入 UIFadeManager.fadePanels）。
-/// 动效：打开 = 从右侧滑入出现（SlideIn）；关闭 = 向右滑出（SlideClose）。
+/// IPanel：FullScreen + Pause + Lock + Cursor；实现 ISlideClose（兼容 MainMenu / PanelManager 旧分支的调用入口）。
+/// 动效（S3 起）：本面板不再自带滑入/滑出手写协程，统一交给 UIPanelMotion——
+///   打开：调用方（PanelManager.OpenPanel / MainMenu.OpenSubPanel）SetActive(true) 后调 UIPanelMotion.PlayOpen；
+///   关闭：PanelManager.CloseTopPanel 优先走 UIPanelMotion.PlayClose；ISlideClose.SlideClose 内部转调 PlayClose，
+///         未挂 UIPanelMotion（saika 场景配置前）时直接 onComplete（瞬间关闭，不写代码兜底动画）。
 /// 槽位：slotUIs[5] = 手动槽 0-4；autoSlot = 自动存档槽 5（只读，点按无效、无删除按钮）。
 /// 交互：
 ///   Save：点空槽 → 直接保存；点有存档槽 → 确认"覆盖存档？"；Btn_Delete → 确认"确认删除该存档？"
@@ -47,7 +49,7 @@ public class SaveLoadPanel : MonoBehaviour, IPanel, ISlideClose
     [SerializeField] private Button confirmCancel;
 
     [Header("返回")]
-    [Tooltip("返回按钮 → 关闭当前页（向右滑出，PauseMenu 回一级）")]
+    [Tooltip("返回按钮 → 关闭当前页（关闭动效由 UIPanelMotion 承担，PauseMenu 回一级）")]
     [SerializeField] private Button quitButton;
     [Tooltip("PauseMenu 引用（拖 PauseMenu 物体）：本面板关闭后菜单回一级（ReturnToLevel1）")]
     [SerializeField] private PauseMenu pauseMenu;
@@ -72,24 +74,12 @@ public class SaveLoadPanel : MonoBehaviour, IPanel, ISlideClose
     private PendingAction _pendingAction = PendingAction.None;
     private int _pendingSlot = -1;
 
-    private RectTransform _rect;
-    private CanvasGroup _canvasGroup;
-    private Coroutine _closeRoutine;
-
     // OnEnable 绑定的按钮/回调缓存（OnDisable 成对解绑；槽位用闭包捕获索引，必须缓存同一委托实例）
     private readonly List<Button> _boundButtons = new List<Button>();
     private readonly List<UnityAction> _boundHandlers = new List<UnityAction>();
 
-    private const float SlideCloseDuration = 0.2f;
-    private const float SlideCloseDistance = 300f; // 向右滑出（反方向，与 SlideIn 同向）；SlideIn +300 从右滑入
-    private const float SlideInDistance = 300f;
-
     private void Awake()
     {
-        _rect = GetComponent<RectTransform>();
-        _canvasGroup = GetComponent<CanvasGroup>();
-        if (_canvasGroup == null)
-            _canvasGroup = gameObject.AddComponent<CanvasGroup>();
         // pauseMenu 兜底：Inspector 未拖时自动查找（PauseMenu 打开二级面板前必已激活，同 Canvas 内唯一）
         if (pauseMenu == null)
             pauseMenu = FindObjectOfType<PauseMenu>();
@@ -150,11 +140,7 @@ public class SaveLoadPanel : MonoBehaviour, IPanel, ISlideClose
             _boundHandlers.Add(quitHandler);
         }
 
-        // 每次打开：从右侧滑入出现（右滑出现 + 渐显；本面板不拖入 UIFadeManager.fadePanels，alpha/位置自管）
-        if (_canvasGroup != null)
-            _canvasGroup.alpha = 0f;
-        StartSlideIn();
-
+        // 打开动效由 PanelManager.OpenPanel / MainMenu.OpenSubPanel 调 UIPanelMotion.PlayOpen 承担（S3 起），此处不再自播滑入
         RefreshSlots();
     }
 
@@ -308,7 +294,7 @@ public class SaveLoadPanel : MonoBehaviour, IPanel, ISlideClose
 
     /// <summary>
     /// onLoadRequested 是否存在存活监听目标（2026-08-19 读档修复）：
-    /// 游戏内 LoadPanel 若从 TitleScene 复制而来,UnityEvent 引用标题 MainMenu(已销毁)——
+    /// 游戏内 LoadPanel 若从 TitleScene 复制而来,UnityEvent 引用标题 MainMenu(已销毁)—
     /// 引用非 null 但目标销毁,Invoke 空调用导致"读档没反应"。存活监听判断避免误走外部回调。
     /// </summary>
     private bool HasAliveLoadListener()
@@ -325,8 +311,10 @@ public class SaveLoadPanel : MonoBehaviour, IPanel, ISlideClose
 
     private void OnQuitClicked()
     {
-        // 游戏内（SampleScene）：PanelManager 在 → 走栈管理 CloseTopPanel（PanelManager 检测 ISlideClose 走右滑关闭动效）
-        // 主菜单（TitleScene）：无 PanelManager → 自己走 SlideClose 动画（播完再 SetActive(false)，与游戏内动效一致）
+        // 游戏内（SampleScene）：PanelManager 在 → 走栈管理 CloseTopPanel
+        // （面板挂 UIPanelMotion → PlayClose；未挂 → ISlideClose 兼容分支 → SlideClose → 本面板直接回调隐藏）
+        // 主菜单（TitleScene）：无 PanelManager → 自己走 SlideClose（内部转调 UIPanelMotion.PlayClose，
+        // 播完 SetActive(false)；未挂 UIPanelMotion 则直接回调隐藏）
         if (PanelManager.Instance != null)
         {
             PanelManager.Instance.CloseTopPanel();
@@ -351,64 +339,23 @@ public class SaveLoadPanel : MonoBehaviour, IPanel, ISlideClose
     }
 
     // ============================================================
-    // ISlideClose — 向右滑出（不拖入 UIFadeManager.fadePanels）
+    // ISlideClose — 兼容关闭入口（MainMenu/TitleScene 直接调用；PanelManager 旧分支）
     // ============================================================
 
-    /// <summary>打开时从右侧滑入出现（右滑出现 + 渐显 0→1）</summary>
-    private void StartSlideIn()
-    {
-        if (_rect == null) return;
-        if (_closeRoutine != null) StopCoroutine(_closeRoutine);
-        Vector2 target = _rect.anchoredPosition;
-        _closeRoutine = StartCoroutine(SlideInRoutine(target));
-    }
-
-    private IEnumerator SlideInRoutine(Vector2 target)
-    {
-        Vector2 from = target + new Vector2(SlideInDistance, 0f);
-        float elapsed = 0f;
-        while (elapsed < SlideCloseDuration)
-        {
-            elapsed += Time.unscaledDeltaTime; // 暂停（timeScale=0）时仍正常播放
-            float t = Mathf.Clamp01(elapsed / SlideCloseDuration);
-            if (_rect != null) _rect.anchoredPosition = Vector2.Lerp(from, target, t);
-            if (_canvasGroup != null) _canvasGroup.alpha = Mathf.Lerp(0f, 1f, t);
-            yield return null;
-        }
-        if (_rect != null) _rect.anchoredPosition = target;
-        if (_canvasGroup != null) _canvasGroup.alpha = 1f;
-    }
-
+    /// <summary>
+    /// 关闭动效统一转调 UIPanelMotion.PlayClose（关闭方向/距离由组件 slideDistance 等配置）；
+    /// 未挂 UIPanelMotion（saika 场景配置前）直接回调 onComplete，不写代码兜底动画。
+    /// pauseMenu.ReturnToLevel1() 保留：SampleScene 暂停菜单二级 bg 回一级动画仍由菜单自身承担（本面板不写动画）。
+    /// </summary>
     public void SlideClose(Action onComplete)
     {
-        if (_closeRoutine != null) StopCoroutine(_closeRoutine);
-        // 并行动效：菜单回一级（二级 bg 反方向滑出消失）与 本面板向右滑出 同时进行（一起走）
+        // 并行动效：暂停菜单回一级（二级 bg 反方向滑出消失）与本面板关闭同时进行（SampleScene 兼容路径；TitleScene 无 PauseMenu 自动跳过）
         if (pauseMenu != null) pauseMenu.ReturnToLevel1();
-        _closeRoutine = StartCoroutine(SlideCloseRoutine(onComplete));
-    }
 
-    private IEnumerator SlideCloseRoutine(Action onComplete)
-    {
-        Vector2 startPos = _rect != null ? _rect.anchoredPosition : Vector2.zero;
-        Vector2 targetPos = startPos + new Vector2(SlideCloseDistance, 0f);
-        float startAlpha = _canvasGroup != null ? _canvasGroup.alpha : 1f;
-
-        float elapsed = 0f;
-        while (elapsed < SlideCloseDuration)
-        {
-            elapsed += Time.unscaledDeltaTime; // 暂停（timeScale=0）时仍正常播放
-            float t = Mathf.Clamp01(elapsed / SlideCloseDuration);
-            if (_rect != null) _rect.anchoredPosition = Vector2.Lerp(startPos, targetPos, t);
-            if (_canvasGroup != null) _canvasGroup.alpha = Mathf.Lerp(startAlpha, 0f, t);
-            yield return null;
-        }
-        if (_rect != null) _rect.anchoredPosition = targetPos;
-        if (_canvasGroup != null) _canvasGroup.alpha = 0f;
-
-        // 菜单回一级已由 SlideClose() 提前并行启动（见 SlideClose 注释）
-        // 右滑只是视觉动画：播完恢复初始位置，否则下次打开 SlideIn 的 target 取到偏移位置，反复开关会累积偏移
-        if (_rect != null) _rect.anchoredPosition = startPos;
-
-        onComplete?.Invoke();
+        UIPanelMotion motion = GetComponent<UIPanelMotion>();
+        if (motion != null)
+            motion.PlayClose(onComplete);
+        else
+            onComplete?.Invoke();
     }
 }
