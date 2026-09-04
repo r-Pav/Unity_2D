@@ -65,6 +65,10 @@ public struct DamageInfo
 
     /// <summary>本次伤害实际采用的暴击倍率（0 = 未暴击；暴击仲裁结果透传，供 UI/统计读取）</summary>
     public float critMultiplier;
+
+    /// <summary>true = 本次命中跳过敌人空中滞空吸附(_pullToPlayer)。背刺等终结技用:
+    /// 敌人被击退正常飞出自然落地,不向玩家吸附、不被吊在空中。默认 false = 走原空中连段吸附。</summary>
+    public bool suppressAirHang;
 }
 
 /// <summary>

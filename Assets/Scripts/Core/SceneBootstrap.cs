@@ -53,7 +53,9 @@ public class SceneBootstrap : MonoBehaviour
             }
             else
             {
-                player.transform.position = defaultSpawnPoint.position;
+                // 只取出生点 x/y,z 保持玩家自身值(防 DefaultSpawnPoint 的 z 偏移污染 2D 玩家深度)
+                Vector3 spawn = defaultSpawnPoint.position;
+                player.transform.position = new Vector3(spawn.x, spawn.y, player.transform.position.z);
             }
         }
         // else: 非法槽位（理论不会出现），仅清标记

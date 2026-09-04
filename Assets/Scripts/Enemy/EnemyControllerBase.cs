@@ -1175,9 +1175,10 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         // 空中受击:普通攻击走滞空冻结(停住),结束恢复击退速度继续正常击退轨迹。
         // 空中第三击(下砸)例外:不走滞空,直接按击退设置砸向地面(速度与力度相关),
         // 落地冲击/形变/弹跳全部等落地后再执行(标记触发)。
+        // suppressAirHang 命中(背刺等终结技):不走滞空吸附,enemy 按击退自然飞出落地。
         bool airborne = !IsGrounded;
         bool isAirSlam = info.attackLabel == AirSlamLabel;
-        if (airborne && airHitHangDuration > 0f && !isAirSlam)
+        if (airborne && airHitHangDuration > 0f && !isAirSlam && !info.suppressAirHang)
             ApplyAirHangFreeze(airHitHangDuration);
 
         // 落雷（Thunder_Strike）：强制硬直，不区分近战/远程路径（决策 D8）。

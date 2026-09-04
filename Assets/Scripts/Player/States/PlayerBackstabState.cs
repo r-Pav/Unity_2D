@@ -164,19 +164,18 @@ public class PlayerBackstabState : EntityState
         var pc = (PlayerController)owner;
         if (pc == null || pc.IsGrounded()) return;
 
-        // 空中背刺:刷新空中攻击计数 + 玩家/敌人一起短滞空
+        // 空中背刺:刷新空中攻击计数 + 玩家缓落(仅玩家侧,enemy 不再滞空吸附——背刺=终结技,
+        // enemy 由击退自然飞出落地,suppressAirHang 已在 ExecuteBackstab 置位跳过 OnHitBy 吸附)
         if (pc.JumpComp != null)
             pc.JumpComp.ResetAirAttackOnly();
         if (hoverDuration > 0f)
         {
             pc.StartCoroutine(HoverRoutine(pc, hoverDuration));   // EntityState 非 MonoBehaviour,协程挂宿主启动
-            if (!_target.IsGrounded)
-                _target.ApplyAirHangFreeze(hoverDuration);
         }
     }
 
-    /// <summary>玩家背刺后缓落:小重力缓慢下落(不清速度,避免定身后突然坠落)+ 期间每帧吸附敌人身后
-    /// (敌人被击退飞走,玩家跟着飘,保持连段距离),停 hoverDuration 秒后恢复原重力(真实时间,卡帧不影响)</summary>
+    /// <summary>玩家背刺后缓落:小重力缓慢下落(不清速度,避免定身后突然坠落),停 hoverDuration 秒后恢复原重力。
+    /// 不跟随 enemy——背刺=终结技,enemy 由击退自然飞出落地,玩家原地缓落,不每帧贴 enemy(贴随会造成左右闪/瞬移跳变)</summary>
     private System.Collections.IEnumerator HoverRoutine(PlayerController pc, float duration)
     {
         var rb = pc.GetRigidbody();
@@ -187,14 +186,6 @@ public class PlayerBackstabState : EntityState
         while (t < duration)
         {
             t += Time.unscaledDeltaTime;
-            // 跟随目标:保持敌人背后(与落点同款计算),敌人被击退移动时玩家跟着;吸附位置同样避开管道
-            if (_target != null && !_target.IsDead)
-            {
-                float behindX = _target.transform.position.x - _target.Facing * behindOffset;
-                Vector2 follow = new Vector2(behindX, _target.transform.position.y);
-                follow = ResolveBackstabLanding(follow);   // 防吸附进管道(和落点同款避让)
-                pc.transform.position = new Vector3(follow.x, follow.y, pc.transform.position.z);
-            }
             yield return null;
         }
         if (rb != null)

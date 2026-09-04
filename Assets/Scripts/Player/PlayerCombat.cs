@@ -268,6 +268,10 @@ public class PlayerCombat : MonoBehaviour
     /// <summary>AnimationEvent 入口（P2 动画事件仍经 Relay 调用）：从 FSM 当前状态读取连击参数后走伤害核心</summary>
     public void OnMeleeHitFrame()
     {
+        // 背刺状态:普攻命中帧事件(被打断普攻残留/迟到)不结算——背刺伤害走 OnBackstabHitFrame,
+        // 否则背刺动画期间按普攻第1段再打一次(重复播放/横向击退/吸附 观感 bug)
+        if (_owner != null && _owner.PlayerFsm?.CurrentState is PlayerBackstabState) return;
+
         // 兜底:非攻击状态收到命中帧(切换竞态/延迟事件),按第 1 段处理
         int idx = 1;
         bool isAir = false;
@@ -579,6 +583,7 @@ public class PlayerCombat : MonoBehaviour
             ignoreResistance = false
         };
         var info = BuildDamageInfo(dmg, meleeFinisherAttackType, knock);
+        info.suppressAirHang = true;   // 背刺=终结技:跳过敌人空中滞空吸附(_pullToPlayer),enemy 正常击退飞出自然落地
         CombatResolver.Resolve(info.source, target, info);
 
         // 重音背刺命中特效:在敌人位置(击飞点)生成一次性粒子(VFXSpawner 对 null prefab 静默返回,允许空槽)

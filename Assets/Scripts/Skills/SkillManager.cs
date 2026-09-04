@@ -331,29 +331,21 @@ public class SkillManager : MonoBehaviour
     {
         if (owner != null && !owner.InputEnabled) return;
 
-        // [重音背刺] 当前曲启用自动重音(barIntervalSeconds>0)时,F 归背刺/普攻挥空用,不再触发技能槽 3(背刺优先)
-        bool fReserved = IsFReservedByBackstab();
-
-        // [P7] 硬编码按键映射：Q=0, E=1, R=2, F=3
-        KeyCode[] hudKeys = { KeyCode.Q, KeyCode.E, KeyCode.R, KeyCode.F };
+        // [2026-09-04] F 不再绑定任何技能热键:Q=0, E=1, R=2, 槽3(F)=None。
+        // F 留给背刺/石碑/Boss 判定(PlayerBeatJudge)等触发功能,技能侧不监听 F。
+        KeyCode[] hudKeys = { KeyCode.Q, KeyCode.E, KeyCode.R, KeyCode.None };
         for (int i = 0; i < skillSlots.Length; i++)
         {
             var slot = skillSlots[i];
             if (slot.data == null) continue;
             if (!IsActivatableType(slot.data.type)) continue;
-            if (fReserved && hudKeys[i] == KeyCode.F) continue;
+            if (hudKeys[i] == KeyCode.None) continue;
             if (Input.GetKeyDown(hudKeys[i]))
                 TryActivate(i);
         }
     }
 
-    /// <summary>F 是否被重音背刺占用:当前曲 barIntervalSeconds>0(自动重音启用)时为 true</summary>
-    private static bool IsFReservedByBackstab()
-    {
-        var mgr = MusicPointManager.Instance;
-        return mgr != null && mgr.CurrentTrack != null && mgr.CurrentTrack.barIntervalSeconds > 0f;
-    }
-
+    /// <summary>技能类型是否为可激活型(激活型/开关型;升级解锁被动型不在此列)</summary>
     private static bool IsActivatableType(SkillType type) =>
         type == SkillType.Active || type == SkillType.Toggle;
 
