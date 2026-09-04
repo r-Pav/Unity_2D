@@ -589,7 +589,7 @@ public class PauseMenu : MonoBehaviour, IPanel, ISlideClose
         _activeSequence = null;
     }
 
-    /// <summary>自动补 CanvasGroup（参考 UIFadeManager.EnsureCanvasGroup 模式）</summary>
+    /// <summary>自动补 CanvasGroup（无则 AddComponent，供 DOFade 驱动透明度）</summary>
     private CanvasGroup EnsureCanvasGroup(GameObject go)
     {
         if (go == null) return null;

@@ -23,7 +23,7 @@ public interface IPanel
 
 /// <summary>
 /// 面板向左渐隐关闭接口 — SaveLoadPanel 等二级面板实现。
-/// PanelManager.CloseTopPanel 优先检测此接口（优先于 UIFadeManager 分支），
+/// PanelManager.CloseTopPanel 在未挂 UIPanelMotion 的兼容路径上优先检测此接口，
 /// 播完动画后由回调里 SetActive(false)。
 /// </summary>
 public interface ISlideClose
@@ -80,7 +80,6 @@ public sealed class PanelManager : MonoBehaviour
     private readonly Stack<GameObject> _panelStack = new Stack<GameObject>();
     private readonly Stack<GameObject> _fullScreenHistory = new Stack<GameObject>();
     private readonly HashSet<GameObject> _closingPanels = new HashSet<GameObject>();
-    private UIFadeManager _fadeManager;
     private PlayerController _player;
 
     [Header("ESC 菜单")]
@@ -105,7 +104,6 @@ public sealed class PanelManager : MonoBehaviour
 
     private void Start()
     {
-        _fadeManager = GetComponent<UIFadeManager>();
         _player = PlayerController.Instance;
         AutoRegisterPanels();
         PushActivePanelsToStack();
@@ -119,7 +117,6 @@ public sealed class PanelManager : MonoBehaviour
         {
             if (entry.panel != null && entry.panel.activeInHierarchy)
             {
-                _fadeManager?.ResetAlpha(entry.panel); // 防止上次淡出残留 alpha=0 导致面板不可见
                 _panelStack.Push(entry.panel);
             }
         }
@@ -210,13 +207,11 @@ public sealed class PanelManager : MonoBehaviour
         _panelStack.Push(panel);
         panel.SetActive(true);
 
-        // 统一开关动效：面板根上挂了 UIPanelMotion → 走 PlayOpen（自动补 CanvasGroup 并接管淡入/滑入），
-        // 跳过 _fadeManager.FadeIn 避免双重淡入；未挂 → 维持旧 UIFadeManager 路径（存量不回归）
+        // 统一开关动效：面板根上挂了 UIPanelMotion → 走 PlayOpen（自动补 CanvasGroup 并接管淡入/滑入）；
+        // 未挂 → 面板已 SetActive(true) 直接显示（硬切，无淡入）
         UIPanelMotion openMotion = panel.GetComponent<UIPanelMotion>();
         if (openMotion != null)
             openMotion.PlayOpen();
-        else
-            _fadeManager?.FadeIn(panel);
 
         _ApplyInteractionState();
     }
@@ -248,7 +243,8 @@ public sealed class PanelManager : MonoBehaviour
                 return;
             }
 
-            // 兼容路径（面板未挂 UIPanelMotion）：优先 ISlideClose（二级面板向左渐隐）——本类动画接管，不走 UIFadeManager 分支
+            // 兼容路径（面板未挂 UIPanelMotion）：优先 ISlideClose（PauseMenu 二级面板等走此接口，
+            // 其内部已用 DOTween 接管动画）——播完回调 SetActive(false)
             ISlideClose slideClose = panel.GetComponent<ISlideClose>();
             if (slideClose != null)
             {
@@ -265,21 +261,7 @@ public sealed class PanelManager : MonoBehaviour
             }
         }
 
-        // 若面板已注册淡出动画 → 播完再隐藏；否则立即隐藏
-        if (_fadeManager != null && _fadeManager.IsManaged(panel) && !_closingPanels.Contains(panel))
-        {
-            _closingPanels.Add(panel);
-            _fadeManager.FadeOut(panel, () =>
-            {
-                _closingPanels.Remove(panel);
-                if (panel != null) panel.SetActive(false);
-                if (isFullScreen) _RestorePreviousFullScreenPanel();
-                _ApplyInteractionState();
-            });
-            // 动画期间锁输入/暂停态仍生效，防止连点 ESC
-            return;
-        }
-
+        // 兜底：未挂任何动效组件 → 立即隐藏（硬切，无淡出）
         panel.SetActive(false);
         if (isFullScreen)
             _RestorePreviousFullScreenPanel();
@@ -314,19 +296,7 @@ public sealed class PanelManager : MonoBehaviour
             }
         }
 
-        // 兼容路径（面板未挂 UIPanelMotion）：若已注册淡出动画 → 播完再隐藏；否则立即隐藏
-        if (_fadeManager != null && _fadeManager.IsManaged(panel) && !_closingPanels.Contains(panel))
-        {
-            _closingPanels.Add(panel);
-            _fadeManager.FadeOut(panel, () =>
-            {
-                _closingPanels.Remove(panel);
-                if (panel != null && panel.activeSelf) panel.SetActive(false);
-                _ApplyInteractionState();
-            });
-            return;
-        }
-
+        // 兜底：未挂 UIPanelMotion → 立即隐藏（硬切，无淡出）
         if (panel != null && panel.activeSelf)
             panel.SetActive(false);
         _ApplyInteractionState();
@@ -485,12 +455,11 @@ public sealed class PanelManager : MonoBehaviour
 
             panel.SetActive(true);
 
-            // 与 OpenPanel 对称：有 UIPanelMotion → PlayOpen；否则走旧 FadeIn（避免 alpha 残留 0 面板不可见）
+            // 与 OpenPanel 对称：有 UIPanelMotion → PlayOpen（自动补 CanvasGroup 并接管淡入/滑入）；
+            // 未挂 → 面板已 SetActive(true) 直接显示（硬切）
             UIPanelMotion restoreMotion = panel.GetComponent<UIPanelMotion>();
             if (restoreMotion != null)
                 restoreMotion.PlayOpen();
-            else
-                _fadeManager?.FadeIn(panel);
 
             _panelStack.Push(panel);
             return;

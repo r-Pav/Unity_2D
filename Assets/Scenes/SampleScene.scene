@@ -14386,6 +14386,7 @@ GameObject:
   m_Component:
   - component: {fileID: 296320441}
   - component: {fileID: 296320442}
+  - component: {fileID: 296320443}
   m_Layer: 0
   m_HasEditorInfo: 1
   m_Name: SettingsPanel
@@ -14441,6 +14442,26 @@ MonoBehaviour:
   resolutionDropdown: {fileID: 738931816}
   backButton: {fileID: 2038231470}
   pauseMenu: {fileID: 1384074612}
+--- !u!114 &296320443
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 296320440}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 796b956cda8850a4fa08c448a4b8d879, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  openEffect: 3
+  closeEffect: 3
+  openDuration: 0.2
+  closeDuration: 0.2
+  slideDistance: 1600
+  openEase: 9
+  closeEase: 8
+  useUnscaled: 1
 --- !u!1 &298071784
 GameObject:
   m_ObjectHideFlags: 0
@@ -47853,6 +47874,7 @@ GameObject:
   m_Component:
   - component: {fileID: 985103609}
   - component: {fileID: 985103610}
+  - component: {fileID: 985103611}
   m_Layer: 0
   m_HasEditorInfo: 1
   m_Name: SavePanel
@@ -47914,6 +47936,26 @@ MonoBehaviour:
   onLoadRequested:
     m_PersistentCalls:
       m_Calls: []
+--- !u!114 &985103611
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 985103608}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 796b956cda8850a4fa08c448a4b8d879, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  openEffect: 3
+  closeEffect: 3
+  openDuration: 0.2
+  closeDuration: 0.2
+  slideDistance: 1600
+  openEase: 9
+  closeEase: 8
+  useUnscaled: 1
 --- !u!1 &986033622
 GameObject:
   m_ObjectHideFlags: 0
@@ -74045,6 +74087,7 @@ GameObject:
   - component: {fileID: 1384074610}
   - component: {fileID: 1384074609}
   - component: {fileID: 1384074612}
+  - component: {fileID: 1384074613}
   m_Layer: 0
   m_HasEditorInfo: 1
   m_Name: PauseMenu
@@ -74137,6 +74180,26 @@ MonoBehaviour:
   level2BgBottom: {fileID: 872949173}
   menuBar: {fileID: 1384074608}
   slideOffset: {x: 1600, y: 900}
+--- !u!114 &1384074613
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1384074607}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 796b956cda8850a4fa08c448a4b8d879, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  openEffect: 3
+  closeEffect: 2
+  openDuration: 0.2
+  closeDuration: 0.2
+  slideDistance: 1600
+  openEase: 9
+  closeEase: 8
+  useUnscaled: 1
 --- !u!1 &1385770867
 GameObject:
   m_ObjectHideFlags: 0
@@ -89232,6 +89295,7 @@ GameObject:
   - component: {fileID: 1664532751}
   - component: {fileID: 1664532753}
   - component: {fileID: 1664532752}
+  - component: {fileID: 1664532754}
   m_Layer: 0
   m_HasEditorInfo: 1
   m_Name: DeathPanel
@@ -89289,6 +89353,26 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1664532750}
   m_CullTransparentMesh: 1
+--- !u!114 &1664532754
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1664532750}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 796b956cda8850a4fa08c448a4b8d879, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  openEffect: 1
+  closeEffect: 1
+  openDuration: 0.2
+  closeDuration: 0.2
+  slideDistance: 1600
+  openEase: 9
+  closeEase: 8
+  useUnscaled: 1
 --- !u!1 &1670784893
 GameObject:
   m_ObjectHideFlags: 0
@@ -110276,6 +110360,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1337437750936836893}
   - component: {fileID: 2304284333450251847}
+  - component: {fileID: 4932973703570744875}
   m_Layer: 0
   m_HasEditorInfo: 1
   m_Name: LoadPanel
@@ -110284,6 +110369,26 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 0
+--- !u!114 &4932973703570744875
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4932973703570744874}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 796b956cda8850a4fa08c448a4b8d879, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  openEffect: 3
+  closeEffect: 3
+  openDuration: 0.2
+  closeDuration: 0.2
+  slideDistance: 1600
+  openEase: 9
+  closeEase: 8
+  useUnscaled: 1
 --- !u!224 &4959490592877551556
 RectTransform:
   m_ObjectHideFlags: 0

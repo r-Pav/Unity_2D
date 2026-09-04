@@ -2,6 +2,22 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+// ============================================================
+// [废弃 2026-09-04]
+// 废弃原因：被 UIPanelMotion 取代 —— 统一开关动效走新组件。面板打开/关闭的淡入淡出、
+//           滑入滑出由 UIPanelMotion.PlayOpen / PlayClose 统一接管，PanelManager 已
+//           清空对本类的全部调用（OpenPanel/CloseTopPanel/ClosePanel 等只保留
+//           UIPanelMotion 分支 + ISlideClose 分支 + 立即隐藏兜底）。
+// 被谁取代：UIPanelMotion（Assets/Scripts/UI/UIPanelMotion.cs）
+// 保留原因：.meta 保留（GUID 稳定）；git 历史可回溯源。类体注释后本组件不再参与编译，
+//           场景/预制体上若有历史挂载会显示 Missing Script，摘挂载由 saika 编辑器统一处理。
+// ============================================================
+
+/*
+ * =====================================================================
+ * 以下为 UIFadeManager 原实现，整体注释弃用（保留原始代码，便于 git 回溯/对照）
+ * =====================================================================
+ * （以下类体直至“注释弃用结束”标记整体处于本块注释内，不再参与编译）
 /// <summary>
 /// 统一 UI 面板淡入淡出管理器 — 挂 Canvas。
 /// Inspector 把需要动画的面板拖入 fadePanels 数组。
@@ -138,3 +154,7 @@ public class UIFadeManager : MonoBehaviour
         onComplete?.Invoke();
     }
 }
+ * =====================================================================
+ * UIFadeManager 注释弃用结束（以上类体全部处于注释块内）
+ * =====================================================================
+ */

@@ -28,6 +28,7 @@ public class PlayerBeatJudge : MonoBehaviour
     private bool _subscribed;
     private int _lockedFacing = 1;          // 连打期间锁定的朝向快照(boss 转身不会闪)
     private BossControllerBase _lockedEnemy; // 被锁定朝向的 boss(连打结束/销毁时解锁)
+    private BossControllerBase _bossCache;   // Boss 缓存:首次查找后复用,销毁后 Unity == null 自动重找
 
     public bool AutoComboActive => _autoComboActive;
 
@@ -92,7 +93,7 @@ public class PlayerBeatJudge : MonoBehaviour
                 Debug.Log($"[PlayerBeat] 按键 组[{judgeGroup}]窗口={inWindow} 当前组={mgr.CurrentWindowGroup} 连打已激活={_autoComboActive}");
                 if (inWindow)
                 {
-                    var enemy = FindObjectOfType<BossControllerBase>();
+                    var enemy = ResolveBoss();
                     if (enemy != null)
                     {
                         _lockedEnemy = enemy;
@@ -165,7 +166,7 @@ public class PlayerBeatJudge : MonoBehaviour
     private void TeleportBehindEnemy()
     {
         if (_pc == null) return;
-        var enemy = FindObjectOfType<BossControllerBase>();
+        var enemy = ResolveBoss();
         if (enemy == null)
         {
             Debug.Log("[PlayerBeat] 瞬移敌后:未找到 Boss,跳过位移");
@@ -181,11 +182,25 @@ public class PlayerBeatJudge : MonoBehaviour
     private void SnapBehindEnemy()
     {
         if (_pc == null) return;
-        var enemy = _lockedEnemy != null ? _lockedEnemy : FindObjectOfType<BossControllerBase>();
+        var enemy = ResolveBoss();
         if (enemy == null) return;
         enemy.moveInput = 0f;   // 硬直定身(定在原本位置)
         float behindX = enemy.transform.position.x - _lockedFacing * behindDistance;
         _pc.transform.position = new Vector3(behindX, enemy.transform.position.y, _pc.transform.position.z);   // y 跟随 boss(空中也跟上去)
+    }
+
+    /// <summary>
+    /// 获取当前 Boss:连打中优先 _lockedEnemy(已锁定对象),否则取缓存 _bossCache;
+    /// 缓存为空(Boss 未找到或已被销毁,Unity 销毁对象 == null)才 Find 一次并缓存。
+    /// 替代原多处 FindObjectOfType<BossControllerBase> 全场景扫描,只针对 Boss 不影响普通 enemy。
+    /// </summary>
+    private BossControllerBase ResolveBoss()
+    {
+        if (_lockedEnemy != null)
+            return _lockedEnemy;
+        if (_bossCache == null)
+            _bossCache = FindObjectOfType<BossControllerBase>();
+        return _bossCache;
     }
 
     /// <summary>解锁 boss 朝向(连打结束/销毁兜底):解锁后 boss 重新面向 player</summary>

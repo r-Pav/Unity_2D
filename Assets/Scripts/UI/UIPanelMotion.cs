@@ -71,6 +71,8 @@ public class UIPanelMotion : MonoBehaviour
     private Tween _activeTween;
     private bool _playing;
     private bool _warnedNoRect;
+    private Vector2 _homePos;      // 首次打开时缓存的 Inspector 摆位(之后所有动画以此为基准,防中途打断后位置漂移累积)
+    private bool _homeCached;
 
     /// <summary>当前是否有开关动画在播放(供 PanelManager 做防连点/栈保护参考)</summary>
     public bool IsPlaying
@@ -107,6 +109,13 @@ public class UIPanelMotion : MonoBehaviour
         }
         CanvasGroup group = EnsureCanvasGroup();
 
+        // 摆位缓存:首次打开时面板刚被 SetActive(true)、anchoredPosition 处于 Inspector 摆位,
+        // 以此为准;之后每次 PlayOpen 都以缓存的摆位为目标(不是当前值),防中途打断后位置漂移累积
+        CacheHome(rect);
+
+        // 播放前强制归位到摆位(清上次中断可能残留的屏幕外/半途偏移)
+        rect.anchoredPosition = _homePos;
+
         _playing = true;
 
         // None / 非正时长:不做动画,直接落到打开目标态(alpha=1,位置保持当前)
@@ -128,9 +137,9 @@ public class UIPanelMotion : MonoBehaviour
             return;
         }
 
-        // Slide:当前摆位即目标位,起点 = 目标位 + 来向偏移(该方向屏幕外);
+        // Slide:摆位即目标位,起点 = 摆位 + 来向偏移(该方向屏幕外);
         // 先跳起点 + alpha 置 0,再并行滑回摆位与淡入
-        Vector2 to = rect.anchoredPosition;
+        Vector2 to = _homePos;
         Vector2 from = to + SlideOffset(openEffect);
         group.alpha = 0f;
         rect.anchoredPosition = from;
@@ -161,6 +170,13 @@ public class UIPanelMotion : MonoBehaviour
         }
         CanvasGroup group = EnsureCanvasGroup();
 
+        // 关闭前若摆位尚未缓存(极端:未先 PlayOpen 直接 PlayClose),以当前位置为准
+        if (!_homeCached)
+            CacheHome(rect);
+
+        // 关闭动画从摆位出发:先归位到摆位再滑出,防残留偏移让关闭方向/距离失真
+        rect.anchoredPosition = _homePos;
+
         _playing = true;
 
         // None / 非正时长:不做动画,直接落到关闭目标态(alpha=0,位置保持当前)
@@ -173,7 +189,7 @@ public class UIPanelMotion : MonoBehaviour
         }
 
         // 起始摆位快照:无论淡出还是滑出,播完都复位到这里(面板关闭前处于全开摆位)
-        Vector2 homePos = rect.anchoredPosition;
+        Vector2 homePos = _homePos;
 
         if (closeEffect == PanelMotionEffect.Fade)
         {
@@ -184,7 +200,7 @@ public class UIPanelMotion : MonoBehaviour
             return;
         }
 
-        // Slide:从当前摆位滑向"该方向屏幕外",alpha 同步 1→0
+        // Slide:从摆位滑向"该方向屏幕外",alpha 同步 1→0
         Vector2 off = homePos + SlideOffset(closeEffect);
         Sequence seq = DOTween.Sequence();
         seq.Join(rect.DOAnchorPos(off, closeDuration).SetEase(closeEase));
@@ -197,6 +213,20 @@ public class UIPanelMotion : MonoBehaviour
     // ============================================================
     // 内部实现
     // ============================================================
+
+    /// <summary>
+    /// 首次调用时把当前 anchoredPosition 缓存为摆位。约定:面板首次激活时处于 Inspector 摆位。
+    /// 之后所有 PlayOpen/PlayClose 以缓存摆位为基准,不读实时位置——防中途打断(Kill/外部 SetActive(false))
+    /// 把位置停在半途偏移,下次播放又叠加,造成\"反复开关面板越滑越远\"。
+    /// </summary>
+    private void CacheHome(RectTransform rect)
+    {
+        if (!_homeCached)
+        {
+            _homePos = rect.anchoredPosition;
+            _homeCached = true;
+        }
+    }
 
     private void FinishOpen(CanvasGroup group, Action onDone)
     {
