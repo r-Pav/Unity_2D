@@ -1,5 +1,5 @@
 using System;
-using System.Collections;
+using DG.Tweening;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -12,7 +12,10 @@ using UnityEngine.UI;
 ///   - 关二级（ESC/返回 → Level1）：二级 bg 反方向滑出消失 + 二级面板自身反方向滑出（一级 bg 不动不重播）
 ///   - 关菜单（继续/ESC → Closed）：实现 ISlideClose，走一级逆动画（menuBar 向左滑出 + 一级 bg 上下滑出消失）
 ///   - 返回主菜单 → SceneTransition.ToTitle()（淡出 → 切 TitleScene → 淡入）
-/// 动效：原生协程 + Time.unscaledDeltaTime（暂停 timeScale=0 时也能播）
+/// 动效：DOTween（DOAnchorPos/DOFade + Sequence + SetUpdate(true)，暂停 timeScale=0 时也能播；
+///       每次新动画前 Kill 旧主序列防重入，OnDisable 也 Kill 防 Tween 残留回调串台）
+/// 说明：本面板不挂 UIPanelMotion —— menuBar+4bg 的分组协同比单一 open/closeEffect 复杂，
+///       open/close 由本类自绘 DOTween；外部入口 ISlideClose.SlideClose / ReturnToLevel1 签名保持不变。
 /// </summary>
 public class PauseMenu : MonoBehaviour, IPanel, ISlideClose
 {
@@ -91,6 +94,9 @@ public class PauseMenu : MonoBehaviour, IPanel, ISlideClose
     private const float Level2SlideInDuration = 0.25f; // 二级 bg 滑入
     private const float CloseReverseDuration = 0.2f;   // 关闭逆动画（关菜单/关二级 bg 滑出）
 
+    /// <summary>当前播放中的主动画序列（每次新动画前 Kill 防重入；OnDisable 也 Kill 防残留回调串台）</summary>
+    private Sequence _activeSequence;
+
     private void OnEnable()
     {
         if (btnContinue != null) btnContinue.onClick.AddListener(OnContinueClicked);
@@ -124,6 +130,9 @@ public class PauseMenu : MonoBehaviour, IPanel, ISlideClose
 
         // 复位阶段：下次 ESC 打开重新走一级滑入（CloseAllPanels 直接隐藏也走到这里）
         _stage = MenuStage.Closed;
+
+        // 面板隐藏 → 打断播放中的动画（Kill 不触发 OnComplete，防 Tween 残留回调串台）
+        KillActiveAnimation();
     }
 
     private void OnContinueClicked()
@@ -175,10 +184,14 @@ public class PauseMenu : MonoBehaviour, IPanel, ISlideClose
     // 打开动画（一级滑入 / 二级滑入）
     // ============================================================
 
-    /// <summary>首次打开菜单（Closed → Level1）：一级菜单栏从左外滑入 + 一级上下 bg 上下渐显滑入</summary>
+    /// <summary>首次打开菜单（Closed → Level1）：一级菜单栏从左外滑入 + 一级上下 bg 上下渐显滑入（DOTween 同帧并行）</summary>
     private void PlayLevel1Open()
     {
-        StopAllCoroutines();
+        KillActiveAnimation();
+
+        Sequence seq = DOTween.Sequence();
+        seq.SetUpdate(true); // timeScale=0（暂停中开菜单）动画照播，等价原 Time.unscaledDeltaTime
+        bool hasTween = false;
 
         // 一级菜单栏：激活后记录场景拖好的最终位置 → 设初始左外位置 → 从左往右滑入 + 渐显（0→1）
         if (menuBar != null)
@@ -186,10 +199,9 @@ public class PauseMenu : MonoBehaviour, IPanel, ISlideClose
             menuBar.gameObject.SetActive(true);
             _menuTargetPos = menuBar.anchoredPosition; // 激活后读，即场景拖好的最终显示位置
             CanvasGroup barGroup = EnsureCanvasGroup(menuBar.gameObject);
-            Vector2 from = _menuTargetPos + new Vector2(-slideOffset.x, 0f);
+            menuBar.anchoredPosition = _menuTargetPos + new Vector2(-slideOffset.x, 0f);
             if (barGroup != null) barGroup.alpha = 0f;
-            menuBar.anchoredPosition = from;
-            StartCoroutine(SlideRoutine(menuBar, barGroup, from, _menuTargetPos, 0f, 1f, Level1SlideInDuration));
+            AddMoveFade(seq, ref hasTween, menuBar, barGroup, _menuTargetPos, 1f, Level1SlideInDuration, true);
         }
 
         // 一级上 bg：从上方滑入 + 渐显（0→1）
@@ -201,10 +213,9 @@ public class PauseMenu : MonoBehaviour, IPanel, ISlideClose
                 level1BgTop.SetActive(true);
                 _level1BgTopTarget = rt.anchoredPosition;
                 CanvasGroup group = EnsureCanvasGroup(level1BgTop);
-                Vector2 from = _level1BgTopTarget + new Vector2(0f, slideOffset.y);
+                rt.anchoredPosition = _level1BgTopTarget + new Vector2(0f, slideOffset.y);
                 if (group != null) group.alpha = 0f;
-                rt.anchoredPosition = from;
-                StartCoroutine(SlideRoutine(rt, group, from, _level1BgTopTarget, 0f, 1f, Level1SlideInDuration));
+                AddMoveFade(seq, ref hasTween, rt, group, _level1BgTopTarget, 1f, Level1SlideInDuration, true);
             }
         }
 
@@ -217,12 +228,44 @@ public class PauseMenu : MonoBehaviour, IPanel, ISlideClose
                 level1BgBottom.SetActive(true);
                 _level1BgBottomTarget = rt.anchoredPosition;
                 CanvasGroup group = EnsureCanvasGroup(level1BgBottom);
-                Vector2 from = _level1BgBottomTarget - new Vector2(0f, slideOffset.y);
+                rt.anchoredPosition = _level1BgBottomTarget - new Vector2(0f, slideOffset.y);
                 if (group != null) group.alpha = 0f;
-                rt.anchoredPosition = from;
-                StartCoroutine(SlideRoutine(rt, group, from, _level1BgBottomTarget, 0f, 1f, Level1SlideInDuration));
+                AddMoveFade(seq, ref hasTween, rt, group, _level1BgBottomTarget, 1f, Level1SlideInDuration, true);
             }
         }
+
+        if (!hasTween)
+        {
+            seq.Kill();
+            return;
+        }
+
+        _activeSequence = seq;
+        seq.OnComplete(() =>
+        {
+            _activeSequence = null;
+            // 播完兜底复位到最终显示位/alpha=1（Tween 已推到位，防极端中断后残留半途状态累积漂移）
+            if (menuBar != null)
+            {
+                menuBar.anchoredPosition = _menuTargetPos;
+                CanvasGroup g = EnsureCanvasGroup(menuBar.gameObject);
+                if (g != null) g.alpha = 1f;
+            }
+            if (level1BgTop != null)
+            {
+                RectTransform rt = level1BgTop.GetComponent<RectTransform>();
+                if (rt != null) rt.anchoredPosition = _level1BgTopTarget;
+                CanvasGroup g = EnsureCanvasGroup(level1BgTop);
+                if (g != null) g.alpha = 1f;
+            }
+            if (level1BgBottom != null)
+            {
+                RectTransform rt = level1BgBottom.GetComponent<RectTransform>();
+                if (rt != null) rt.anchoredPosition = _level1BgBottomTarget;
+                CanvasGroup g = EnsureCanvasGroup(level1BgBottom);
+                if (g != null) g.alpha = 1f;
+            }
+        });
     }
 
     /// <summary>进入二级（Level1 → Level2）：打开二级面板 + 二级上下 bg 渐显滑入（一级 bg 保持）；已在二级（面板切换）只切面板、不重播二级 bg</summary>
@@ -235,7 +278,7 @@ public class PauseMenu : MonoBehaviour, IPanel, ISlideClose
         _stage = MenuStage.Level2;
         if (!firstLevel2) return; // 保存/读取/设置之间切换：二级 bg 已显示，不重播
 
-        StopAllCoroutines();
+        KillActiveAnimation();
 
         // 一级复位到最终显示态（防一级滑入动画被中断时残留半途状态），一级 bg 保持不动
         if (menuBar != null)
@@ -259,6 +302,10 @@ public class PauseMenu : MonoBehaviour, IPanel, ISlideClose
             if (group != null) group.alpha = 1f;
         }
 
+        Sequence seq = DOTween.Sequence();
+        seq.SetUpdate(true); // timeScale=0（暂停中开二级）动画照播
+        bool hasTween = false;
+
         // 二级上 bg：从上方滑入 + 渐显（0→1）
         if (level2BgTop != null)
         {
@@ -268,10 +315,9 @@ public class PauseMenu : MonoBehaviour, IPanel, ISlideClose
                 level2BgTop.SetActive(true);
                 _level2BgTopTarget = rt.anchoredPosition;
                 CanvasGroup group = EnsureCanvasGroup(level2BgTop);
-                Vector2 from = _level2BgTopTarget + new Vector2(0f, slideOffset.y);
+                rt.anchoredPosition = _level2BgTopTarget + new Vector2(0f, slideOffset.y);
                 if (group != null) group.alpha = 0f;
-                rt.anchoredPosition = from;
-                StartCoroutine(SlideRoutine(rt, group, from, _level2BgTopTarget, 0f, 1f, Level2SlideInDuration));
+                AddMoveFade(seq, ref hasTween, rt, group, _level2BgTopTarget, 1f, Level2SlideInDuration, true);
             }
         }
 
@@ -284,12 +330,38 @@ public class PauseMenu : MonoBehaviour, IPanel, ISlideClose
                 level2BgBottom.SetActive(true);
                 _level2BgBottomTarget = rt.anchoredPosition;
                 CanvasGroup group = EnsureCanvasGroup(level2BgBottom);
-                Vector2 from = _level2BgBottomTarget - new Vector2(0f, slideOffset.y);
+                rt.anchoredPosition = _level2BgBottomTarget - new Vector2(0f, slideOffset.y);
                 if (group != null) group.alpha = 0f;
-                rt.anchoredPosition = from;
-                StartCoroutine(SlideRoutine(rt, group, from, _level2BgBottomTarget, 0f, 1f, Level2SlideInDuration));
+                AddMoveFade(seq, ref hasTween, rt, group, _level2BgBottomTarget, 1f, Level2SlideInDuration, true);
             }
         }
+
+        if (!hasTween)
+        {
+            seq.Kill();
+            return;
+        }
+
+        _activeSequence = seq;
+        seq.OnComplete(() =>
+        {
+            _activeSequence = null;
+            // 播完兜底复位到最终显示位/alpha=1（防极端中断后残留半途状态累积漂移）
+            if (level2BgTop != null)
+            {
+                RectTransform rt = level2BgTop.GetComponent<RectTransform>();
+                if (rt != null) rt.anchoredPosition = _level2BgTopTarget;
+                CanvasGroup g = EnsureCanvasGroup(level2BgTop);
+                if (g != null) g.alpha = 1f;
+            }
+            if (level2BgBottom != null)
+            {
+                RectTransform rt = level2BgBottom.GetComponent<RectTransform>();
+                if (rt != null) rt.anchoredPosition = _level2BgBottomTarget;
+                CanvasGroup g = EnsureCanvasGroup(level2BgBottom);
+                if (g != null) g.alpha = 1f;
+            }
+        });
     }
 
     // ============================================================
@@ -302,89 +374,176 @@ public class PauseMenu : MonoBehaviour, IPanel, ISlideClose
         if (_stage != MenuStage.Level2) return;
         _stage = MenuStage.Level1;
 
-        StopAllCoroutines();
-        StartCoroutine(Level2CloseRoutine());
-    }
+        KillActiveAnimation();
 
-    /// <summary>二级上下 bg 反方向滑出消失（上 bg 向上滑 + 淡出、下 bg 向下滑 + 淡出），播完复位隐藏</summary>
-    private IEnumerator Level2CloseRoutine()
-    {
-        RectTransform topRt = level2BgTop != null ? level2BgTop.GetComponent<RectTransform>() : null;
-        CanvasGroup topGroup = level2BgTop != null ? EnsureCanvasGroup(level2BgTop) : null;
-        RectTransform bottomRt = level2BgBottom != null ? level2BgBottom.GetComponent<RectTransform>() : null;
-        CanvasGroup bottomGroup = level2BgBottom != null ? EnsureCanvasGroup(level2BgBottom) : null;
+        Sequence seq = DOTween.Sequence();
+        seq.SetUpdate(true); // timeScale=0（暂停中关二级）动画照播
+        bool hasTween = false;
 
-        Vector2 topFrom = _level2BgTopTarget;
-        Vector2 topTo = topFrom + new Vector2(0f, slideOffset.y);
-        Vector2 bottomFrom = _level2BgBottomTarget;
-        Vector2 bottomTo = bottomFrom - new Vector2(0f, slideOffset.y);
-
-        float elapsed = 0f;
-        while (elapsed < CloseReverseDuration)
+        // 二级上 bg：先复位到最终显示位（防开二级动画被中断残留半途）→ 向上滑出 + 淡出（1→0）
+        if (level2BgTop != null)
         {
-            elapsed += Time.unscaledDeltaTime; // 暂停（timeScale=0）时仍正常播放
-            float t = Mathf.Clamp01(elapsed / CloseReverseDuration);
-            if (topRt != null) topRt.anchoredPosition = Vector2.Lerp(topFrom, topTo, t);
-            if (topGroup != null) topGroup.alpha = Mathf.Lerp(1f, 0f, t);
-            if (bottomRt != null) bottomRt.anchoredPosition = Vector2.Lerp(bottomFrom, bottomTo, t);
-            if (bottomGroup != null) bottomGroup.alpha = Mathf.Lerp(1f, 0f, t);
-            yield return null;
+            RectTransform rt = level2BgTop.GetComponent<RectTransform>();
+            if (rt != null)
+            {
+                CanvasGroup group = EnsureCanvasGroup(level2BgTop);
+                rt.anchoredPosition = _level2BgTopTarget;
+                if (group != null) group.alpha = 1f;
+                AddMoveFade(seq, ref hasTween, rt, group,
+                    _level2BgTopTarget + new Vector2(0f, slideOffset.y), 0f, CloseReverseDuration, false);
+            }
         }
 
-        // 播完恢复初始位置（防反复开关累积漂移）+ 隐藏
-        if (topRt != null) topRt.anchoredPosition = _level2BgTopTarget;
-        if (bottomRt != null) bottomRt.anchoredPosition = _level2BgBottomTarget;
-        if (level2BgTop != null) level2BgTop.SetActive(false);
-        if (level2BgBottom != null) level2BgBottom.SetActive(false);
+        // 二级下 bg：先复位到最终显示位 → 向下滑出 + 淡出（1→0）
+        if (level2BgBottom != null)
+        {
+            RectTransform rt = level2BgBottom.GetComponent<RectTransform>();
+            if (rt != null)
+            {
+                CanvasGroup group = EnsureCanvasGroup(level2BgBottom);
+                rt.anchoredPosition = _level2BgBottomTarget;
+                if (group != null) group.alpha = 1f;
+                AddMoveFade(seq, ref hasTween, rt, group,
+                    _level2BgBottomTarget - new Vector2(0f, slideOffset.y), 0f, CloseReverseDuration, false);
+            }
+        }
+
+        if (!hasTween)
+        {
+            seq.Kill();
+            return;
+        }
+
+        _activeSequence = seq;
+        seq.OnComplete(() =>
+        {
+            _activeSequence = null;
+            // 播完复位初始摆位/alpha 并隐藏（防反复开关累积漂移，原协程收尾同款）
+            if (level2BgTop != null)
+            {
+                RectTransform rt = level2BgTop.GetComponent<RectTransform>();
+                if (rt != null) rt.anchoredPosition = _level2BgTopTarget;
+                CanvasGroup g = EnsureCanvasGroup(level2BgTop);
+                if (g != null) g.alpha = 1f;
+                level2BgTop.SetActive(false);
+            }
+            if (level2BgBottom != null)
+            {
+                RectTransform rt = level2BgBottom.GetComponent<RectTransform>();
+                if (rt != null) rt.anchoredPosition = _level2BgBottomTarget;
+                CanvasGroup g = EnsureCanvasGroup(level2BgBottom);
+                if (g != null) g.alpha = 1f;
+                level2BgBottom.SetActive(false);
+            }
+        });
     }
 
     /// <summary>ISlideClose：关闭菜单走一级逆动画（menuBar 向左滑出 + 一级上下 bg 滑出消失），播完回调后由 PanelManager SetActive(false)</summary>
     public void SlideClose(Action onComplete)
     {
         _stage = MenuStage.Closed;
-        StopAllCoroutines();
-        StartCoroutine(Level1CloseRoutine(onComplete));
-    }
+        KillActiveAnimation();
 
-    /// <summary>一级逆动画：menuBar 向左滑出 + 一级上下 bg 反向滑出（alpha 1→0），播完复位隐藏并回调</summary>
-    private IEnumerator Level1CloseRoutine(Action onComplete)
-    {
-        CanvasGroup barGroup = menuBar != null ? EnsureCanvasGroup(menuBar.gameObject) : null;
-        RectTransform topRt = level1BgTop != null ? level1BgTop.GetComponent<RectTransform>() : null;
-        CanvasGroup topGroup = level1BgTop != null ? EnsureCanvasGroup(level1BgTop) : null;
-        RectTransform bottomRt = level1BgBottom != null ? level1BgBottom.GetComponent<RectTransform>() : null;
-        CanvasGroup bottomGroup = level1BgBottom != null ? EnsureCanvasGroup(level1BgBottom) : null;
+        Sequence seq = DOTween.Sequence();
+        seq.SetUpdate(true); // timeScale=0（暂停中关菜单）动画照播
+        bool hasTween = false;
 
-        Vector2 barFrom = _menuTargetPos;
-        Vector2 barTo = barFrom + new Vector2(-slideOffset.x, 0f);
-        Vector2 topFrom = _level1BgTopTarget;
-        Vector2 topTo = topFrom + new Vector2(0f, slideOffset.y);
-        Vector2 bottomFrom = _level1BgBottomTarget;
-        Vector2 bottomTo = bottomFrom - new Vector2(0f, slideOffset.y);
-
-        float elapsed = 0f;
-        while (elapsed < CloseReverseDuration)
+        // 一级菜单栏：先复位到最终显示位（防开菜单动画被中断残留半途）→ 向左滑出 + 淡出（1→0）
+        if (menuBar != null)
         {
-            elapsed += Time.unscaledDeltaTime; // 暂停（timeScale=0）时仍正常播放
-            float t = Mathf.Clamp01(elapsed / CloseReverseDuration);
-            if (menuBar != null) menuBar.anchoredPosition = Vector2.Lerp(barFrom, barTo, t);
-            if (barGroup != null) barGroup.alpha = Mathf.Lerp(1f, 0f, t);
-            if (topRt != null) topRt.anchoredPosition = Vector2.Lerp(topFrom, topTo, t);
-            if (topGroup != null) topGroup.alpha = Mathf.Lerp(1f, 0f, t);
-            if (bottomRt != null) bottomRt.anchoredPosition = Vector2.Lerp(bottomFrom, bottomTo, t);
-            if (bottomGroup != null) bottomGroup.alpha = Mathf.Lerp(1f, 0f, t);
-            yield return null;
+            CanvasGroup barGroup = EnsureCanvasGroup(menuBar.gameObject);
+            menuBar.anchoredPosition = _menuTargetPos;
+            if (barGroup != null) barGroup.alpha = 1f;
+            AddMoveFade(seq, ref hasTween, menuBar, barGroup,
+                _menuTargetPos + new Vector2(-slideOffset.x, 0f), 0f, CloseReverseDuration, false);
         }
 
-        // 播完恢复初始位置（防反复开关累积漂移）+ 全部隐藏
-        if (menuBar != null) menuBar.anchoredPosition = _menuTargetPos;
-        if (topRt != null) topRt.anchoredPosition = _level1BgTopTarget;
-        if (bottomRt != null) bottomRt.anchoredPosition = _level1BgBottomTarget;
-        if (menuBar != null) menuBar.gameObject.SetActive(false);
-        if (level1BgTop != null) level1BgTop.SetActive(false);
-        if (level1BgBottom != null) level1BgBottom.SetActive(false);
-        if (level2BgTop != null) level2BgTop.SetActive(false);
-        if (level2BgBottom != null) level2BgBottom.SetActive(false);
+        // 一级上 bg：先复位到最终显示位 → 向上滑出 + 淡出（1→0）
+        if (level1BgTop != null)
+        {
+            RectTransform rt = level1BgTop.GetComponent<RectTransform>();
+            if (rt != null)
+            {
+                CanvasGroup group = EnsureCanvasGroup(level1BgTop);
+                rt.anchoredPosition = _level1BgTopTarget;
+                if (group != null) group.alpha = 1f;
+                AddMoveFade(seq, ref hasTween, rt, group,
+                    _level1BgTopTarget + new Vector2(0f, slideOffset.y), 0f, CloseReverseDuration, false);
+            }
+        }
+
+        // 一级下 bg：先复位到最终显示位 → 向下滑出 + 淡出（1→0）
+        if (level1BgBottom != null)
+        {
+            RectTransform rt = level1BgBottom.GetComponent<RectTransform>();
+            if (rt != null)
+            {
+                CanvasGroup group = EnsureCanvasGroup(level1BgBottom);
+                rt.anchoredPosition = _level1BgBottomTarget;
+                if (group != null) group.alpha = 1f;
+                AddMoveFade(seq, ref hasTween, rt, group,
+                    _level1BgBottomTarget - new Vector2(0f, slideOffset.y), 0f, CloseReverseDuration, false);
+            }
+        }
+
+        if (!hasTween)
+        {
+            seq.Kill();
+            FinishLevel1Close(onComplete);
+            return;
+        }
+
+        _activeSequence = seq;
+        seq.OnComplete(() =>
+        {
+            _activeSequence = null;
+            FinishLevel1Close(onComplete);
+        });
+    }
+
+    /// <summary>一级逆动画收尾：复位摆位/alpha + 全部隐藏 + 回调（原 Level1CloseRoutine 结尾同款，防反复开关累积漂移）</summary>
+    private void FinishLevel1Close(Action onComplete)
+    {
+        if (menuBar != null)
+        {
+            CanvasGroup g = EnsureCanvasGroup(menuBar.gameObject);
+            menuBar.anchoredPosition = _menuTargetPos;
+            if (g != null) g.alpha = 1f;
+            menuBar.gameObject.SetActive(false);
+        }
+        if (level1BgTop != null)
+        {
+            RectTransform rt = level1BgTop.GetComponent<RectTransform>();
+            CanvasGroup g = EnsureCanvasGroup(level1BgTop);
+            if (rt != null) rt.anchoredPosition = _level1BgTopTarget;
+            if (g != null) g.alpha = 1f;
+            level1BgTop.SetActive(false);
+        }
+        if (level1BgBottom != null)
+        {
+            RectTransform rt = level1BgBottom.GetComponent<RectTransform>();
+            CanvasGroup g = EnsureCanvasGroup(level1BgBottom);
+            if (rt != null) rt.anchoredPosition = _level1BgBottomTarget;
+            if (g != null) g.alpha = 1f;
+            level1BgBottom.SetActive(false);
+        }
+        // 关闭菜单时兜底隐藏二级 bg（若某路径残留打开态）
+        if (level2BgTop != null)
+        {
+            RectTransform rt = level2BgTop.GetComponent<RectTransform>();
+            CanvasGroup g = EnsureCanvasGroup(level2BgTop);
+            if (rt != null) rt.anchoredPosition = _level2BgTopTarget;
+            if (g != null) g.alpha = 1f;
+            level2BgTop.SetActive(false);
+        }
+        if (level2BgBottom != null)
+        {
+            RectTransform rt = level2BgBottom.GetComponent<RectTransform>();
+            CanvasGroup g = EnsureCanvasGroup(level2BgBottom);
+            if (rt != null) rt.anchoredPosition = _level2BgBottomTarget;
+            if (g != null) g.alpha = 1f;
+            level2BgBottom.SetActive(false);
+        }
 
         onComplete?.Invoke();
     }
@@ -393,21 +552,41 @@ public class PauseMenu : MonoBehaviour, IPanel, ISlideClose
     // 动效工具
     // ============================================================
 
-    /// <summary>位置 + 透明度滑动协程（原生协程 + Time.unscaledDeltaTime，暂停时也能播）</summary>
-    private IEnumerator SlideRoutine(RectTransform target, CanvasGroup group,
-        Vector2 fromPos, Vector2 toPos, float fromAlpha, float toAlpha, float duration)
+    /// <summary>
+    /// 把“位移 + 透明度”一对并行 tween 追加进主序列：首对 Append、后续 Join（同帧同起点并行）。
+    /// 起点初态由调用方先摆好（位置=目标+偏移、alpha=0 或复位 target/alpha=1），这里只负责“动到 toPos/toAlpha”。
+    /// </summary>
+    private static void AddMoveFade(Sequence seq, ref bool hasTween, RectTransform target, CanvasGroup group,
+        Vector2 toPos, float toAlpha, float duration, bool easeOutCubic)
     {
-        float elapsed = 0f;
-        while (elapsed < duration)
+        if (target == null) return;
+
+        Tween move = target.DOAnchorPos(toPos, duration);
+        move.SetUpdate(true); // 逐 tween 显式 unscaled：子 tween 不随 Sequence 的 SetUpdate 传播时也保证 timeScale=0 照播
+        if (easeOutCubic) move.SetEase(Ease.OutCubic);
+
+        if (!hasTween)
+            seq.Append(move);
+        else
+            seq.Join(move);
+
+        if (group != null)
         {
-            elapsed += Time.unscaledDeltaTime; // 暂停（timeScale=0）时仍正常播放
-            float t = Mathf.Clamp01(elapsed / duration);
-            if (target != null) target.anchoredPosition = Vector2.Lerp(fromPos, toPos, t);
-            if (group != null) group.alpha = Mathf.Lerp(fromAlpha, toAlpha, t);
-            yield return null;
+            Tween fade = group.DOFade(toAlpha, duration);
+            fade.SetUpdate(true);
+            seq.Join(fade);
         }
-        if (target != null) target.anchoredPosition = toPos;
-        if (group != null) group.alpha = toAlpha;
+
+        hasTween = true;
+    }
+
+    /// <summary>打断当前动画：Kill 主序列（打断语义与旧协程停止一致）。Kill 不触发 OnComplete，防旧回调在错误时机串台</summary>
+    private void KillActiveAnimation()
+    {
+        if (_activeSequence == null) return;
+        if (_activeSequence.IsActive())
+            _activeSequence.Kill();
+        _activeSequence = null;
     }
 
     /// <summary>自动补 CanvasGroup（参考 UIFadeManager.EnsureCanvasGroup 模式）</summary>
