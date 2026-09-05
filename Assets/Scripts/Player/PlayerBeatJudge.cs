@@ -45,7 +45,6 @@ public class PlayerBeatJudge : MonoBehaviour
             mgr.OnWindowEnter += OnWindowEnter;
             mgr.OnWindowPassed += OnWindowPassed;
             _subscribed = true;
-            Debug.Log($"[PlayerBeat] 监听启动 判定组[{judgeGroup}] 连打组[{comboGroup}] 当前曲={(mgr.CurrentTrack != null ? mgr.CurrentTrack.name : "null")}");
         }
         else
         {
@@ -90,7 +89,6 @@ public class PlayerBeatJudge : MonoBehaviour
             if (mgr != null)
             {
                 bool inWindow = mgr.IsInGroupWindow(judgeGroup);
-                Debug.Log($"[PlayerBeat] 按键 组[{judgeGroup}]窗口={inWindow} 当前组={mgr.CurrentWindowGroup} 连打已激活={_autoComboActive}");
                 if (inWindow)
                 {
                     var enemy = ResolveBoss();

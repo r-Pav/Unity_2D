@@ -3,21 +3,15 @@ using DG.Tweening;
 using UnityEngine;
 
 /// <summary>
-/// 冲刺残影 DashGhostTrail v2(待办1)— 运行时克隆玩家视觉物体,冲刺时沿路径留残影。
+/// 冲刺残影 DashGhostTrail(待办1)— 运行时克隆玩家视觉物体,冲刺时沿路径留残影。
 ///
-/// 背景:v1(预生成 SpriteRenderer 数组 + 运行时脱离父级 + lossyScale 手动翻转)
-/// 被 saika 实测否决:朝左无残影 + 材质反复出问题,已作废。v2 改为运行时克隆:每次 SpawnOnce
-/// 新建一个独立 GameObject + SpriteRenderer(出生即在世界根,无父级),只拷贝渲染所需数据
-/// (当前帧 sprite/flip/排序/共享材质),不克隆整棵 Anim → 克隆体不会自己播动画,只显示生成
-/// 瞬间那一帧,半透明原地淡出后 Destroy。
+/// 每次 SpawnOnce 新建独立 GameObject + SpriteRenderer(世界根,无父级),只拷贝渲染数据
+/// (当前帧 sprite/flip/排序/共享材质/含负号 lossyScale),不克隆整棵 Anim → 克隆体不会自己播动画。
+/// 残影 = sourceSprite 的精确世界副本:玩家怎么渲染残影就怎么渲染(含朝左负 scale 镜像),
+/// 半透明原地淡出后 Destroy。材质复用玩家本体材质(双面渲染 + PNG alpha),不需要独立残影材质。
 ///
-/// 翻转(修朝左 bug):实际渲染是否镜像 = 自身 flipX XOR 父链 scale.x 为负。克隆体自身 scale
-/// 恒正(取 lossyScale 绝对值保尺寸),镜像全靠 flipX 表达 → 朝右/朝左天然一致,不再依赖父级
-/// scale 翻转(杜绝 v1 朝左无残影)。
-///
-/// 触发:PlayerDashState 按 SpawnInterval 节奏调 SpawnOnce(无 Update 轮询)。
-/// 接线(编辑器):组件挂 Player 物体(sourceSprite 拖 Anim 的 SpriteRenderer;
-/// ghostMaterial 拖 DashGhostMat,URP Transparent 材质,不代码 new,规避 URP shader 名/构建剔除坑)。
+/// 触发:PlayerDashState 按 冲刺时长 ÷ GhostsPerDash 的间隔节奏调 SpawnOnce(无 Update 轮询)。
+/// 接线(编辑器):组件挂 Player 物体,sourceSprite 拖 Anim 的 SpriteRenderer。
 /// </summary>
 public class DashGhostTrail : MonoBehaviour
 {
@@ -25,12 +19,9 @@ public class DashGhostTrail : MonoBehaviour
     [Tooltip("玩家视觉当前帧来源 SpriteRenderer(拖 Anim 上的 SpriteRenderer;残影逐帧拷贝它的 sprite/形态)")]
     [SerializeField] private SpriteRenderer sourceSprite;
 
-    [Tooltip("残影共享透明材质(拖 DashGhostMat;不代码建材质)")]
-    [SerializeField] private Material ghostMaterial;
-
     [Header("残影参数")]
-    [Tooltip("残影生成间隔(秒);0.15s 冲刺 0.05s ≈ 3 个,越小越密")]
-    [SerializeField] private float spawnInterval = 0.05f;
+    [Tooltip("单次冲刺的残影总数;PlayerDashState 按 冲刺时长 ÷ 残影数 自动算间隔,均匀铺满冲刺路径")]
+    [SerializeField] private int ghostsPerDash = 3;
 
     [Tooltip("残影出生透明度(越小越淡;透明度逐克隆体用 SpriteRenderer.color 控制,材质本身不变)")]
     [SerializeField] private float startAlpha = 0.5f;
@@ -40,9 +31,6 @@ public class DashGhostTrail : MonoBehaviour
 
     [Tooltip("可选染色,默认白(只取 rgb,alpha 由 startAlpha/淡出接管)")]
     [SerializeField] private Color tint = Color.white;
-
-    [Tooltip("同时存活残影上限(防对象堆积;满了丢弃本次生成,旧的自然淡完销毁)")]
-    [SerializeField] private int maxGhosts = 6;
 
     /// <summary>存活克隆体 → 各自淡出 tween(克隆体淡完 OnComplete 自 Destroy,条目留待下次生成前清理)</summary>
     private readonly Dictionary<GameObject, Tween> _ghostTweens = new();
@@ -68,17 +56,17 @@ public class DashGhostTrail : MonoBehaviour
         _ghostTweens.Clear();
     }
 
-    /// <summary>残影生成间隔(PlayerDashState 按此累计节奏调 SpawnOnce)</summary>
-    public float SpawnInterval => spawnInterval;
+    /// <summary>单次冲刺残影总数(PlayerDashState 按 冲刺时长 ÷ 此值 算生成间隔)</summary>
+    public int GhostsPerDash => ghostsPerDash;
 
     /// <summary>
     /// 生成一个残影:运行时克隆独立 GameObject+SpriteRenderer(只拷贝渲染数据),
-    /// 半透明原地淡出后销毁。空引用安全:sourceSprite/ghostMaterial 未拖 → 静默 return。
+    /// 半透明原地淡出后销毁。空引用安全:sourceSprite 未拖 → 静默 return。
     /// </summary>
     public void SpawnOnce()
     {
-        if (sourceSprite == null || ghostMaterial == null)
-            return; // 空引用安全:来源/材质未拖 → 静默跳过
+        if (sourceSprite == null)
+            return; // 空引用安全:来源未拖 → 静默跳过
 
         // 存活管理:先清理已销毁的克隆体(淡完 OnComplete Destroy 后键为 Unity null)
         _deadKeys.Clear();
@@ -94,10 +82,6 @@ public class DashGhostTrail : MonoBehaviour
             _deadKeys.Clear();
         }
 
-        // 存活上限:当前活动克隆体 >= maxGhosts → 丢弃本次生成(旧的自然淡完销毁)
-        if (_ghostTweens.Count >= maxGhosts)
-            return;
-
         Transform sourceT = sourceSprite.transform;
 
         // ── 克隆:只建渲染器,不克隆整棵 Anim(避免 Animator/脚本/子物体垃圾,克隆体不会自己播动画)──
@@ -106,24 +90,22 @@ public class DashGhostTrail : MonoBehaviour
         SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
         go.transform.SetPositionAndRotation(sourceT.position, sourceT.rotation);
 
-        // 尺寸:玩家 Anim scale=1.4 → 克隆体 scale = lossyScale 绝对值(|lossyScale.x|, |lossyScale.y|, 1),
-        // 保证渲染尺寸一致;自身 scale 恒正(不引入负缩放镜像,镜像交给 flipX 表达)
+        // 克隆体 = sourceSprite 的精确世界副本:玩家怎么渲染,残影就怎么渲染,方向零手动处理。
+        // 材质复用 sourceSprite.sharedMaterial(玩家本体材质,双面渲染 + PNG 透明通道支持 alpha;
+        // 不用独立残影材质——URP/Unlit Cull=Back 会把负 scale(朝左)的残影整面剔除,玩家材质没有此问题)。
+        // scale 用 lossyScale 原样(含负号):玩家朝左靠父链负 scale 镜像,克隆体同款负 scale 同款镜像。
         Vector3 lossy = sourceT.lossyScale;
-        go.transform.localScale = new Vector3(Mathf.Abs(lossy.x), Mathf.Abs(lossy.y), 1f);
+        go.transform.localScale = lossy;
 
-        // 拷贝当前帧渲染数据:sprite/flip/排序层级与 source 一致;材质共享 ghostMaterial(透明度用克隆体 color 控制)
+        // 拷贝当前帧渲染数据:sprite/flip/排序层级/材质全部与 source 一致
         sr.sprite = sourceSprite.sprite;
+        sr.flipX = sourceSprite.flipX;
+        sr.flipY = sourceSprite.flipY;
         sr.sortingLayerID = sourceSprite.sortingLayerID;
         sr.sortingOrder = sourceSprite.sortingOrder;
-        sr.material = ghostMaterial;
+        sr.sharedMaterial = sourceSprite.sharedMaterial;
 
-        // 翻转(关键,修朝左 bug):source 实际渲染是否镜像 = 自身 flipX(自身翻转) XOR 父链 scale.x 为负。
-        // 克隆体无父级负缩放,镜像全靠 flipX 表达 → 朝右/朝左天然正确,不再依赖父级 scale
-        bool parentNegScaleX = lossy.x < 0f; // 父链负缩放(Anim 根/中途节点 scale.x < 0)
-        sr.flipX = sourceSprite.flipX ^ parentNegScaleX; // XOR:负缩放会抵消一次 flipX
-        sr.flipY = sourceSprite.flipY;
-
-        // 出生透明度(tint 只取 rgb;alpha 固定 startAlpha)
+        // 出生透明度(tint 只取 rgb;alpha 固定 startAlpha,靠玩家材质的顶点色 alpha 生效)
         sr.color = new Color(tint.r, tint.g, tint.b, startAlpha);
 
         // 淡出 alpha → 0,完成后销毁克隆体。

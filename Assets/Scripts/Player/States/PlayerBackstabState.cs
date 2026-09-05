@@ -36,6 +36,9 @@ public class PlayerBackstabState : EntityState
     private bool _endTriggered;   // 动画结束事件已触发(防重复退出)
     private float _stateTimer;    // 状态存活时长(超时兜底)
 
+    // ── 背刺残影(待办1,DashGhostTrail 复用)──
+    private DashGhostTrail _ghostTrail;   // 懒缓存:OnEnter GetComponentInChildren 找(未挂组件=null → 判空跳过,不影响背刺本体)
+
     public override bool LocksInput => true;
 
     public PlayerBackstabState(CharacterBase owner, StateMachine stateMachine, Animator anim,
@@ -64,6 +67,9 @@ public class PlayerBackstabState : EntityState
         _stateTimer = 0f;
 
         var pc = (PlayerController)owner;
+        // 懒缓存残影组件(GetComponentInChildren 含 inactive;未挂组件 = null → SpawnGhost 判空跳过)
+        if (_ghostTrail == null)
+            _ghostTrail = owner.GetComponentInChildren<DashGhostTrail>(true);
 
         if (_target != null)
         {
@@ -89,6 +95,8 @@ public class PlayerBackstabState : EntityState
                 // "先挪 enemy 再移玩家"的瞬移顺序吸收,不做额外校验(假设:玩家面朝开阔侧,
                 // 框中心不会被墙挡;如验收发现再补校验)。
                 Vector2 enemyNew = (Vector2)combat.RangeIndicator.Center;
+                // 瞬移前留起点残影(玩家还在原位,拷贝当前帧 → 瞬移后残影停在原地淡出 = 闪现残像)
+                SpawnGhost();
                 // 先挪 enemy(物理体位 + 清速度,防旧击退速度把它带跑;无 rb 走 transform),再移玩家
                 _target.ForceSetPosition(enemyNew);
                 if (teleport != null)
@@ -108,6 +116,7 @@ public class PlayerBackstabState : EntityState
                     _target.transform.position.x - _target.Facing * behindOffset,
                     _target.transform.position.y);
                 dest = ResolveBackstabLanding(dest);   // 落点避开管道(PlayerTeleport 只钳制墙层,管道 Channel 层会直接传进去)
+                SpawnGhost();   // 瞬移前留起点残影(玩家还在原位)
                 if (teleport != null)
                     teleport.TeleportTo(dest);
                 else
@@ -121,6 +130,7 @@ public class PlayerBackstabState : EntityState
         else
         {
             // 无目标:原地闪现(复用 TeleportTo 自身位置 = 无敌帧+事件,无位移);朝向跟随当前输入
+            SpawnGhost();   // 闪现残像(原地,表示闪身动作)
             if (teleport != null)
                 teleport.TeleportTo((Vector2)pc.transform.position);
             float h = Input.GetAxisRaw("Horizontal");
@@ -238,6 +248,13 @@ public class PlayerBackstabState : EntityState
         return new Vector2(
             _target.transform.position.x + _target.Facing * behindOffset,
             _target.transform.position.y);
+    }
+
+    /// <summary>背刺瞬移起点残影:玩家还在起点时生成,瞬移后残影停在原地淡出。未挂 DashGhostTrail 则跳过(不挡背刺)</summary>
+    private void SpawnGhost()
+    {
+        if (_ghostTrail != null)
+            _ghostTrail.SpawnOnce();
     }
 
     /// <summary>选最近非死亡敌人(Boss 也可,普通场景无 Boss;空中敌人同样可作目标,允许空中背刺)</summary>

@@ -24,7 +24,8 @@ public class PlayerDashState : EntityState
 
     // ── 冲刺残影(待办1,DashGhostTrail)──
     private DashGhostTrail _ghostTrail;                      // 懒缓存:OnEnter GetComponentInChildren 找(未挂组件=null → 判空跳过,不影响冲刺本体)
-    private float _ghostAccumulator;                         // 冲刺内残影生成间隔累计(OnEnter 清 0,达标扣掉 spawnInterval 调 SpawnOnce)
+    private float _ghostAccumulator;                         // 冲刺内残影生成累计(OnEnter 清 0,达标扣掉 _ghostInterval 调 SpawnOnce)
+    private float _ghostInterval;                            // 本次冲刺的残影生成间隔 = 冲刺总时长 ÷ GhostsPerDash(均匀铺满冲刺路径)
 
     public override bool LocksInput => true;
 
@@ -57,6 +58,11 @@ public class PlayerDashState : EntityState
         _ghostAccumulator = 0f;
         if (_ghostTrail == null)
             _ghostTrail = owner.GetComponentInChildren<DashGhostTrail>(true);
+        // 间隔 = 本次冲刺总时长 ÷ 单次残影数:残影均匀铺满冲刺路径(首帧累计起点与冲刺起点对齐)
+        if (_ghostTrail != null && _ghostTrail.GhostsPerDash > 0)
+            _ghostInterval = dashTimer / _ghostTrail.GhostsPerDash;
+        else
+            _ghostInterval = 0f;
 
         dash?.DoDash((PlayerController)owner);
     }
@@ -69,15 +75,15 @@ public class PlayerDashState : EntityState
         if (dash != null && dash.DashDamageEnabled)
             TryHitEnemies(pc);
 
-        // 冲刺残影(待办1):冲刺进行中(dashTimer > 0)累计,达到 spawnInterval 扣掉并生成一个残影。
-        // 位置放在 dashTimer 递减前:末帧(dashTimer 恰好耗尽)仍算冲刺内,不吞掉最后一个节奏点;
+        // 冲刺残影(待办1):冲刺进行中(dashTimer > 0)累计,达到间隔(dashTimer/GhostsPerDash)生成一个残影,
+        // 均匀铺满冲刺路径。位置放在 dashTimer 递减前:末帧(dashTimer 恰好耗尽)仍算冲刺内,不吞掉最后一个节奏点;
         // dashTimer <= 0(状态退出)后不再新增,残影各自淡出自灭,无需清理。
-        if (dashTimer > 0f && _ghostTrail != null)
+        if (dashTimer > 0f && _ghostTrail != null && _ghostInterval > 0f)
         {
             _ghostAccumulator += Time.deltaTime;
-            if (_ghostAccumulator >= _ghostTrail.SpawnInterval)
+            if (_ghostAccumulator >= _ghostInterval)
             {
-                _ghostAccumulator -= _ghostTrail.SpawnInterval;
+                _ghostAccumulator -= _ghostInterval;
                 _ghostTrail.SpawnOnce();
             }
         }
