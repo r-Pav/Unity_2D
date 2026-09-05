@@ -66,6 +66,9 @@ public class UIPanelMotion : MonoBehaviour
     [Tooltip("true=使用不受 Time.timeScale 影响的时间(暂停时动画照播);false=跟随 timeScale")]
     [SerializeField] private bool useUnscaled = true;
 
+    [Tooltip("内容错峰(UIContentReveal)提前于整板开启动画结束触发的时间(秒)。0=整板播完才开始内容(串行:开启动画长会空板等待,短会显生硬);>0=整板收尾阶段内容即开始浮出(交叠:开启动画与内容错峰首尾相连,无空窗)。一般设 0.1~0.2")]
+    [SerializeField] private float revealEarlyBy = 0f;
+
     private RectTransform _rect;
     private CanvasGroup _group;
     private Tween _activeTween;
@@ -73,11 +76,47 @@ public class UIPanelMotion : MonoBehaviour
     private bool _warnedNoRect;
     private Vector2 _homePos;      // 首次打开时缓存的 Inspector 摆位(之后所有动画以此为基准,防中途打断后位置漂移累积)
     private bool _homeCached;
+    private UIContentReveal _cachedReveal; // 同物体上的内容错峰组件缓存(懒查)
+    private bool _revealTriggered;          // 本轮 PlayOpen 内 reveal 是否已触发(防 FinishOpen 与提前触发点重复播)
 
     /// <summary>当前是否有开关动画在播放(供 PanelManager 做防连点/栈保护参考)</summary>
     public bool IsPlaying
     {
         get { return _playing; }
+    }
+
+    /// <summary>
+    /// 面板开启动画完成(或 None 硬切完成)后,自动触发同物体上的 UIContentReveal 内容错峰入场。
+    /// 这样面板根只需同时挂 UIPanelMotion + UIContentReveal,即形成
+    /// "整板淡入/滑入 → 内容逐项错峰" 的默认链路,无需业务代码接线(2026-09-05 saika 方案 A)。
+    /// 挂载约定:UIContentReveal 与 UIPanelMotion 挂在同一个面板根物体上。
+    /// </summary>
+    private void TriggerContentReveal()
+    {
+        if (_revealTriggered)
+            return;
+        if (_cachedReveal == null)
+            _cachedReveal = GetComponent<UIContentReveal>();
+        if (_cachedReveal != null)
+        {
+            _revealTriggered = true;
+            _cachedReveal.Play();
+        }
+    }
+
+    /// <summary>
+    /// 开启动画开始前,把同物体上的 UIContentReveal 内容预置为隐藏态。
+    /// 不做这步,滑入式面板整板可见期间内容会裸露,播完 reveal 再跳隐藏起点,
+    /// 视觉 = "元素先跟着页面出现 → 闪一下 → 重播"(2026-09-05 saika 实测)。
+    /// 先隐藏 → 整板动画(内容不可见)→ PlayOpen 完成触发 reveal.Play 浮出,只出现一次。
+    /// 必须在面板已 SetActive(true)、元素处于 Inspector 摆位时调用(ResetToHidden 内部此刻缓存摆放位)。
+    /// </summary>
+    private void PrehideContentReveal()
+    {
+        if (_cachedReveal == null)
+            _cachedReveal = GetComponent<UIContentReveal>();
+        if (_cachedReveal != null)
+            _cachedReveal.ResetToHidden();
     }
 
     private void OnDisable()
@@ -116,6 +155,11 @@ public class UIPanelMotion : MonoBehaviour
         // 播放前强制归位到摆位(清上次中断可能残留的屏幕外/半途偏移)
         rect.anchoredPosition = _homePos;
 
+        // 内容预隐藏:整板动画期间内容不可见,播完 reveal.Play 再浮出(防"先裸露再重播")
+        // 同时重置一次性触发标志,允许本轮开启动画期间(含提前点)触发 reveal
+        _revealTriggered = false;
+        PrehideContentReveal();
+
         _playing = true;
 
         // None / 非正时长:不做动画,直接落到打开目标态(alpha=1,位置保持当前)
@@ -123,17 +167,32 @@ public class UIPanelMotion : MonoBehaviour
         {
             group.alpha = 1f;
             _playing = false;
+            TriggerContentReveal();
             onDone?.Invoke();
             return;
         }
 
+        // 内容错峰触发时刻:默认整板动画播完才触发(串行);revealEarlyBy>0 时提前到
+        // openDuration - revealEarlyBy(收尾交叠,不空板)。仅当同物体挂了 UIContentReveal 才需要计时。
+        bool hasReveal = _cachedReveal != null || GetComponent<UIContentReveal>() != null;
+        float revealAt = hasReveal ? Mathf.Max(0f, openDuration - revealEarlyBy) : float.MaxValue;
+        bool revealFiresBeforeEnd = revealAt < openDuration;
+
         if (openEffect == PanelMotionEffect.Fade)
         {
             group.alpha = 0f;
-            Tween fade = group.DOFade(1f, openDuration);
-            ApplyTime(fade);
-            _activeTween = fade;
-            fade.OnComplete(() => FinishOpen(group, onDone));
+            Sequence fadeSeq = DOTween.Sequence();
+            fadeSeq.Append(group.DOFade(1f, openDuration));
+            if (hasReveal)
+            {
+                if (revealFiresBeforeEnd)
+                    fadeSeq.InsertCallback(revealAt, TriggerContentReveal);
+                else
+                    fadeSeq.AppendCallback(TriggerContentReveal);
+            }
+            ApplyTime(fadeSeq);
+            _activeTween = fadeSeq;
+            fadeSeq.OnComplete(() => FinishOpen(group, onDone));
             return;
         }
 
@@ -147,6 +206,13 @@ public class UIPanelMotion : MonoBehaviour
         Sequence seq = DOTween.Sequence();
         seq.Join(rect.DOAnchorPos(to, openDuration).SetEase(openEase));
         seq.Join(group.DOFade(1f, openDuration));
+        if (hasReveal)
+        {
+            if (revealFiresBeforeEnd)
+                seq.InsertCallback(revealAt, TriggerContentReveal);
+            else
+                seq.AppendCallback(TriggerContentReveal);
+        }
         ApplyTime(seq);
         _activeTween = seq;
         seq.OnComplete(() => FinishOpen(group, onDone));
@@ -233,6 +299,7 @@ public class UIPanelMotion : MonoBehaviour
         group.alpha = 1f; // Tween 已把位置/alpha 推到终点,兜底保证落在目标态
         _activeTween = null;
         _playing = false;
+        TriggerContentReveal();
         onDone?.Invoke();
     }
 
