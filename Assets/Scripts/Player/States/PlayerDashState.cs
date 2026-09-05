@@ -22,6 +22,10 @@ public class PlayerDashState : EntityState
     private readonly ElementModule elementModule;            // 元素模块(伤害触发时刻读 CurrentElement,决策 N5)
     private Vector2 dashStartPos;                            // 冲刺起点(OnEnter 记录;DashEndedEvent 传起点,嘲讽幻象留在原地,不与落点玩家重叠)
 
+    // ── 冲刺残影(待办1,DashGhostTrail)──
+    private DashGhostTrail _ghostTrail;                      // 懒缓存:OnEnter GetComponentInChildren 找(未挂组件=null → 判空跳过,不影响冲刺本体)
+    private float _ghostAccumulator;                         // 冲刺内残影生成间隔累计(OnEnter 清 0,达标扣掉 spawnInterval 调 SpawnOnce)
+
     public override bool LocksInput => true;
 
     public PlayerDashState(CharacterBase owner, StateMachine stateMachine, Animator anim,
@@ -47,6 +51,13 @@ public class PlayerDashState : EntityState
         dashTimer = dash != null ? dash.DashDuration : dashDuration;
         hitThisDash.Clear(); // 新一次冲刺重新计命中
         dashStartPos = owner.transform.position; // 记录冲刺起点(B-01 嘲讽幻象留原地,防与落点玩家重叠)
+
+        // 冲刺残影(待办1):新一次冲刺清空生成节奏;懒缓存残影组件
+        // (GetComponentInChildren 含 inactive;未挂组件 = null → 后续 SpawnOnce 判空跳过,不影响冲刺本体)
+        _ghostAccumulator = 0f;
+        if (_ghostTrail == null)
+            _ghostTrail = owner.GetComponentInChildren<DashGhostTrail>(true);
+
         dash?.DoDash((PlayerController)owner);
     }
 
@@ -57,6 +68,19 @@ public class PlayerDashState : EntityState
         // 阶段 3:冲刺伤害判定(未启用 DashDamageEnabled 时完全跳过,零开销保持现状)
         if (dash != null && dash.DashDamageEnabled)
             TryHitEnemies(pc);
+
+        // 冲刺残影(待办1):冲刺进行中(dashTimer > 0)累计,达到 spawnInterval 扣掉并生成一个残影。
+        // 位置放在 dashTimer 递减前:末帧(dashTimer 恰好耗尽)仍算冲刺内,不吞掉最后一个节奏点;
+        // dashTimer <= 0(状态退出)后不再新增,残影各自淡出自灭,无需清理。
+        if (dashTimer > 0f && _ghostTrail != null)
+        {
+            _ghostAccumulator += Time.deltaTime;
+            if (_ghostAccumulator >= _ghostTrail.SpawnInterval)
+            {
+                _ghostAccumulator -= _ghostTrail.SpawnInterval;
+                _ghostTrail.SpawnOnce();
+            }
+        }
 
         dashTimer -= Time.deltaTime;
         if (dashTimer <= 0f)
