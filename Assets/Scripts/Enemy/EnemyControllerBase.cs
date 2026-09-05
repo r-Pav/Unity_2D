@@ -1434,7 +1434,9 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     public bool HasChannelAhead(int dir)
     {
         Vector2 origin = new Vector2(transform.position.x + dir * 0.1f, transform.position.y + channelRayHeightOffset);
-        var filter = new ContactFilter2D { useTriggers = true, layerMask = channelLayer };
+        // useLayerMask 必须显式 true:ContactFilter2D 默认 false 时 layerMask 被忽略(射线全层命中,
+        // 会把 Player/墙等非 Channel 物体误判成管道,2026-09-05 saika 实测:追击把玩家当管道立即脱战)
+        var filter = new ContactFilter2D { useTriggers = true, useLayerMask = true, layerMask = channelLayer };
         int count = Physics2D.Raycast(origin, Vector2.right * dir, filter, channelCheckHits, channelCheckForward);
         return count > 0;
     }

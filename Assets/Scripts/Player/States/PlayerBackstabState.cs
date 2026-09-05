@@ -112,9 +112,10 @@ public class PlayerBackstabState : EntityState
                     teleport.TeleportTo(dest);
                 else
                     pc.transform.position = dest;   // 未挂 PlayerTeleport 时兜底直接位移(无敌帧等由挂载后生效)
-                // 强制转向敌人:按玩家与 enemy 相对位置(不能用 enemy.Facing——靠墙时落点改到 enemy 正面,
-                // enemy.Facing 朝玩家,用它玩家会背朝 enemy)
-                pc.UpdateFacing(_target.transform.position.x >= pc.transform.position.x ? 1f : -1f);
+                // 强制转向敌人:按敌人与玩家实际落点(dest)的相对位置(不能用 pc.transform.position——
+                // TeleportTo 走 rb.position,同帧 transform.position 未同步还是瞬移前旧值,会把朝向判反;
+                // 也不能用 enemy.Facing——靠墙时落点改到 enemy 正面,enemy.Facing 朝玩家,用它玩家会背朝 enemy)
+                pc.UpdateFacing(_target.transform.position.x >= dest.x ? 1f : -1f);
             }
         }
         else
