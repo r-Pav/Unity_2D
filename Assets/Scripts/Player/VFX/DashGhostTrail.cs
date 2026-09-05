@@ -3,30 +3,36 @@ using DG.Tweening;
 using UnityEngine;
 
 /// <summary>
-/// 冲刺残影(待办1)— 冲刺时沿路径留残影。
-/// 设计(saika 拍板):淡出式残影、取当前帧玩家 sprite 减透明度(alpha startAlpha→0)、
-/// 最多 3 个残影循环复用、残影子物体预生成(编辑器摆好,初始 inactive,运行时绝不 Instantiate)。
+/// 冲刺残影 DashGhostTrail v2(待办1)— 运行时克隆玩家视觉物体,冲刺时沿路径留残影。
 ///
-/// 无 Update 轮询:SpawnOnce 由 PlayerDashState 按 spawnInterval 节奏调用;
-/// 残影生成后独立停留在生成位置(脱离移动父级,见 SpawnOnce 注释),玩家继续移动 = 路径拖影。
+/// 背景:v1(预生成 SpriteRenderer 数组 + 运行时脱离父级 + lossyScale 手动翻转)
+/// 被 saika 实测否决:朝左无残影 + 材质反复出问题,已作废。v2 改为运行时克隆:每次 SpawnOnce
+/// 新建一个独立 GameObject + SpriteRenderer(出生即在世界根,无父级),只拷贝渲染所需数据
+/// (当前帧 sprite/flip/排序/共享材质),不克隆整棵 Anim → 克隆体不会自己播动画,只显示生成
+/// 瞬间那一帧,半透明原地淡出后 Destroy。
 ///
-/// 接线(编辑器):挂玩家角色 sprite 所在 GameObject;sourceSprite 拖玩家 SpriteRenderer;
-/// ghosts 拖 3 个预生成残影子物体的 SpriteRenderer(材质透明由 saika 编辑器建)。
+/// 翻转(修朝左 bug):实际渲染是否镜像 = 自身 flipX XOR 父链 scale.x 为负。克隆体自身 scale
+/// 恒正(取 lossyScale 绝对值保尺寸),镜像全靠 flipX 表达 → 朝右/朝左天然一致,不再依赖父级
+/// scale 翻转(杜绝 v1 朝左无残影)。
+///
+/// 触发:PlayerDashState 按 SpawnInterval 节奏调 SpawnOnce(无 Update 轮询)。
+/// 接线(编辑器):组件挂 Player 物体(sourceSprite 拖 Anim 的 SpriteRenderer;
+/// ghostMaterial 拖 DashGhostMat,URP Transparent 材质,不代码 new,规避 URP shader 名/构建剔除坑)。
 /// </summary>
 public class DashGhostTrail : MonoBehaviour
 {
     [Header("来源")]
-    [Tooltip("玩家角色当前帧来源 SpriteRenderer(拖玩家视觉主体;残影逐帧拷贝它的 sprite/形态)")]
+    [Tooltip("玩家视觉当前帧来源 SpriteRenderer(拖 Anim 上的 SpriteRenderer;残影逐帧拷贝它的 sprite/形态)")]
     [SerializeField] private SpriteRenderer sourceSprite;
 
-    [Tooltip("残影 SpriteRenderer 引用(3 个预生成残影子物体,初始 inactive;元素 null 视同不可用)")]
-    [SerializeField] private SpriteRenderer[] ghosts;
+    [Tooltip("残影共享透明材质(拖 DashGhostMat;不代码建材质)")]
+    [SerializeField] private Material ghostMaterial;
 
     [Header("残影参数")]
-    [Tooltip("残影生成间隔(秒);0.15s 冲刺 ≈ 3 个(0.03~0.05 范围,越小越密)")]
+    [Tooltip("残影生成间隔(秒);0.15s 冲刺 0.05s ≈ 3 个,越小越密")]
     [SerializeField] private float spawnInterval = 0.05f;
 
-    [Tooltip("残影出生透明度(当前帧减透明度 = 半透明;越小越淡)")]
+    [Tooltip("残影出生透明度(越小越淡;透明度逐克隆体用 SpriteRenderer.color 控制,材质本身不变)")]
     [SerializeField] private float startAlpha = 0.5f;
 
     [Tooltip("淡出时长(秒);长 = 拖尾余韵久")]
@@ -35,17 +41,29 @@ public class DashGhostTrail : MonoBehaviour
     [Tooltip("可选染色,默认白(只取 rgb,alpha 由 startAlpha/淡出接管)")]
     [SerializeField] private Color tint = Color.white;
 
-    /// <summary>每个残影当前进行的淡出 tween(复用同一残影前先 Kill 旧的,防 alpha 残留/重复回调)</summary>
-    private readonly Dictionary<SpriteRenderer, Tween> _ghostTweens = new();
+    [Tooltip("同时存活残影上限(防对象堆积;满了丢弃本次生成,旧的自然淡完销毁)")]
+    [SerializeField] private int maxGhosts = 6;
+
+    /// <summary>存活克隆体 → 各自淡出 tween(克隆体淡完 OnComplete 自 Destroy,条目留待下次生成前清理)</summary>
+    private readonly Dictionary<GameObject, Tween> _ghostTweens = new();
+
+    /// <summary>清理循环复用缓冲(收集已销毁克隆体键,字典迭代中不能直接删)</summary>
+    private readonly List<GameObject> _deadKeys = new();
 
     private void OnDestroy()
     {
-        // 场景卸载/组件销毁时清掉未完成残影淡出:通用 DOTween.To 不绑定目标对象,
-        // 不手动 Kill 会在目标销毁后继续回调(空引用/报错),这里统一收尾
+        // 组件/场景卸载时统一收尾:先 Kill 未完成淡出 —— 通用 DOTween.To 不绑定目标对象,
+        // 不 Kill 会在目标销毁后继续回调(空引用/报错);再销毁仍存活的克隆体(独立物体不随
+        // Player 走,防泄漏到场景),最后清列表
         foreach (Tween tween in _ghostTweens.Values)
         {
             if (tween != null && tween.IsActive())
                 tween.Kill();
+        }
+        foreach (GameObject go in _ghostTweens.Keys)
+        {
+            if (go != null)
+                Destroy(go);
         }
         _ghostTweens.Clear();
     }
@@ -54,96 +72,76 @@ public class DashGhostTrail : MonoBehaviour
     public float SpawnInterval => spawnInterval;
 
     /// <summary>
-    /// 生成一个残影:找空闲残影(非 activeSelf 的第一个;全在用 = 3 个上限,静默跳过),
-    /// 拷贝当前帧玩家外观后激活,再淡出到 alpha 0 后 SetActive(false),等待下次复用。
-    /// 空引用安全:sourceSprite/ghosts 未拖或元素 null 时静默 return,不报错。
+    /// 生成一个残影:运行时克隆独立 GameObject+SpriteRenderer(只拷贝渲染数据),
+    /// 半透明原地淡出后销毁。空引用安全:sourceSprite/ghostMaterial 未拖 → 静默 return。
     /// </summary>
     public void SpawnOnce()
     {
-        if (sourceSprite == null || ghosts == null || ghosts.Length == 0)
-            return; // 空引用安全:来源/残影数组未拖 → 静默跳过
+        if (sourceSprite == null || ghostMaterial == null)
+            return; // 空引用安全:来源/材质未拖 → 静默跳过
 
-        // 找空闲残影:ghosts 中非 activeSelf 的第一个(null 视同不可用跳过)
-        int idleIndex = -1;
-        for (int i = 0; i < ghosts.Length; i++)
+        // 存活管理:先清理已销毁的克隆体(淡完 OnComplete Destroy 后键为 Unity null)
+        _deadKeys.Clear();
+        foreach (GameObject deadGo in _ghostTweens.Keys)
         {
-            if (ghosts[i] != null && !ghosts[i].gameObject.activeSelf)
-            {
-                idleIndex = i;
-                break;
-            }
+            if (deadGo == null)
+                _deadKeys.Add(deadGo);
         }
-        if (idleIndex < 0)
-            return; // 3 个残影全在用 → 静默跳过(不覆盖,即静默上限)
-
-        SpriteRenderer ghost = ghosts[idleIndex];
-
-        // 复用同一残影前先 Kill 旧淡出 tween(淡出中途再次生成:防残留,从头淡出)
-        if (_ghostTweens.TryGetValue(ghost, out Tween oldTween))
+        if (_deadKeys.Count > 0)
         {
-            if (oldTween != null && oldTween.IsActive())
-                oldTween.Kill();
-            _ghostTweens.Remove(ghost);
+            foreach (GameObject deadGo in _deadKeys)
+                _ghostTweens.Remove(deadGo);
+            _deadKeys.Clear();
         }
 
-        // ── 拷贝当前帧玩家形态 ──
-        // sprite/flip/排序层级与 source 一致(材质不拷贝:残影用自己的透明材质,由 saika 编辑器指定)
-        ghost.sprite = sourceSprite.sprite;
-        ghost.flipX = sourceSprite.flipX;
-        ghost.sortingLayerID = sourceSprite.sortingLayerID;
-        ghost.sortingOrder = sourceSprite.sortingOrder;
+        // 存活上限:当前活动克隆体 >= maxGhosts → 丢弃本次生成(旧的自然淡完销毁)
+        if (_ghostTweens.Count >= maxGhosts)
+            return;
 
-        // 位置/旋转/缩放取 source 当前值(受击形变/缩放时残影跟随当前形态)。
-        // 关键:若残影子物体挂在移动中的玩家层级下,会被父级带着走 → 先脱离到世界根
-        // (worldPositionStays,生成瞬间不跳变;运行时脱离,编辑器/场景文件不受影响),
-        // 此后玩家继续移动,残影独立停在生成位置原地淡出 = 路径拖影。
-        Transform ghostT = ghost.transform;
-        if (ghostT.parent != null)
-            ghostT.SetParent(null);
         Transform sourceT = sourceSprite.transform;
-        ghostT.SetPositionAndRotation(sourceT.position, sourceT.rotation);
-        ghostT.localScale = sourceT.lossyScale; // 脱离后 localScale==世界缩放,与 source 渲染尺寸一致
 
-        // 激活并设出生透明度(tint 只取 rgb;alpha 固定 startAlpha)
-        ghost.gameObject.SetActive(true);
-        ghost.color = new Color(tint.r, tint.g, tint.b, startAlpha);
+        // ── 克隆:只建渲染器,不克隆整棵 Anim(避免 Animator/脚本/子物体垃圾,克隆体不会自己播动画)──
+        // new GameObject 默认无父级 = 出生即在世界根(天然独立于移动中的 Player,无需父级搬运)
+        var go = new GameObject("DashGhost");
+        SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
+        go.transform.SetPositionAndRotation(sourceT.position, sourceT.rotation);
 
-        // 淡出 alpha → 0,完成后关闭残影(下次生成复用同一物体)
+        // 尺寸:玩家 Anim scale=1.4 → 克隆体 scale = lossyScale 绝对值(|lossyScale.x|, |lossyScale.y|, 1),
+        // 保证渲染尺寸一致;自身 scale 恒正(不引入负缩放镜像,镜像交给 flipX 表达)
+        Vector3 lossy = sourceT.lossyScale;
+        go.transform.localScale = new Vector3(Mathf.Abs(lossy.x), Mathf.Abs(lossy.y), 1f);
+
+        // 拷贝当前帧渲染数据:sprite/flip/排序层级与 source 一致;材质共享 ghostMaterial(透明度用克隆体 color 控制)
+        sr.sprite = sourceSprite.sprite;
+        sr.sortingLayerID = sourceSprite.sortingLayerID;
+        sr.sortingOrder = sourceSprite.sortingOrder;
+        sr.material = ghostMaterial;
+
+        // 翻转(关键,修朝左 bug):source 实际渲染是否镜像 = 自身 flipX(自身翻转) XOR 父链 scale.x 为负。
+        // 克隆体无父级负缩放,镜像全靠 flipX 表达 → 朝右/朝左天然正确,不再依赖父级 scale
+        bool parentNegScaleX = lossy.x < 0f; // 父链负缩放(Anim 根/中途节点 scale.x < 0)
+        sr.flipX = sourceSprite.flipX ^ parentNegScaleX; // XOR:负缩放会抵消一次 flipX
+        sr.flipY = sourceSprite.flipY;
+
+        // 出生透明度(tint 只取 rgb;alpha 固定 startAlpha)
+        sr.color = new Color(tint.r, tint.g, tint.b, startAlpha);
+
+        // 淡出 alpha → 0,完成后销毁克隆体。
         // 用核心 DOTween.To 而非 SpriteRenderer.DOFade:项目 DOTween 以 DOTWEEN_NOSPRITES 编译,sprite 模块扩展不可用
         Tween fade = DOTween.To(
-                () => ghost.color.a,
+                () => sr.color.a,
                 a =>
                 {
-                    Color c = ghost.color;
+                    Color c = sr.color;
                     c.a = a;
-                    ghost.color = c;
+                    sr.color = c;
                 },
                 0f, fadeDuration)
             .OnComplete(() =>
             {
-                if (ghost != null)
-                    ghost.gameObject.SetActive(false); // 淡完关闭,等待复用
+                if (go != null)
+                    Destroy(go);
             });
-        _ghostTweens[ghost] = fade;
-    }
-
-    /// <summary>全部残影立即结束淡出并关闭(可选兜底;常规流程不需要——残影各自淡出自灭)</summary>
-    public void ResetAll()
-    {
-        if (ghosts == null)
-            return;
-        foreach (SpriteRenderer ghost in ghosts)
-        {
-            if (ghost == null)
-                continue;
-            if (_ghostTweens.TryGetValue(ghost, out Tween tween))
-            {
-                if (tween != null && tween.IsActive())
-                    tween.Kill();
-                _ghostTweens.Remove(ghost);
-            }
-            if (ghost.gameObject.activeSelf)
-                ghost.gameObject.SetActive(false);
-        }
+        _ghostTweens.Add(go, fade);
     }
 }
