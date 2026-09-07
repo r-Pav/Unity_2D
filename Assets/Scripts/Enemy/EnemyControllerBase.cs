@@ -143,6 +143,10 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     [Tooltip("射线发射高度偏移(腰部)")]
     [SerializeField] private float channelRayHeightOffset = 0.5f;
 
+    [Header("巡逻墙检测")]
+    [Tooltip("巡逻边界短距检测长度(米):前方此距离内命中实心墙(Ground/Wall)或管道 trigger = 边界转身。比管道长线短,贴墙才转(2026-09-07 敌人顶墙卡住修复)")]
+    [SerializeField] private float patrolBoundaryDistance = 0.8f;
+
     [Tooltip("战斗态垂直容差(Y 轴):战斗中有仇恨时任意方向检测玩家,垂直差在此范围内算可见(玩家绕后/跳起不丢仇恨)")]
     [SerializeField] private float combatSightHeight = 3f;
 
@@ -1487,6 +1491,17 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         // 会把 Player/墙等非 Channel 物体误判成管道,2026-09-05 saika 实测:追击把玩家当管道立即脱战)
         var filter = new ContactFilter2D { useTriggers = true, useLayerMask = true, layerMask = channelLayer };
         int count = Physics2D.Raycast(origin, Vector2.right * dir, filter, channelCheckHits, channelCheckForward);
+        return count > 0;
+    }
+
+    /// <summary>巡逻边界检测(短距) — 前方 patrolBoundaryDistance 内命中 管道 trigger / 实心墙(Ground=3 + Wall=11)
+    /// = 边界,巡逻应转身。复用管道水平射线写法(useTriggers+layerMask),但距离短(贴墙才转,不会老远就转身)。
+    /// 悬崖另由 HasGroundAhead 负责;追击/玩家视线检测走各自方法,不受影响(2026-09-07 敌人初始朝墙顶住不巡逻修复)。</summary>
+    public bool HasPatrolBoundaryAhead(int dir)
+    {
+        Vector2 origin = new Vector2(transform.position.x + dir * 0.1f, transform.position.y + channelRayHeightOffset);
+        var filter = new ContactFilter2D { useTriggers = true, useLayerMask = true, layerMask = channelLayer | (1 << 3) | (1 << 11) };
+        int count = Physics2D.Raycast(origin, Vector2.right * dir, filter, channelCheckHits, patrolBoundaryDistance);
         return count > 0;
     }
 

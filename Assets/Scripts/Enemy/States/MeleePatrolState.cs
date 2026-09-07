@@ -37,9 +37,9 @@ public class MeleePatrolState : EntityState
             return;
         }
 
-        // [管道边界] 前方有管道（Channel 层）→ 转向 + 停顿，防止走出管道区。
-        // 停顿期内不重复检测，归零后沿反方向走。
-        if (me.HasChannelAhead(patrolDir))
+        // [边界] 前方短距内命中 管道 trigger / 实心墙(Ground/Wall)→ 转向 + 停顿,防止走出边界/顶墙卡住。
+        // 停顿期内不重复检测,归零后沿反方向走。悬崖另由下方 HasGroundAhead 负责。
+        if (me.HasPatrolBoundaryAhead(patrolDir))
         {
             patrolDir *= -1;
             pauseTimer = Random.Range(1f, 2f);

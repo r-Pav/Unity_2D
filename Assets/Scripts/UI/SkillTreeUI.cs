@@ -62,6 +62,7 @@ public class SkillTreeUI : MonoBehaviour, IPanel
 
     private void OnEnable()
     {
+        SkillPanelController.RegisterPage(gameObject);   // BG 门卫:技能系页打开注册(底图保持亮)
         EventBus.Subscribe<SkillLevelChangedEvent>(OnSkillLevelChanged);
         EventBus.Subscribe<BranchChosenEvent>(OnBranchChosen);
         EventBus.Subscribe<PlayerSkillPointsChangedEvent>(OnSkillPointsChanged);
@@ -70,6 +71,7 @@ public class SkillTreeUI : MonoBehaviour, IPanel
 
     private void OnDisable()
     {
+        SkillPanelController.UnregisterPage(gameObject);   // BG 门卫:技能系页关闭注销(空才灭底图)
         EventBus.Unsubscribe<SkillLevelChangedEvent>(OnSkillLevelChanged);
         EventBus.Unsubscribe<BranchChosenEvent>(OnBranchChosen);
         EventBus.Unsubscribe<PlayerSkillPointsChangedEvent>(OnSkillPointsChanged);

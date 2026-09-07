@@ -64,6 +64,7 @@ public class PassiveUI : MonoBehaviour, IPanel
 
     private void OnEnable()
     {
+        SkillPanelController.RegisterPage(gameObject);   // BG 门卫:技能系页打开注册(底图保持亮)
         // 面板打开=游戏已暂停(timeScale=0)，豁免战斗锁定，否则敌人冻结在Chase永远锁死面板
         if (passiveEquipManager != null)
             passiveEquipManager.SetUIPauseOverride(true);
@@ -74,6 +75,7 @@ public class PassiveUI : MonoBehaviour, IPanel
 
     private void OnDisable()
     {
+        SkillPanelController.UnregisterPage(gameObject);   // BG 门卫:技能系页关闭注销(空才灭底图)
         if (passiveEquipManager != null)
             passiveEquipManager.SetUIPauseOverride(false);
         EventBus.Unsubscribe<PassiveSlotsChangedEvent>(OnPassiveSlotsChanged);

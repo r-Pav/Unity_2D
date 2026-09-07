@@ -195,6 +195,17 @@ public readonly struct PlayerSkillPointsChangedEvent
     }
 }
 
+/// <summary>[技能点能量球] 玩家能量球进度变化事件 — SkillPointManager 触发，HUD 进度条订阅</summary>
+public readonly struct PlayerEnergyProgressChangedEvent
+{
+    public readonly int progress;
+
+    public PlayerEnergyProgressChangedEvent(int progress)
+    {
+        this.progress = progress;
+    }
+}
+
 // ============================================================
 // P2 被动系统事件
 // ============================================================

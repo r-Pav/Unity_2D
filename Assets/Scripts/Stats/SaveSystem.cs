@@ -136,6 +136,8 @@ public class SaveSystem : MonoBehaviour
         }
 
         CollectSkillPoints(data);
+        // [技能点能量球] 能量球进度（照 skillPoints 模式）
+        CollectEnergyProgress(data);
         CollectSkillSlots(data);
         CollectSkillPool(data);
         CollectHudAssignments(data);
@@ -204,6 +206,8 @@ public class SaveSystem : MonoBehaviour
         if (data == null) return false;
 
         RestoreSkillPoints(data);
+        // [技能点能量球] 恢复能量球进度（顺序：先技能点后进度）
+        RestoreEnergyProgress(data);
         RestoreSkillSlots(data);
         RestoreSkillPool(data);
         RestoreHudAssignments(data);
@@ -326,6 +330,16 @@ public class SaveSystem : MonoBehaviour
     {
         if (skillPointManager != null)
             data.skillPoints = skillPointManager.CurrentSkillPoints;
+    }
+
+    // ============================================================
+    // 收集 — 能量球进度
+    // ============================================================
+
+    private void CollectEnergyProgress(SaveData data)
+    {
+        if (skillPointManager != null)
+            data.energyProgress = skillPointManager.EnergyProgress;
     }
 
     // ============================================================
@@ -476,6 +490,16 @@ public class SaveSystem : MonoBehaviour
     {
         if (skillPointManager != null)
             skillPointManager.SetPoints(data.skillPoints);
+    }
+
+    // ============================================================
+    // 恢复 — 能量球进度
+    // ============================================================
+
+    private void RestoreEnergyProgress(SaveData data)
+    {
+        if (skillPointManager != null)
+            skillPointManager.SetEnergyProgress(data.energyProgress);
     }
 
     // ============================================================
@@ -827,6 +851,8 @@ public class SaveSystem : MonoBehaviour
     private class SaveData
     {
         public int skillPoints;
+        // [技能点能量球] 能量球进度（0~99；旧档无此字段 → 0）
+        public int energyProgress;
         public SlotSaveData[] slotData;
         public PoolSaveData[] poolSkills;
         public string[] hudSlots;

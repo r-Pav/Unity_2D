@@ -123,7 +123,7 @@ public class ComboLv3Executor : ISkillExecutor
             case "Combo_A01B01_Lv3": ExecuteA01B01(playerGo); break;
             case "Combo_A01B02_Lv3": ExecuteA01B02(playerGo); break;
             case "Combo_A02B01_Lv3": ExecuteA02B01(playerGo); break;
-            case "Combo_A02B02_Lv3": ExecuteA02B02(playerGo, e.slotIndex, branch); break;
+            case "Combo_A02B02_Lv3": ExecuteA02B02(playerGo, e.slotIndex, branch, data as CombinationSkillData); break;
             default: break; // 未知 skillName 静默跳过（注册表已按 skillName 分发,此分支为双保险）
         }
     }
@@ -266,14 +266,14 @@ public class ComboLv3Executor : ISkillExecutor
     // ④ A02B02（Q右+E右）：减速圈传送 — 点技能键自身圈+瞄准,左键两段(发射→传送)+落点圈 + 充能 3 + 慢动作 + AimLine
     // ============================================================
 
-    private void ExecuteA02B02(GameObject playerGo, int slotIndex, ActiveSkillData.ActiveBranchData branch)
+    private void ExecuteA02B02(GameObject playerGo, int slotIndex, ActiveSkillData.ActiveBranchData branch, CombinationSkillData comboData)
     {
         // saika 2026-08-20 定稿(按键规则):技能键 = 消耗 1 充能 开圈+瞄准 / 已发射后技能键二次激活 = 传送(不扣充能);
         // 左键 = 仅发射传送弹(沿瞄准方向);循环:技能键(开圈) → 左键(发射) → 技能键(传送) → 自动瞄准 → ...
         // 二次激活 = 技能键传送(照抄 A02B01 模式):有挂起弹且归属本技能 → 传送,不再开新圈
         if (_activeBolt != null && _activeBolt.IsActive && _pendingSkill == _skillName)
         {
-            DoTeleportA02B02(playerGo, slotIndex, branch); // 技能键传送:传送到刚创建的圈(弹落点圈)
+            DoTeleportA02B02(playerGo, slotIndex, branch, comboData); // 技能键传送:传送到刚创建的圈(弹落点圈)
             return;
         }
 
@@ -285,7 +285,7 @@ public class ComboLv3Executor : ISkillExecutor
         }
         _pendingSkill = null;
 
-        // 减速圈参数读分支资产（A02B02 = Q右+E右 → E 树 lv3Right；与 A01B0x 的 GetBranchSide 模式一致,saika 在 Inspector 调）
+        // 减速圈数值参数读分支资产（A02B02 = Q右+E右 → E 树 lv3Right；与 A01B0x 的 GetBranchSide 模式一致,saika 在 Inspector 调）
         ActiveSkillData.ActiveBranchData slowBranch = branch ?? GetBranchSide(LoadTreeB(), 3, "Right");
         // 已在圈内不重复生成（圈是实体各自生命周期;传送后玩家站在圈里再释放技能不再叠圈）
         if (!SlowZone.IsPointInAnyZone(playerGo.transform.position))
@@ -293,23 +293,25 @@ public class ComboLv3Executor : ISkillExecutor
             SlowZone.Spawn(playerGo.transform.position, // 自身减速圈
                 slowBranch != null && slowBranch.slowZoneRadius > 0f ? slowBranch.slowZoneRadius : 2f,
                 slowBranch != null && slowBranch.slowZoneDuration > 0f ? slowBranch.slowZoneDuration : 5f,
-                slowBranch != null && slowBranch.slowFactor > 0f ? slowBranch.slowFactor : 0.5f);
+                slowBranch != null && slowBranch.slowFactor > 0f ? slowBranch.slowFactor : 0.5f,
+                comboData != null ? comboData.vfxPrefab : null);   // 圈视觉 = 合成技能资产专属特效槽(不与树B分支共用;生命周期锚定 slowZoneDuration)
         }
         EnterAiming(playerGo, slotIndex);                                                          // 进入瞄准(不发射)
     }
 
     /// <summary>技能键二次激活传送 — 传送到刚创建的圈(弹落点圈,弹位置即圈位置)→ 路径伤害回血 → 有剩余充能自动进瞄准(无充能结束)</summary>
-    private void DoTeleportA02B02(GameObject playerGo, int slotIndex, ActiveSkillData.ActiveBranchData branch)
+    private void DoTeleportA02B02(GameObject playerGo, int slotIndex, ActiveSkillData.ActiveBranchData branch, CombinationSkillData comboData)
     {
         if (_activeBolt == null || !_activeBolt.IsActive) return;
         Vector2 dest = _activeBolt.Position;
 
-        // 落点生成减速圈(刚创建的圈 = 传送目标位置)
+        // 落点生成减速圈(刚创建的圈 = 传送目标位置);数值读分支资产,视觉 = 合成技能资产专属特效槽
         ActiveSkillData.ActiveBranchData slowBranch = branch ?? GetBranchSide(LoadTreeB(), 3, "Right");
         SlowZone.Spawn(dest,
             slowBranch != null && slowBranch.slowZoneRadius > 0f ? slowBranch.slowZoneRadius : 2f,
             slowBranch != null && slowBranch.slowZoneDuration > 0f ? slowBranch.slowZoneDuration : 5f,
-            slowBranch != null && slowBranch.slowFactor > 0f ? slowBranch.slowFactor : 0.5f);
+            slowBranch != null && slowBranch.slowFactor > 0f ? slowBranch.slowFactor : 0.5f,
+            comboData != null ? comboData.vfxPrefab : null);   // 圈视觉 = 合成技能资产专属特效槽(生命周期锚定 slowZoneDuration)
 
         // 瞬移（组件缺失时运行时挂载,默认参数可用）
         PlayerTeleport teleport = playerGo.GetComponent<PlayerTeleport>();
