@@ -63,10 +63,7 @@ public class PlayerJump : MonoBehaviour
             if (!atk.InputOpen) { atk.QueueJump(); return; }   // 门前:记意图,事件帧后自动跳
             if (jumpBreaksAttack)
             {
-                // 墙顶优先翻顶:TryVault(框+射线)成功 → 翻顶同样打断攻击(传送完成,状态由攻击自然收尾);
-                // 不进入跳跃状态(去重标记已置位,状态切换交给调用方)
-                if (owner.TryVault())
-                    return;
+                // [2026-09-07 翻顶废弃:统一 PlayerStepClimb,不再 TryVault]
                 // 跳跃打断攻击(力由 TryJump 施加;攻击状态由 ChangeState 自动退出并清理)
                 if (TryJump(owner))
                     owner.PlayerFsm.ChangeState(owner.JumpState);
@@ -78,8 +75,7 @@ public class PlayerJump : MonoBehaviour
             if (!air.InputOpen) { air.QueueJump(); return; }   // 门前:记意图,事件帧后自动跳
             if (jumpBreaksAttack)
             {
-                if (owner.TryVault())
-                    return;
+                // [2026-09-07 翻顶废弃:统一 PlayerStepClimb,不再 TryVault]
                 if (TryJump(owner))
                     owner.PlayerFsm.ChangeState(owner.JumpState);
                 return;
@@ -98,13 +94,7 @@ public class PlayerJump : MonoBehaviour
         jumpBufferTimer -= Time.deltaTime;
         if (jumpBufferTimer <= 0f) return false;
 
-        // 墙顶优先翻顶
-        if (owner.TryVault())
-        {
-            jumpBufferTimer = 0f;
-            return false;
-        }
-
+        // [2026-09-07 翻顶废弃:统一 PlayerStepClimb,不再 TryVault] 跳跃缓冲命中 → 正常起跳
         if (TryJump(owner))
         {
             jumpBufferTimer = 0f;
@@ -117,9 +107,7 @@ public class PlayerJump : MonoBehaviour
     /// 由 FSM 状态类(Idle/Move/Jump/Fall)在输入或缓冲命中时调用。</summary>
     public bool TryJump(PlayerController owner)
     {
-        // 空中/贴墙接近墙顶:优先翻顶(框+射线统一判定;翻顶后 return true,调用方不再进跳跃)
-        if (owner.TryVault())
-            return true;
+        // [2026-09-07 翻顶废弃:统一 PlayerStepClimb,不再 TryVault] 直接消耗跳跃次数跳跃
         if (jumpsLeft > 0)
         {
             jumpsLeft--;

@@ -52,11 +52,9 @@ public class PlayerFallState : EntityState
         if (owner.Rb != null && owner.Rb.velocity.y < -0.1f)
             anim?.SetBool(AnimParams.IsFalling, true);
 
-        // 二段跳:空中按空格(墙顶优先翻顶)
+        // 二段跳:空中按空格([2026-09-07 翻顶废弃不再 TryVault],直接正常起跳)
         if (Input.GetKeyDown(KeyCode.Space))
         {
-            if (pc.TryVault())
-                return;
             if (jump.TryJump(pc))
             {
                 stateMachine.ChangeState(pc.JumpState);

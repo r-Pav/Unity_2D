@@ -30,7 +30,14 @@ public class PlayerStepClimb : MonoBehaviour
     [Tooltip("水平射线长度")]
     [SerializeField] private float rayLength = 0.6f;
 
-    [Tooltip("可攀爬层（Ground 等实体台阶层）")]
+    [Header("翻越空间射线")]
+    [Tooltip("空间射线原点(相对玩家本地坐标;x 自动乘 facing 朝前);高度≈眼睛,探前方一个身位有没有墙(有墙=上台后无空间,不翻)")]
+    [SerializeField] private Vector2 spaceRayOrigin = new Vector2(0.3f, 1.4f);
+
+    [Tooltip("空间射线长度(米):前方一个身位")]
+    [SerializeField] private float spaceRayLength = 1.0f;
+
+    [Tooltip("可攀爬层(Ground 等实体台阶层)")]
     [SerializeField] private LayerMask climbLayers = 1 << 3;   // 默认 Ground 层(3)，Inspector 可改
 
     // ============================================================
@@ -111,8 +118,7 @@ public class PlayerStepClimb : MonoBehaviour
         if (Time.time - _lastTriggerTime < detectCooldown) return;
         if (Time.time < _jitterLockUntil) return;
 
-        // 门控：grounded + 水平输入朝前 + 未被锁定
-        if (!_pc.IsGrounded()) return;
+        // 门控：水平输入朝前 + 未被锁定(2026-09-07 起空中也判:去 grounded 门控,触发直接覆盖 y 为小跳速度)
         float h = Input.GetAxisRaw("Horizontal");
         if (Mathf.Abs(h) <= 0.1f) return;
         int facing = _pc.GetFacing();
@@ -179,7 +185,8 @@ public class PlayerStepClimb : MonoBehaviour
     }
 
     /// <summary>
-    /// 矮台阶判定：低射线命中 climbLayers（前方有台阶立面）且高射线未命中（台阶不高，可翻）。
+    /// 矮台阶判定：低射线命中 climbLayers（前方有台阶立面）且高射线未命中（台阶不高，可翻）
+    /// 且空间射线未命中（前方一个身位无墙 = 翻上有空间；避免翻上后立刻撞墙卡住）。
     /// 检测 mask 排除玩家自身层（防射线起点在自身碰撞体内误命中）。
     /// </summary>
     private bool IsShortStepAhead(int dir)
@@ -188,22 +195,28 @@ public class PlayerStepClimb : MonoBehaviour
             + new Vector2(lowerRayOrigin.x * dir, lowerRayOrigin.y);
         Vector2 highOrigin = (Vector2)transform.position
             + new Vector2(upperRayOrigin.x * dir, upperRayOrigin.y);
+        Vector2 spaceOrigin = (Vector2)transform.position
+            + new Vector2(spaceRayOrigin.x * dir, spaceRayOrigin.y);
         Vector2 rayDir = Vector2.right * dir;
 
         bool lowHit = RayHitLayer(lowOrigin, rayDir);
         bool highHit = RayHitLayer(highOrigin, rayDir);
-        return lowHit && !highHit;
+        bool spaceHit = RayHitLayerAt(spaceOrigin, rayDir, spaceRayLength);
+        return lowHit && !highHit && !spaceHit;
     }
 
+    /// <summary>水平射线只命中实体(忽略 trigger,防管道等 trigger 误判为台阶);长度用默认 rayLength</summary>
+    private bool RayHitLayer(Vector2 origin, Vector2 dir) => RayHitLayerAt(origin, dir, rayLength);
+
     /// <summary>水平射线只命中实体(忽略 trigger,防管道等 trigger 误判为台阶)</summary>
-    private bool RayHitLayer(Vector2 origin, Vector2 dir)
+    private bool RayHitLayerAt(Vector2 origin, Vector2 dir, float length)
     {
         // 排除自身层：层配置为 Everything(~0) 时也不会把玩家自己当台阶
         LayerMask mask = climbLayers & ~(1 << gameObject.layer);
         if (mask.value == 0) return false;
 
         var filter = new ContactFilter2D { useTriggers = false, layerMask = mask };
-        if (Physics2D.Raycast(origin, dir, filter, _raycastHits, rayLength) <= 0) return false;
+        if (Physics2D.Raycast(origin, dir, filter, _raycastHits, length) <= 0) return false;
         var hit = _raycastHits[0];
         if (hit.collider == null) return false;
 
@@ -240,6 +253,10 @@ public class PlayerStepClimb : MonoBehaviour
         Gizmos.DrawRay(lowOrigin, Vector2.right * dir * rayLength);
         Gizmos.color = Color.yellow;
         Gizmos.DrawRay(highOrigin, Vector2.right * dir * rayLength);
+        Gizmos.color = Color.cyan;
+        Vector2 spaceOrigin = (Vector2)transform.position
+            + new Vector2(spaceRayOrigin.x * dir, spaceRayOrigin.y);
+        Gizmos.DrawRay(spaceOrigin, Vector2.right * dir * spaceRayLength);
     }
 #endif
 }

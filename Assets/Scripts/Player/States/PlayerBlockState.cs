@@ -46,15 +46,9 @@ public class PlayerBlockState : EntityState
         }
 
         // [2026-08-21] 空格 → 打断格挡跳跃(优先级:跳 > 格挡;OnExit 自动清理减伤/恢复颜色)。
-        // 翻顶成功同样退出格挡(格挡无动画收尾,需主动切;Move/Idle 的 !grounded 分支会转 Fall)
+        // [2026-09-07 翻顶废弃不再 TryVault]
         if (Input.GetKeyDown(KeyCode.Space))
         {
-            if (pc.TryVault())
-            {
-                float h = Input.GetAxisRaw("Horizontal");
-                stateMachine.ChangeState(Mathf.Abs(h) > 0.1f ? pc.MoveState : pc.IdleState);
-                return;
-            }
             if (jump != null && jump.TryJump(pc))
             {
                 stateMachine.ChangeState(pc.JumpState);

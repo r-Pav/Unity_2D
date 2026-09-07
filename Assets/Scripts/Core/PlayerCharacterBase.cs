@@ -165,14 +165,14 @@ public abstract class PlayerCharacterBase : CharacterBase
     public void ResetVaultFlag() => _vaultTriggered = false;
 
     /// <summary>
-    /// 统一翻顶入口:去重检查 → 框+射线判定 → 传送。
-    /// 只做"判定+传送+置位",状态切换由调用方判断(贴墙调用方切 FallState,跳跃调用方不切)。
-    /// 触发条件(全满足):
-    ///   1. 框(OverlapBox,尺寸 vaultBoxSize)内无 WallLayer 碰撞 → 落点区域空;
-    ///   2. 从框底向下射线命中墙,且墙顶距框底 ≤ vaultMaxTopDistance(防瞬移回去)。
+    /// 翻顶入口(2026-09-07 废弃重写) — 统一改走 PlayerStepClimb(空中也触发 + 空间射线小跳),本方法不再执行。
+    /// 恒返回 false:调用点(PlayerJump/PlayerFallState/PlayerBlockState)自然走正常跳跃/缓冲路径,不再翻顶。
+    /// 旧实现(框+射线+传送)整体注释保留,待重写定稿后清理。
     /// </summary>
     public bool TryVault()
     {
+        return false;
+        /*
         // 去重:已触发翻顶且未落地复位 → 不再重复判定
         if (_vaultTriggered) return false;
         if (col == null || rb == null) return false;
@@ -206,9 +206,9 @@ public abstract class PlayerCharacterBase : CharacterBase
         OnVaultExecuted();
 
         _vaultTriggered = true;
-        // TEMP 诊断日志(2026-08-14,saika 验证后删除):确认翻顶触发时机与落点
         Debug.Log($"[Vault] triggered dir={dir} boxCenter={boxCenter} hitDist={wallTopDist:F2}");
         return true;
+        */
     }
 
     /// <summary>
