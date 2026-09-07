@@ -767,7 +767,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0.5}
   m_AnchorMax: {x: 1, y: 0.5}
-  m_AnchoredPosition: {x: -0.00030517578, y: 428}
+  m_AnchoredPosition: {x: -0.00030517578, y: 373}
   m_SizeDelta: {x: 0, y: 69.9204}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &130211338
@@ -790,7 +790,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: (O_O)
+  m_text: -O_O-
   m_enableAdvanceTextProcess: 0
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -4441,6 +4441,7 @@ GameObject:
   - component: {fileID: 783662264}
   - component: {fileID: 783662263}
   - component: {fileID: 783662262}
+  - component: {fileID: 783662265}
   m_Layer: 5
   m_HasEditorInfo: 1
   m_Name: Btn_Load
@@ -4448,7 +4449,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &783662261
 RectTransform:
   m_ObjectHideFlags: 0
@@ -4466,7 +4467,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 959.8, y: -717}
+  m_AnchoredPosition: {x: 959.8, y: -813}
   m_SizeDelta: {x: 270, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &783662262
@@ -4526,7 +4527,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 0.41349235, g: 0.801, b: 0.77374166, a: 1}
+  m_Color: {r: 0.5690637, g: 0.8679245, b: 0.78698736, a: 0.69803923}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -4551,6 +4552,27 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 783662260}
   m_CullTransparentMesh: 1
+--- !u!114 &783662265
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 783662260}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 39c94a44a4d0201488a6c9718de6b01d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  pressEffect: 1
+  pressScale: 0.9
+  pressDuration: 0.5
+  pressEase: 6
+  hoverEffect: 1
+  hoverScale: 1.1
+  hoverDuration: 0.5
+  hoverEase: 9
+  useUnscaled: 1
 --- !u!1 &804059867
 GameObject:
   m_ObjectHideFlags: 0
@@ -4897,6 +4919,7 @@ GameObject:
   - component: {fileID: 846173029}
   - component: {fileID: 846173028}
   - component: {fileID: 846173027}
+  - component: {fileID: 846173030}
   m_Layer: 5
   m_HasEditorInfo: 1
   m_Name: Btn_Set
@@ -4982,7 +5005,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 0.41349235, g: 0.801, b: 0.77374166, a: 1}
+  m_Color: {r: 0.5690637, g: 0.8679245, b: 0.78698736, a: 0.69803923}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -5007,6 +5030,27 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 846173025}
   m_CullTransparentMesh: 1
+--- !u!114 &846173030
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 846173025}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 39c94a44a4d0201488a6c9718de6b01d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  pressEffect: 1
+  pressScale: 0.9
+  pressDuration: 0.5
+  pressEase: 6
+  hoverEffect: 1
+  hoverScale: 1.1
+  hoverDuration: 0.5
+  hoverEase: 9
+  useUnscaled: 1
 --- !u!1 &854582547
 GameObject:
   m_ObjectHideFlags: 0
@@ -6548,6 +6592,7 @@ GameObject:
   - component: {fileID: 1173123834}
   - component: {fileID: 1173123833}
   - component: {fileID: 1173123832}
+  - component: {fileID: 1173123835}
   m_Layer: 5
   m_HasEditorInfo: 1
   m_Name: Btn_Start
@@ -6633,7 +6678,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 0.41349235, g: 0.801, b: 0.77374166, a: 1}
+  m_Color: {r: 0.5690637, g: 0.8679245, b: 0.78698736, a: 0.69803923}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -6658,6 +6703,27 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1173123830}
   m_CullTransparentMesh: 1
+--- !u!114 &1173123835
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1173123830}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 39c94a44a4d0201488a6c9718de6b01d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  pressEffect: 1
+  pressScale: 0.9
+  pressDuration: 0.5
+  pressEase: 6
+  hoverEffect: 1
+  hoverScale: 1.1
+  hoverDuration: 0.5
+  hoverEase: 9
+  useUnscaled: 1
 --- !u!1 &1230423424
 GameObject:
   m_ObjectHideFlags: 0
@@ -7124,6 +7190,7 @@ GameObject:
   - component: {fileID: 1383346500}
   - component: {fileID: 1383346499}
   - component: {fileID: 1383346498}
+  - component: {fileID: 1383346501}
   m_Layer: 5
   m_HasEditorInfo: 1
   m_Name: Btn_Quit
@@ -7209,7 +7276,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 0.41349235, g: 0.801, b: 0.77374166, a: 1}
+  m_Color: {r: 0.5690637, g: 0.8679245, b: 0.78698736, a: 0.69803923}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -7234,6 +7301,27 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1383346496}
   m_CullTransparentMesh: 1
+--- !u!114 &1383346501
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1383346496}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 39c94a44a4d0201488a6c9718de6b01d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  pressEffect: 1
+  pressScale: 0.9
+  pressDuration: 0.5
+  pressEase: 6
+  hoverEffect: 1
+  hoverScale: 1.1
+  hoverDuration: 0.5
+  hoverEase: 9
+  useUnscaled: 1
 --- !u!1 &1415416595
 GameObject:
   m_ObjectHideFlags: 0
@@ -10195,7 +10283,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 0.7830189, g: 0.7830189, b: 0.7830189, a: 0.6431373}
+  m_Color: {r: 0.7830189, g: 0.7830189, b: 0.7830189, a: 1}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
