@@ -72,9 +72,10 @@ public abstract class PlayerComboState : EntityState
         combat?.ConsumeAttackCooldown();
         combat?.OnAttack?.Invoke();
 
-        // 攻击持续 VFX:进入连击播第 1 段槽(空中 slot_Air;未配置锚点则跳过)
+        // 攻击持续 VFX:进入连击播当前段槽(统一入口,槽名收敛在 AttackVFXAnchor:地面 slot_1/2/3,空中 slot_Air1/2/3;未配置锚点则跳过)
         if (_vfx == null) _vfx = owner.GetComponentInChildren<AttackVFXAnchor>(true);
-        _vfx?.Show(IsAirAttack ? "slot_Air" : "slot_1");
+        if (IsAirAttack) _vfx?.PlayAir(comboIndex);
+        else _vfx?.PlayGround(comboIndex);
     }
 
     public override void OnUpdate()
@@ -134,8 +135,8 @@ public abstract class PlayerComboState : EntityState
         timeLastExit = Time.time;
         OnComboExit();
 
-        // 攻击结束:收起持续特效(淡出)
-        _vfx?.Hide();
+        // 攻击结束:收起持续特效(统一入口 Stop,内部 = 停发射 + 淡出回池)
+        _vfx?.Stop();
     }
 
     // ── AnimationEvent 回调(经 PlayerCombat 薄转发) ──
@@ -201,11 +202,12 @@ public abstract class PlayerComboState : EntityState
     protected virtual void OnComboUpdate() { }
     protected virtual void OnComboExit() { }
 
-    /// <summary>连段切换(COMBO-CUT 直切/排队直切共走此路径):换对应槽特效(地面 slot_1/2/3,空中 slot_Air)</summary>
+    /// <summary>连段切换(COMBO-CUT 直切/排队直切共走此路径):换当前段槽(统一入口:地面 slot_1/2/3,空中 slot_Air1/2/3)</summary>
     protected virtual void OnComboCut()
     {
         if (_vfx == null) _vfx = owner.GetComponentInChildren<AttackVFXAnchor>(true);
-        _vfx?.Show(IsAirAttack ? "slot_Air" : "slot_" + comboIndex);
+        if (IsAirAttack) _vfx?.PlayAir(comboIndex);
+        else _vfx?.PlayGround(comboIndex);
     }
 
     /// <summary>连段段数推进(OnExit):地面推进续段(0.6s 内再攻击延续段数);空中不推进(一滞空一套)</summary>

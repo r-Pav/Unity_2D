@@ -45,13 +45,14 @@ public class PlayerCombat : MonoBehaviour
     [Tooltip("剑的 BoxCollider2D（挂在武器模板上,本体保持 disabled,clone 投掷时自动启用）。命中帧用 clone 的 bounds 做检测,不开物理碰撞")]
     [SerializeField] private BoxCollider2D swordCollider;
 
-    [Header("近战 VFX")]
-    [Tooltip("近战挥砍命中特效 Prefab — 在 OverlapBox 检测到敌人时生成")]
-    [SerializeField] private GameObject slashVFXPrefab;
+    // [2026-09-07 AttackVFXAnchor 收敛暂停:命中特效槽统一走 AttackVFXAnchor 三组槽(地面/空中/被刺),不再各自挂 prefab]
+    //[Header("近战 VFX")]
+    //[Tooltip("近战挥砍命中特效 Prefab — 在 OverlapBox 检测到敌人时生成")]
+    //[SerializeField] private GameObject slashVFXPrefab;
 
-    [Header("背刺")]
-    [Tooltip("重音命中特效:背刺命中帧在敌人位置(击飞点)生成的一次性粒子;允许空")]
-    [SerializeField] private GameObject backstabHitVFX;
+    //[Header("背刺")]
+    //[Tooltip("重音命中特效:背刺命中帧在敌人位置(击飞点)生成的一次性粒子;允许空")]
+    //[SerializeField] private GameObject backstabHitVFX;
 
     [Header("近战")]
     [Tooltip("近战伤害")]
@@ -397,7 +398,8 @@ public class PlayerCombat : MonoBehaviour
                 if (localFreeze > 0f)
                     enemy.ApplyLocalFreeze(localFreeze);
 
-                VFXSpawner.SpawnOnPlayer(slashVFXPrefab, col.transform.position);
+                // [2026-09-07 AttackVFXAnchor 收敛暂停] 命中挥砍特效由锚点槽统一承担
+                //VFXSpawner.SpawnOnPlayer(slashVFXPrefab, col.transform.position);
             }
             else
             {
@@ -586,9 +588,9 @@ public class PlayerCombat : MonoBehaviour
         info.suppressAirHang = true;   // 背刺=终结技:跳过敌人空中滞空吸附(_pullToPlayer),enemy 正常击退飞出自然落地
         CombatResolver.Resolve(info.source, target, info);
 
-        // 重音背刺命中特效:在敌人位置(击飞点)生成一次性粒子(VFXSpawner 对 null prefab 静默返回,允许空槽)
-        if (backstabHitVFX != null)
-            VFXSpawner.SpawnInWorld(backstabHitVFX, target.transform.position);
+        // [2026-09-07 AttackVFXAnchor 收敛暂停] 背刺命中特效由被刺槽(PlayBackstab)统一承担
+        //if (backstabHitVFX != null)
+        //    VFXSpawner.SpawnInWorld(backstabHitVFX, target.transform.position);
 
         // 命中本地冻结(独立卡帧):与普通近战路径一致,只冻被命中的这只敌人
         float localFreeze = target.IsBoss ? bossLocalHitStopDuration : enemyLocalHitStopDuration;

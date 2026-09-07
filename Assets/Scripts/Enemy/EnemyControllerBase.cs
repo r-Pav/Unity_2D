@@ -399,12 +399,18 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     }
 
     /// <summary>
-    /// 强制瞬移本体位置并清零速度(空中闪击"占位推敌"用):玩家占 enemy 原位时把 enemy 沿推开方向硬挪,
+    /// 强制瞬移本体位置并清零速度(空中闪击"占位推敌"/背刺换位用):玩家占 enemy 原位时把 enemy 沿推开方向硬挪,
     /// 清速度防旧击退把它拉回墙边。只动物理体位 + 速度,不动状态机/动画/滞空冻结(后续命中结算接管)。
+    /// 落点安全钳制:目标点若与墙/地形(Ground=3 + Wall=11,同 PlayerTeleport)重叠 —— 调用方算的落点
+    /// (玩家面前攻击框中心)在玩家贴墙时可能探进墙内,裸瞬移会把 enemy 放进墙里,随后命中击退沿墙内方向
+    /// 施加,已重叠的刚体 CCD 失效 → enemy 被挤穿到墙另一侧(2026-09-07 saika 复现"背刺穿墙")。
+    /// 钳制:沿水平左右再上方步进找最近空点,修正后 enemy 落在墙外侧,击退方向自然远离墙。
+    /// 返回实际落点(钳制后):调用方必须用返回值算朝向/后续位置,不能再用传入的 pos。
     /// 注意:空中滞空冻结(_airHangFreeze)结束时不会恢复保存速度,清零在此模式下持久有效。
     /// </summary>
-    public void ForceSetPosition(Vector2 pos)
+    public Vector2 ForceSetPosition(Vector2 pos)
     {
+        pos = ClampToWallSafe(pos);
         if (rb != null)
         {
             rb.position = pos;
@@ -414,6 +420,49 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         {
             transform.position = pos;
         }
+        return pos;
+    }
+
+    /// <summary>ForceSetPosition 落点钳制用的墙/地形层(Ground=3 + Wall=11,与 PlayerTeleport.wallMask 一致)</summary>
+    private const int ForcePushWallMask = (1 << 3) | (1 << 11);
+
+    /// <summary>
+    /// 落点贴墙钳制:pos 与墙/地形层体重叠 → 优先沿"来路"(enemy 原位方向)水平退回,再兜底右/左/上;
+    /// 步进递增找最近空点;全堵(罕见厚地形)返回原值。
+    /// 来路优先的原因:落点(攻击框中心)探进薄墙时,若盲目向右/左找最近空点,可能把 enemy 推到墙另一侧
+    /// (= 穿墙)。enemy 原位那侧是它站得住的开阔侧,向来路退只会回到墙外侧。
+    /// 探针半径按自身碰撞体半宽取,防修正后 collider 仍与墙擦边。
+    /// </summary>
+    private Vector2 ClampToWallSafe(Vector2 pos)
+    {
+        float probeR = col != null ? Mathf.Max(0.1f, col.bounds.extents.x * 0.9f) : 0.3f;
+        if (Physics2D.OverlapCircle(pos, probeR, ForcePushWallMask) == null)
+            return pos;
+        float step = Mathf.Max(0.25f, probeR * 0.6f);
+        const float maxDist = 2f;
+        // 优先沿来路退回(enemy 原在墙外侧,落点探进墙 → 向来路水平方向退,防误穿到墙另一侧)
+        Vector2 fromEnemy = (Vector2)transform.position - pos;
+        if (Mathf.Abs(fromEnemy.x) > 0.01f)
+        {
+            Vector2 back = new Vector2(Mathf.Sign(fromEnemy.x), 0f);
+            for (float d = step; d <= maxDist; d += step)
+            {
+                Vector2 candidate = pos + back * d;
+                if (Physics2D.OverlapCircle(candidate, probeR, ForcePushWallMask) == null)
+                    return candidate;
+            }
+        }
+        Vector2[] dirs = { Vector2.right, Vector2.left, Vector2.up };
+        for (float d = step; d <= maxDist; d += step)
+        {
+            foreach (Vector2 dir in dirs)
+            {
+                Vector2 candidate = pos + dir * d;
+                if (Physics2D.OverlapCircle(candidate, probeR, ForcePushWallMask) == null)
+                    return candidate;
+            }
+        }
+        return pos;
     }
 
     // ============================================================

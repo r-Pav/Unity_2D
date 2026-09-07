@@ -101,7 +101,7 @@ public class PlayerAirAttackState : PlayerComboState
 
     protected override void OnComboCut()
     {
-        base.OnComboCut();   // 特效换槽(空中 slot_Air;基类统一处理,否则空中切段不换槽)
+        base.OnComboCut();   // 特效换槽(空中 slot_Air1/2/3;基类统一处理,否则空中切段不换槽)
         ApplyLift();         // 切段出手:再给一次上挑力(累加,越打越高)
 
         // 空中闪击:第 2/3 段切段瞬间闪现到下一目标侧面(玩家在 enemy 哪侧就闪另一侧 → 左右交替;
@@ -221,7 +221,7 @@ public class PlayerAirAttackState : PlayerComboState
             if (AirBlinkDebug)
                 Debug.Log($"[AirBlink] 对侧堵→占位推敌 pushDir={pushDir} enemy→{enemyDest} 玩家→{playerDest}");
             // 顺序:先挪 enemy 再移玩家(玩家落 target 原位时 enemy 已先挪走,同帧不重叠太久)
-            target.ForceSetPosition(enemyDest);    // 硬挪 + 清速度(防旧击退把它拉回墙边);不动状态机/动画
+            enemyDest = target.ForceSetPosition(enemyDest);    // 硬挪 + 清速度(防旧击退把它拉回墙边);返回钳制后实际落点;不动状态机/动画
             dest = playerDest;
             targetPosAfter = enemyDest;
         }

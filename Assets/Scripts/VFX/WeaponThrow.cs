@@ -45,8 +45,9 @@ public class WeaponAttackConfig
     [Tooltip("该击玩家自身攻击位移向量(x=水平前冲,按朝向自动镜像;y=垂直)。命中帧动画事件时施加,与击退同构。(0,0) = 该击无位移")]
     public Vector2 attackShift = Vector2.zero;
 
-    [Tooltip("该击投掷时额外跟随剑飞行的粒子特效 prefab(叠加在武器子级默认特效之上)。留空 = 该击只有默认特效")]
-    public GameObject attackVFX;
+    // [2026-09-07 AttackVFXAnchor 收敛暂停:投掷攻击特效槽统一走 AttackVFXAnchor 三组槽,不再每击配 prefab]
+    //[Tooltip("该击投掷时额外跟随剑飞行的粒子特效 prefab(叠加在武器子级默认特效之上)。留空 = 该击只有默认特效")]
+    //public GameObject attackVFX;
 
     [Tooltip("剑飞完未插墙、且下方是地面时,落地点生成的粒子特效 prefab(留空 = 无落地效果)。未命中表现用")]
     public GameObject landingVFX;
@@ -476,45 +477,46 @@ public class WeaponThrow : MonoBehaviour
         // 否则 clone 继承 0.04 → 剑和拖尾都小到看不见(之前 new GameObject 方案 scale 默认 1 才正常)
         proj.transform.localScale = Vector3.one;
 
-        // 该击独立特效:直接实例化到 PlayerVFX 容器(不挂 clone 子级),用跟随组件每帧同步位置。
-        // 播放生命周期独立——剑销毁后跟随停止,粒子按自身 Lifetime 播完,由 VFXAutoDestruct 自动销毁。
-        // 与武器子级默认特效(模板继承,PlayOnAwake 自动播)叠加。
-        if (config.attackVFX != null)
-        {
-            GameObject vfx = VFXSpawner.SpawnOnPlayer(config.attackVFX, proj.transform.position);
-            if (vfx != null)
-            {
-                vfx.name = "AttackVFX";
-
-                // prefab 根物体若是 inactive 状态,Instantiate 出来也是 inactive,Play 不生效 → 强制激活
-                vfx.SetActive(true);
-
-                // Instantiate 复制禁用状态 → 所有粒子系统强制播放(团结引擎 ParticleSystem 无 enabled 属性,Play 即可)
-                var particleSystems = vfx.GetComponentsInChildren<ParticleSystem>(true);
-                foreach (var ps in particleSystems)
-                {
-                    ps.Play();
-                }
-
-                // 跟随剑运动:每帧把特效位置同步到剑当前位置(武器位移驱动特效位置);
-                // 剑销毁后 _target == null,同步自动停止,特效原地残留至粒子播完
-                var follower = vfx.GetComponent<VFXFollowTarget>();
-                if (follower == null) follower = vfx.AddComponent<VFXFollowTarget>();
-                follower.Init(proj.transform, Vector3.zero, followRotation: true);
-
-                // 显示时长控制:vfxDisplayDuration > 0 时用 VFXTimedFade 定时淡出,
-                // 并移除 VFXSpawner 自动挂的 VFXAutoDestruct(否则它会按粒子时长/1.1s 提前销毁,冲突)
-                if (config.vfxDisplayDuration > 0f)
-                {
-                    var autoDestruct = vfx.GetComponent<VFXAutoDestruct>();
-                    if (autoDestruct != null) Destroy(autoDestruct);
-
-                    var timedFade = vfx.GetComponent<VFXTimedFade>();
-                    if (timedFade == null) timedFade = vfx.AddComponent<VFXTimedFade>();
-                    timedFade.Init(config.vfxDisplayDuration);
-                }
-            }
-        }
+        // [2026-09-07 AttackVFXAnchor 收敛暂停] 该击独立攻击特效由锚点槽统一承担(不再随剑飞行实例化 attackVFX)
+        //// 该击独立特效:直接实例化到 PlayerVFX 容器(不挂 clone 子级),用跟随组件每帧同步位置。
+        //// 播放生命周期独立——剑销毁后跟随停止,粒子按自身 Lifetime 播完,由 VFXAutoDestruct 自动销毁。
+        //// 与武器子级默认特效(模板继承,PlayOnAwake 自动播)叠加。
+        //if (config.attackVFX != null)
+        //{
+        //    GameObject vfx = VFXSpawner.SpawnOnPlayer(config.attackVFX, proj.transform.position);
+        //    if (vfx != null)
+        //    {
+        //        vfx.name = "AttackVFX";
+        //
+        //        // prefab 根物体若是 inactive 状态,Instantiate 出来也是 inactive,Play 不生效 → 强制激活
+        //        vfx.SetActive(true);
+        //
+        //        // Instantiate 复制禁用状态 → 所有粒子系统强制播放(团结引擎 ParticleSystem 无 enabled 属性,Play 即可)
+        //        var particleSystems = vfx.GetComponentsInChildren<ParticleSystem>(true);
+        //        foreach (var ps in particleSystems)
+        //        {
+        //            ps.Play();
+        //        }
+        //
+        //        // 跟随剑运动:每帧把特效位置同步到剑当前位置(武器位移驱动特效位置);
+        //        // 剑销毁后 _target == null,同步自动停止,特效原地残留至粒子播完
+        //        var follower = vfx.GetComponent<VFXFollowTarget>();
+        //        if (follower == null) follower = vfx.AddComponent<VFXFollowTarget>();
+        //        follower.Init(proj.transform, Vector3.zero, followRotation: true);
+        //
+        //        // 显示时长控制:vfxDisplayDuration > 0 时用 VFXTimedFade 定时淡出,
+        //        // 并移除 VFXSpawner 自动挂的 VFXAutoDestruct(否则它会按粒子时长/1.1s 提前销毁,冲突)
+        //        if (config.vfxDisplayDuration > 0f)
+        //        {
+        //            var autoDestruct = vfx.GetComponent<VFXAutoDestruct>();
+        //            if (autoDestruct != null) Destroy(autoDestruct);
+        //
+        //            var timedFade = vfx.GetComponent<VFXTimedFade>();
+        //            if (timedFade == null) timedFade = vfx.AddComponent<VFXTimedFade>();
+        //            timedFade.Init(config.vfxDisplayDuration);
+        //        }
+        //    }
+        //}
 
         // 依据世界翻转方向决定旋转(父级 flip 后仍是朝右)
         float face = Mathf.Sign(transform.lossyScale.x);

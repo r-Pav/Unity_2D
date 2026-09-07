@@ -39,6 +39,9 @@ public class PlayerBackstabState : EntityState
     // ── 背刺残影(待办1,DashGhostTrail 复用)──
     private DashGhostTrail _ghostTrail;   // 懒缓存:OnEnter GetComponentInChildren 找(未挂组件=null → 判空跳过,不影响背刺本体)
 
+    // ── 背刺持续特效锚点(AttackVFXAnchor 统一入口;未挂 = null → 跳过,不影响背刺)──
+    private AttackVFXAnchor _vfx;
+
     public override bool LocksInput => true;
 
     public PlayerBackstabState(CharacterBase owner, StateMachine stateMachine, Animator anim,
@@ -70,6 +73,15 @@ public class PlayerBackstabState : EntityState
         // 懒缓存残影组件(GetComponentInChildren 含 inactive;未挂组件 = null → SpawnGhost 判空跳过)
         if (_ghostTrail == null)
             _ghostTrail = owner.GetComponentInChildren<DashGhostTrail>(true);
+        // 懒缓存背刺持续特效锚点(统一入口;未挂 = null → PlayBackstab 判空跳过)
+        if (_vfx == null)
+            _vfx = owner.GetComponentInChildren<AttackVFXAnchor>(true);
+
+        bool validBackstab = _target != null;   // 落点可达才算数;不可达(隔墙)→ 原地空挥
+        Vector2 playerDest = (Vector2)pc.transform.position;   // 玩家最终落点(默认原位)
+        bool canSwap = false;
+        Vector2 enemyOld = Vector2.zero;   // canSwap:玩家落点 = enemy 原站位(enemy 站得住 = 安全点)
+        Vector2 enemyNew = Vector2.zero;   // canSwap:enemy 被挪到的攻击框中心(ForceSetPosition 钳制后为准)
 
         if (_target != null)
         {
@@ -79,26 +91,56 @@ public class PlayerBackstabState : EntityState
             int behindSide = -_target.Facing;
             // 换位挤出需要玩家面前攻击框指示器提供 enemy 新站位;未配置(RangeIndicator 空,理论不出现)
             // 时退化走原射线兜底路径,不硬凑换位
-            bool canSwap = _target.IsWallBlockedOnSide(behindSide)
+            canSwap = _target.IsWallBlockedOnSide(behindSide)
                 && combat != null && combat.RangeIndicator != null;
+
             if (canSwap)
             {
-                // ── 背后被堵(enemy 背靠墙/管道,玩家侧开阔)→ 换位挤出 ──
-                // 玩家落 enemy 背后会进墙,改为玩家 ↔ enemy 互换位置:
-                // 玩家瞬移到 enemy 原站位(enemy 站得住的位置 = 安全点,不穿墙);
-                // enemy 被挪到玩家面前攻击框中心(RangeIndicator.Center,开阔侧)——被挪后其 Facing 不变,
+                // ── 背后被堵(enemy 背靠墙/管道,玩家侧开阔)→ 换位挤出:玩家 ↔ enemy 互换 ──
+                // 玩家落 enemy 背后会进墙 → 玩家去 enemy 原站位(enemy 站得住 = 安全点);
+                // enemy 挪到玩家面前攻击框中心(RangeIndicator.Center,开阔侧)——被挪后其 Facing 不变,
                 // 玩家天然落在 enemy 背后;后续动画/命中帧/ExecuteBackstab 完全照常(精准打击),
                 // 击退方向 = 玩家→enemy,把 enemy 打出墙边。
-                Vector2 enemyOld = _target.transform.position;   // enemy 原站位(玩家落点)
+                enemyOld = _target.transform.position;
+                playerDest = enemyOld;
                 // 玩家面前攻击框中心(世界坐标;此刻玩家还没瞬移,以玩家当前站位为基准)。
                 // 极端:enemy 已几乎在攻击框中心(enemyNew≈enemyOld)→ 仍执行,重叠由
-                // "先挪 enemy 再移玩家"的瞬移顺序吸收,不做额外校验(假设:玩家面朝开阔侧,
-                // 框中心不会被墙挡;如验收发现再补校验)。
-                Vector2 enemyNew = (Vector2)combat.RangeIndicator.Center;
-                // 瞬移前留起点残影(玩家还在原位,拷贝当前帧 → 瞬移后残影停在原地淡出 = 闪现残像)
-                SpawnGhost();
-                // 先挪 enemy(物理体位 + 清速度,防旧击退速度把它带跑;无 rb 走 transform),再移玩家
-                _target.ForceSetPosition(enemyNew);
+                // "先挪 enemy 再移玩家"的瞬移顺序吸收;玩家贴墙时中心可能探进墙,
+                // ForceSetPosition 会钳制到墙外侧(2026-09-07 背刺穿墙修复)。
+                enemyNew = (Vector2)combat.RangeIndicator.Center;
+            }
+            else
+            {
+                // ── 背后净空 → 原逻辑:落点 = 敌人背后(敌人背对方向)──
+                // x = enemy.x - Facing × offset;y 对齐目标中心(空中背刺允许)
+                playerDest = new Vector2(
+                    _target.transform.position.x - _target.Facing * behindOffset,
+                    _target.transform.position.y);
+                playerDest = ResolveBackstabLanding(playerDest);   // 落点避开管道(PlayerTeleport 只钳制墙层,管道 Channel 层会直接传进去)
+            }
+
+            // 隔墙检测(方案 A,2026-09-07):玩家当前位置 → 落点 路径上命中实心墙/地形
+            // (Ground=3 + Wall=11,同 PlayerTeleport)= 玩家与 enemy 隔墙,背刺不成立(偷袭绕不过墙),
+            // 本次按无目标处理:原地闪现空挥,不瞬移不穿墙。
+            // 只在 F 触发进入本状态这一帧测一次(按键事件非轮询),与 OnEnter 现有
+            // OverlapCircle/OverlapBox/Raycast 查询同帧叠加,不新增持续开销。
+            if (IsPathBlockedByWall((Vector2)pc.transform.position, playerDest))
+            {
+                _target = null;
+                validBackstab = false;
+            }
+        }
+
+        if (validBackstab)
+        {
+            // 瞬移前留起点残影(玩家还在原位,拷贝当前帧 → 瞬移后残影停在原地淡出 = 闪现残像)
+            SpawnGhost();
+            if (canSwap)
+            {
+                // 先挪 enemy(物理体位 + 清速度,防旧击退速度把它带跑;无 rb 走 transform),再移玩家。
+                // ForceSetPosition 返回钳制后实际落点(玩家贴墙时攻击框中心可能探进墙,已被外推到墙外),
+                // 后续朝向/击退方向都以实际落点为准。
+                enemyNew = _target.ForceSetPosition(enemyNew);
                 if (teleport != null)
                     teleport.TeleportTo(enemyOld);   // 复用原语义:瞬移+贴墙钳制+清速度+无敌帧+事件
                 else
@@ -110,32 +152,28 @@ public class PlayerBackstabState : EntityState
             }
             else
             {
-                // ── 背后净空 → 原逻辑:落点 = 敌人背后(敌人背对方向)──
-                // 落点 = 敌人背后(敌人背对方向):x = enemy.x - Facing × offset;y 对齐目标中心(空中背刺允许)
-                Vector2 dest = new Vector2(
-                    _target.transform.position.x - _target.Facing * behindOffset,
-                    _target.transform.position.y);
-                dest = ResolveBackstabLanding(dest);   // 落点避开管道(PlayerTeleport 只钳制墙层,管道 Channel 层会直接传进去)
-                SpawnGhost();   // 瞬移前留起点残影(玩家还在原位)
                 if (teleport != null)
-                    teleport.TeleportTo(dest);
+                    teleport.TeleportTo(playerDest);
                 else
-                    pc.transform.position = dest;   // 未挂 PlayerTeleport 时兜底直接位移(无敌帧等由挂载后生效)
-                // 强制转向敌人:按敌人与玩家实际落点(dest)的相对位置(不能用 pc.transform.position——
+                    pc.transform.position = playerDest;   // 未挂 PlayerTeleport 时兜底直接位移(无敌帧等由挂载后生效)
+                // 强制转向敌人:按敌人与玩家实际落点(playerDest)的相对位置(不能用 pc.transform.position——
                 // TeleportTo 走 rb.position,同帧 transform.position 未同步还是瞬移前旧值,会把朝向判反;
                 // 也不能用 enemy.Facing——靠墙时落点改到 enemy 正面,enemy.Facing 朝玩家,用它玩家会背朝 enemy)
-                pc.UpdateFacing(_target.transform.position.x >= dest.x ? 1f : -1f);
+                pc.UpdateFacing(_target.transform.position.x >= playerDest.x ? 1f : -1f);
             }
         }
         else
         {
-            // 无目标:原地闪现(复用 TeleportTo 自身位置 = 无敌帧+事件,无位移);朝向跟随当前输入
+            // 无目标 / 落点被墙挡(隔墙):原地闪现(复用 TeleportTo 自身位置 = 无敌帧+事件,无位移);朝向跟随当前输入
             SpawnGhost();   // 闪现残像(原地,表示闪身动作)
             if (teleport != null)
                 teleport.TeleportTo((Vector2)pc.transform.position);
             float h = Input.GetAxisRaw("Horizontal");
             if (Mathf.Abs(h) > 0.1f) pc.UpdateFacing(h);
         }
+        // 背刺持续特效:进背刺动作播背刺槽(统一入口;有目标瞬刺/无目标原地空挥都播;退出 OnExit Stop)。
+        // 槽子物体位置 saika 编辑器摆(attack_VFX 下 slot_backstab,相对玩家);空槽/未挂锚点 = 判空跳过不崩。
+        _vfx?.PlayBackstab();
         // 动画:Entry 路由(IsBackstabbing=true 由基类 OnEnter 设置,动画器 Entry → Backstab),不代码直切
     }
 
@@ -215,6 +253,7 @@ public class PlayerBackstabState : EntityState
     {
         base.OnExit();
         _target = null;
+        _vfx?.Stop();   // 收起背刺持续特效(动画结束/超时退出/被打断兜底;幂等)
     }
 
     /// <summary>退出背刺:贴地回 Idle/Move(带朝向输入),空中回 FallState(对齐 PlayerAirAttackState 落态)。
@@ -248,6 +287,31 @@ public class PlayerBackstabState : EntityState
         return new Vector2(
             _target.transform.position.x + _target.Facing * behindOffset,
             _target.transform.position.y);
+    }
+
+    /// <summary>隔墙检测墙层(Ground=3 + Wall=11,与 PlayerTeleport.wallMask / EnemyControllerBase 钳制层一致)</summary>
+    private const int WallBlockMask = (1 << 3) | (1 << 11);
+
+    /// <summary>
+    /// 隔墙检测:玩家当前位置 → 落点 的路径上是否有实心墙/地形(Ground/Wall 层)挡住。
+    /// 命中 = 背刺落点不可达(玩家与 enemy 隔墙),不进入背刺。
+    /// RaycastAll 跳过玩家自身 collider(起点在玩家碰撞体内,普通 Raycast 会先命中自己 → 永远 true)。
+    /// </summary>
+    private bool IsPathBlockedByWall(Vector2 from, Vector2 to)
+    {
+        Vector2 delta = to - from;
+        float dist = delta.magnitude;
+        if (dist < 0.01f) return false;   // 原位/无位移不判
+        Vector2 dir = delta / dist;
+        RaycastHit2D[] hits = Physics2D.RaycastAll(from, dir, dist, WallBlockMask);
+        foreach (RaycastHit2D hit in hits)
+        {
+            if (hit.collider == null) continue;
+            if (hit.transform == owner.transform || hit.transform.IsChildOf(owner.transform)) continue;   // 跳过玩家自身
+            if (hit.collider.GetComponentInParent<PlayerController>() != null) continue;                    // 保险:玩家身上的其它 collider
+            return true;
+        }
+        return false;
     }
 
     /// <summary>背刺瞬移起点残影:玩家还在起点时生成,瞬移后残影停在原地淡出。未挂 DashGhostTrail 则跳过(不挡背刺)</summary>

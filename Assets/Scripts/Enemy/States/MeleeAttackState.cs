@@ -9,8 +9,9 @@ public class MeleeAttackState : EntityState, IEnemyAttackState
 {
     private IEnemyAttack attackModule;
 
-    /// <summary>攻击持续 VFX 锚点(attack_VFX 子物体上的 AttackVFXAnchor;未配置时为 null,空安全)</summary>
-    private AttackVFXAnchor _vfx;
+    // [2026-09-07 AttackVFXAnchor 重构暂停:敌人攻击持续特效待玩家侧验收后按新结构迁移]
+    ///// <summary>攻击持续 VFX 锚点(attack_VFX 子物体上的 AttackVFXAnchor;未配置时为 null,空安全)</summary>
+    //private AttackVFXAnchor _vfx;
 
     // 攻击超时兜底计时（Attack clip 时长 + 0.2s，OnUpdate 递减；clip 采样失败回退 1.0s）
     private float attackTimeout;
@@ -37,9 +38,9 @@ public class MeleeAttackState : EntityState, IEnemyAttackState
         attackTimeout = 1.0f;
         timeoutInitialized = false;
 
-        // 攻击持续 VFX:近战攻击播 slot_attack
-        if (_vfx == null) _vfx = owner.GetComponentInChildren<AttackVFXAnchor>(true);
-        _vfx?.Show("slot_attack");
+        // [2026-09-07 AttackVFXAnchor 重构暂停] 攻击持续 VFX:近战攻击播 slot_attack
+        //if (_vfx == null) _vfx = owner.GetComponentInChildren<AttackVFXAnchor>(true);
+        //_vfx?.Show("slot_attack");
     }
 
     public override void OnUpdate()
@@ -74,8 +75,8 @@ public class MeleeAttackState : EntityState, IEnemyAttackState
         var me = (EnemyMeleeController)owner;
         me.attackCooldownTimer = me.AttackCooldownDuration;
 
-        // 攻击结束:收起持续特效(淡出)
-        _vfx?.Hide();
+        // [2026-09-07 AttackVFXAnchor 重构暂停] 攻击结束:收起持续特效(淡出)
+        //_vfx?.Hide();
     }
 
     // ── IEnemyAttackState（Attack 动画事件驱动）──
