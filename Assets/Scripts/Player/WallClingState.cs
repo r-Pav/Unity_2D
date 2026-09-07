@@ -37,7 +37,7 @@ public class WallClingState : EntityState
     {
         player.SetVelocityPublic(x: 0f, y: 0f);
         _kickCooldown = 0f;
-        player.ResetVaultFlag();   // 防翻顶触发后卡住不复位(去重标记在 PlayerCharacterBase,进贴墙即复位)
+        // player.ResetVaultFlag();   // [2026-09-07 翻顶废弃:vault 去重残留,ResetVaultFlag 已注释]
         IsWallKicking = false;
         _grabTimer = GrabHoldTime;   // 抓墙缓冲:先停住,给反应时间
 
@@ -59,14 +59,7 @@ public class WallClingState : EntityState
 
         if (Input.GetKeyDown(KeyCode.Space) && _kickCooldown <= 0f)
         {
-            // 墙顶优先翻顶:TryVault(框+射线)成功 → 翻顶成功,传送完成;
-            // 状态切换由调用方判断(贴墙调用方切 FallState 自然落地);失败 → 蹬墙跳
-            if (player.TryVault())
-            {
-                var pc = player as PlayerController;
-                stateMachine.ChangeState(pc != null ? pc.FallState : null);
-                return;
-            }
+            // [2026-09-07 翻顶废弃不再 TryVault] 空格直接蹬墙跳
             WallKick();
             return;
         }
@@ -84,7 +77,7 @@ public class WallClingState : EntityState
         if (Input.GetKey(KeyCode.W))
         {
             player.SetVelocityPublic(y: player.WallClimbSpeed);
-            CheckVault();
+            // CheckVault();   // [2026-09-07 翻顶废弃:攀爬自动翻顶移除]
         }
         else if (Input.GetAxisRaw("Vertical") < -0.1f)
         {
@@ -159,13 +152,14 @@ public class WallClingState : EntityState
         stateMachine.ChangeState(pc.FallState);
     }
 
-    /// <summary>攀爬 W 每帧尝试翻顶:TryVault(框+射线),失败静默(继续爬)</summary>
-    private void CheckVault()
-    {
-        if (player.TryVault())
-        {
-            var pc = player as PlayerController;
-            stateMachine.ChangeState(pc != null ? pc.FallState : null);
-        }
-    }
+    // [2026-09-07 翻顶废弃:攀爬自动翻顶移除,方法整体注释]
+    ///// <summary>攀爬 W 每帧尝试翻顶:TryVault(框+射线),失败静默(继续爬)</summary>
+    //private void CheckVault()
+    //{
+    //    if (player.TryVault())
+    //    {
+    //        var pc = player as PlayerController;
+    //        stateMachine.ChangeState(pc != null ? pc.FallState : null);
+    //    }
+    //}
 }

@@ -158,12 +158,15 @@ public abstract class PlayerCharacterBase : CharacterBase
     // 旧 NearWallTop / CanVault 已废弃,方法体注释保留(防外部引用断)。
     // ============================================================
 
-    /// <summary>翻顶去重标记:触发翻顶后置 true,落地(HandleGroundCheck)或进入贴墙(WallClingState.OnEnter)时复位</summary>
-    private bool _vaultTriggered;
+    // [2026-09-07 翻顶废弃:vault 状态残留注释,待清理]
+    ///// <summary>翻顶去重标记:触发翻顶后置 true,落地(HandleGroundCheck)或进入贴墙(WallClingState.OnEnter)时复位</summary>
+    //private bool _vaultTriggered;
+    //
+    ///// <summary>复位翻顶去重标记(落地/进入贴墙时调用)</summary>
+    //public void ResetVaultFlag() => _vaultTriggered = false;
 
-    /// <summary>复位翻顶去重标记(落地/进入贴墙时调用)</summary>
-    public void ResetVaultFlag() => _vaultTriggered = false;
-
+    // [2026-09-07 翻顶废弃:TryVault 空壳与旧实现整体注释,调用点已全部移除,待清理]
+    /*
     /// <summary>
     /// 翻顶入口(2026-09-07 废弃重写) — 统一改走 PlayerStepClimb(空中也触发 + 空间射线小跳),本方法不再执行。
     /// 恒返回 false:调用点(PlayerJump/PlayerFallState/PlayerBlockState)自然走正常跳跃/缓冲路径,不再翻顶。
@@ -172,7 +175,6 @@ public abstract class PlayerCharacterBase : CharacterBase
     public bool TryVault()
     {
         return false;
-        /*
         // 去重:已触发翻顶且未落地复位 → 不再重复判定
         if (_vaultTriggered) return false;
         if (col == null || rb == null) return false;
@@ -208,26 +210,29 @@ public abstract class PlayerCharacterBase : CharacterBase
         _vaultTriggered = true;
         Debug.Log($"[Vault] triggered dir={dir} boxCenter={boxCenter} hitDist={wallTopDist:F2}");
         return true;
-        */
     }
+    */
 
-    /// <summary>
-    /// 翻顶检测框中心 = 玩家位置 + 面朝dir×VaultBoxForwardOffset + 上×(半高 + boxSize.y/2)。
-    /// TryVault 与 Gizmos 共用,保证可视化与实际判定完全一致。
-    /// </summary>
-    private Vector2 GetVaultBoxCenter(int dir, Vector2 boxSize, float halfH)
-    {
-        return (Vector2)transform.position
-             + Vector2.right * dir * VaultBoxForwardOffset
-             + Vector2.up * (halfH + boxSize.y * 0.5f);
-    }
+    // [2026-09-07 翻顶废弃:vault 框几何辅助注释,待清理]
+    ///// <summary>
+    ///// 翻顶检测框中心 = 玩家位置 + 面朝dir×VaultBoxForwardOffset + 上×(半高 + boxSize.y/2)。
+    ///// TryVault 与 Gizmos 共用,保证可视化与实际判定完全一致。
+    ///// </summary>
+    //private Vector2 GetVaultBoxCenter(int dir, Vector2 boxSize, float halfH)
+    //{
+    //    return (Vector2)transform.position
+    //         + Vector2.right * dir * VaultBoxForwardOffset
+    //         + Vector2.up * (halfH + boxSize.y * 0.5f);
+    //}
+    //
+    ///// <summary>翻顶检测框底 = 框中心 - 上×(boxSize.y/2)(向下射线起点,≈ 玩家头顶)</summary>
+    //private Vector2 GetVaultBoxBottom(Vector2 boxCenter, Vector2 boxSize)
+    //{
+    //    return boxCenter - Vector2.up * (boxSize.y * 0.5f);
+    //}
 
-    /// <summary>翻顶检测框底 = 框中心 - 上×(boxSize.y/2)(向下射线起点,≈ 玩家头顶)</summary>
-    private Vector2 GetVaultBoxBottom(Vector2 boxCenter, Vector2 boxSize)
-    {
-        return boxCenter - Vector2.up * (boxSize.y * 0.5f);
-    }
-
+    // [2026-09-07 翻顶废弃:vault 编辑器 Gizmos 整块注释(含 OnDrawGizmos 调用),待清理]
+    /*
 #if UNITY_EDITOR
     /// <summary>
     /// 翻顶检测 Gizmos(OnDrawGizmos:编辑态 Scene 视图总是绘制,不依赖选中;团结引擎 OnDrawGizmosSelected 编辑态不刷新):
@@ -285,31 +290,33 @@ public abstract class PlayerCharacterBase : CharacterBase
         }
     }
 #endif
+    */
 
-    /// <summary>翻顶去重复位 — 统一挂在落地检测处:落地(grounded)即复位,覆盖所有落地路径
-    /// (FallState/JumpState 落地分支、贴墙退出等),无需在各状态里散落调用。
-    /// 注意:只在地面落地复位,不按时间(防误复位)。</summary>
+    /// <summary>落地处理(基类地面检测;2026-09-07 vault 去重残留已注释)</summary>
     protected override void HandleGroundCheck()
     {
         base.HandleGroundCheck();
-        if (grounded) _vaultTriggered = false;
+        // [2026-09-07 翻顶废弃] if (grounded) _vaultTriggered = false;
     }
 
-    public virtual bool CheckWallTop()
-    {
-        if (col == null || wallDirection == 0) return false;
+    // [2026-09-07 翻顶废弃:CheckWallTop 死代码(无调用方)注释,待清理]
+    //public virtual bool CheckWallTop()
+    //{
+    //    if (col == null || wallDirection == 0) return false;
+    //
+    //    float offset = detect != null ? detect.WallClimbCheckOffset : 0.3f;
+    //    float dist = detect != null ? detect.WallCheckDistance : 0.5f;
+    //    LayerMask layer = detect != null ? detect.WallLayer : ~0;
+    //
+    //    Vector2 origin = (Vector2)transform.position
+    //                   + Vector2.up * (col.bounds.extents.y + offset);
+    //    Vector2 dir = Vector2.right * wallDirection;
+    //
+    //    return Physics2D.Raycast(origin, dir, dist, layer);
+    //}
 
-        float offset = detect != null ? detect.WallClimbCheckOffset : 0.3f;
-        float dist = detect != null ? detect.WallCheckDistance : 0.5f;
-        LayerMask layer = detect != null ? detect.WallLayer : ~0;
-
-        Vector2 origin = (Vector2)transform.position
-                       + Vector2.up * (col.bounds.extents.y + offset);
-        Vector2 dir = Vector2.right * wallDirection;
-
-        return Physics2D.Raycast(origin, dir, dist, layer);
-    }
-
+    // [2026-09-07 翻顶废弃:旧 NearWallTop / CanVault 空壳方法整段注释,待清理]
+    /*
     /// <summary>
     /// [已废弃] 墙顶提前量判断:翻顶检测已改为 TryVault()(框+射线)。
     /// 方法体注释保留(防外部引用断),始终返回 false。
@@ -375,4 +382,5 @@ public abstract class PlayerCharacterBase : CharacterBase
         // return true;
         return false;
     }
+    */
 }

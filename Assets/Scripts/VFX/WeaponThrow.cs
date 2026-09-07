@@ -574,6 +574,8 @@ public class WeaponThrow : MonoBehaviour
         return proj;
     }
 
+    // [2026-09-07 saika:武器的三条投掷线(编辑器 Gizmos 轨迹预览)整体注释]
+    /*
     // ============================================================
     // 编辑器可视化:选中武器时画三条路径曲线,拖点即见
     // 第一击黄 / 第二击青 / 第三击品红
@@ -637,4 +639,5 @@ public class WeaponThrow : MonoBehaviour
             (-p0 + 3f * p1 - 3f * p2 + p3) * s3
         );
     }
+    */
 }
