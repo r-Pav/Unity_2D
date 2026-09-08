@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using DG.Tweening;
 using UnityEngine;
@@ -32,11 +33,18 @@ public class DashGhostTrail : MonoBehaviour
     [Tooltip("可选染色,默认白(只取 rgb,alpha 由 startAlpha/淡出接管)")]
     [SerializeField] private Color tint = Color.white;
 
+    [Header("冲刺尾部延续(2026-09-08)")]
+    [Tooltip("冲刺结束后继续生成残影的时长(秒),0=关闭。用于冲刺完 player 继续跑动时残影延续到身上,不出现残影与 player 的空隙")]
+    [SerializeField] private float tailDuration = 0.5f;
+
     /// <summary>存活克隆体 → 各自淡出 tween(克隆体淡完 OnComplete 自 Destroy,条目留待下次生成前清理)</summary>
     private readonly Dictionary<GameObject, Tween> _ghostTweens = new();
 
     /// <summary>清理循环复用缓冲(收集已销毁克隆体键,字典迭代中不能直接删)</summary>
     private readonly List<GameObject> _deadKeys = new();
+
+    /// <summary>尾部延续协程(冲刺结束后按间隔继续生成;非空=进行中)</summary>
+    private Coroutine _tailRoutine;
 
     private void OnDestroy()
     {
@@ -58,6 +66,44 @@ public class DashGhostTrail : MonoBehaviour
 
     /// <summary>单次冲刺残影总数(PlayerDashState 按 冲刺时长 ÷ 此值 算生成间隔)</summary>
     public int GhostsPerDash => ghostsPerDash;
+
+    /// <summary>
+    /// 冲刺自然结束后启动尾部延续:tailDuration 秒内按 interval 间隔继续生成残影,
+    /// 让冲刺完 player 跑动的一小段路径也留残影,残影链延续到 player 身上(消除空隙)。
+    /// 位移小于 tailMinStep 时不生成(站立时避免同点叠影)。重入安全:重复调用先停旧协程。
+    /// </summary>
+    public void StartTail(float interval)
+    {
+        if (tailDuration <= 0f)
+            return;
+        if (_tailRoutine != null)
+            StopCoroutine(_tailRoutine);
+        _tailRoutine = StartCoroutine(TailRoutine(interval > 0f ? interval : 0.1f));
+    }
+
+    private IEnumerator TailRoutine(float interval)
+    {
+        float elapsed = 0f;
+        Vector3 lastPos = sourceSprite != null ? sourceSprite.transform.position : transform.position;
+        while (elapsed < tailDuration)
+        {
+            yield return new WaitForSeconds(interval);
+            elapsed += interval;
+
+            if (sourceSprite == null)
+                break;
+            Vector3 now = sourceSprite.transform.position;
+            if ((now - lastPos).sqrMagnitude >= TailMinStepSqr)
+            {
+                SpawnOnce();
+                lastPos = now;
+            }
+        }
+        _tailRoutine = null;
+    }
+
+    /// <summary>尾部生成的最小移动步长(米²),小于它不生成,防站立同点叠影</summary>
+    private const float TailMinStepSqr = 0.01f; // 0.1m 平方
 
     /// <summary>
     /// 生成一个残影:运行时克隆独立 GameObject+SpriteRenderer(只拷贝渲染数据),

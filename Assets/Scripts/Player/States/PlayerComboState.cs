@@ -237,6 +237,7 @@ public abstract class PlayerComboState : EntityState
         InputOpen = false;   // 切段 = 新一段攻击的前摇,输入门重新关闭
         _jumpQueued = false;
         _dashQueued = false;
+        _exitBufferTimer = 0f; // 切段后清上一段遗留缓冲,防新段中途被旧缓冲超时掐断(缓冲窗口直切路径的坑)
         anim?.Play("Attack" + comboIndex, 0, 0f);
         OnComboCut();
         isComboCut = false;

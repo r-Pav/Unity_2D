@@ -100,6 +100,11 @@ public class PlayerDashState : EntityState
                 (Vector2)owner.transform.position,
                 Vector2.right * pc.GetFacing()));
 
+            // 冲刺残影尾部延续:冲刺结束后 tailDuration 秒内继续按冲刺节奏生成残影,
+            // 残影链延续到继续跑动的 player 身上(消除冲刺残影与 player 之间的空隙)。
+            // 只走自然结束路径:冲刺被打断(受击等)不延续。
+            _ghostTrail?.StartTail(_ghostInterval);
+
             // 冲刺结束:落地 → Idle/Move;空中 → Fall(原 PlayerDash.OnPlayerUpdate 超时分支)
             // [2026-08-21] 落地必须重置跳跃次数:空中二段跳后冲刺撞墙/落地直接切 Idle/Move
             // (不经过 FallState 的落地分支),jumpsLeft 残留 0 → 之后按空格跳不了(与 AirAttack/GroundPound 同款坑)

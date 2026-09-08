@@ -12,7 +12,10 @@ using UnityEngine.UI;
 /// - 悬停放大:悬停放大到 hoverScale;
 /// - 悬停高亮色:悬停时同物体 Graphic 颜色过渡到 hoverColor(保留原 alpha);
 /// - 悬停内容上浮:悬停时 contentTargets(按钮内图标/文字)向上平移 floatUpPixels;
-/// - 悬停阴影浮起:悬停时 Shadow.effectDistance 拉远 shadowLiftOffset 模拟离地。
+/// - 悬停阴影浮起:悬停时 Shadow.effectDistance 拉远 shadowLiftOffset 模拟离地;
+/// - 悬停左指示图:悬停时按钮左侧出现 indicatorSprite(运行时自动创建子 Image,不入场景,
+///   raycastTarget=false),平时透明,悬停淡入,离开淡出。图高 = 按钮高 × indicatorHeightRatio,
+///   宽按素材宽高比,位置在按钮左外侧 indicatorGap 处,垂直居中。
 ///
 /// 设计约定:
 /// - 用指针接口(IPointerDown/Up/Enter/Exit)而非监听 onClick:Button.onClick 在 PointerClick
@@ -24,7 +27,7 @@ using UnityEngine.UI;
 ///   需等它播放完成后再交互,否则基准会被缓存成动画中间值。
 /// - interactable=false 时不播反馈(灰按钮不响应);交互中按钮被禁用等场景由 OnDisable 兜底复位。
 /// - 中断安全:每次开同维度新动画前 Kill 旧的;OnDisable/OnDestroy Kill 全部并把各维度复位到基准,
-///   防止面板关闭时把缩放/颜色/位移/阴影残留带进隐藏态。仅运行期写 transform/graphic,
+///   防止面板关闭时把缩放/颜色/位移/阴影/指示图残留带进隐藏态。仅运行期写 transform/graphic,
 ///   避免退出播放模式时把运行期值写回场景物体。
 /// - 状态规则:Enter/Exit 作用于全部维度(悬停集 vs 基准),Down/Up 只作用于缩放维度
 ///   (按压只改变缩放,颜色/位移/阴影在按压期间保持悬停态)。
@@ -87,6 +90,22 @@ public class UIButtonFeedback : MonoBehaviour,
     [Tooltip("悬停时 effectDistance 相对基准的增量(如 (0,-3)=阴影向下拉远 3)")]
     [SerializeField] private Vector2 shadowLiftOffset = new Vector2(0f, -3f);
 
+    [Header("悬停左指示图")]
+    [Tooltip("true=悬停时按钮左侧出现指示图;false=不用。图平时透明,悬停淡入、离开淡出")]
+    [SerializeField] private bool indicatorEffect = false;
+
+    [Tooltip("指示图切片(Sprite)。运行时自动在按钮下创建子 Image,无需手动建物体")]
+    [SerializeField] private Sprite indicatorSprite;
+
+    [Tooltip("图右缘到按钮左边距的像素(最终停靠点,图完全在按钮左外侧);想骑在按钮左边线上填负值")]
+    [SerializeField] private float indicatorGap = 8f;
+
+    [Tooltip("滑入行程(像素):隐藏起点 = 最终停靠点再偏 indicatorTravelX(正=更靠按钮方向),悬停从起点滑到停靠点")]
+    [SerializeField] private float indicatorTravelX = 20f;
+
+    [Tooltip("图高占按钮高的比例(0~1,如 0.6=图高为按钮 60%)。宽按素材宽高比自动算出")]
+    [SerializeField] private float indicatorHeightRatio = 0.6f;
+
     [Header("时间模式")]
     [Tooltip("true=使用不受 Time.timeScale 影响的时间(timeScale=0 暂停时动画照播);false=跟随 timeScale")]
     [SerializeField] private bool useUnscaled = true;
@@ -110,12 +129,27 @@ public class UIButtonFeedback : MonoBehaviour,
     private Tween _shadowTween;
     private readonly List<Tween> _floatTweens = new List<Tween>();
 
+    // 左指示图运行时状态
+    private bool _indicatorReady;
+    private RectTransform _indicatorBar;      // 运行时创建的子物体,不入场景
+    private Graphic _indicatorGraphic;
+    private float _indicatorBaseAlpha;        // 素材原始 alpha,淡入目标
+    private float _indicatorEndX;             // 最终停靠点中心 x(按钮左外侧)
+    private float _indicatorStartX;           // 隐藏起点中心 x(停靠点再偏 indicatorTravelX)
+    private Tween _indicatorMoveTween;
+    private Tween _indicatorFadeTween;
+
+    private const string IndicatorName = "__UIHoverIndicator";
+
     private void OnEnable()
     {
         // 每次启用重新取一次,避免按钮运行时增删导致引用过期
         _button = GetComponent<Button>();
         _graphic = GetComponent<Graphic>();
         _shadow = shadowTarget != null ? shadowTarget : GetComponent<Shadow>();
+
+        // 左指示图:解析引用、创建子物体并布置初态(左外侧 + 透明)
+        SetupIndicatorInitial();
     }
 
     private void OnDisable()
@@ -123,6 +157,10 @@ public class UIButtonFeedback : MonoBehaviour,
         _pressed = false;
         _inside = false;
         KillAllTweens();
+
+        // 指示图随面板/按钮隐藏立即隐掉,防残留
+        if (_indicatorReady && Application.isPlaying)
+            SetIndicatorAlpha(0f);
 
         // 面板/按钮被隐藏(含 SetActive(false) 打断动画)时把各维度复位到基准,
         // 防止中途缩放/颜色/位移/阴影残留到下次激活。仅运行期写,避免退出播放模式
@@ -158,7 +196,7 @@ public class UIButtonFeedback : MonoBehaviour,
         if (!_stateCached)
             return;
 
-        // 松开只恢复缩放维度:颜色/上浮/阴影在按压期间未变(Enter 已到悬停态),无需处理。
+        // 松开只恢复缩放维度:颜色/上浮/阴影/指示图在按压期间未变(Enter 已到悬停态),无需处理。
         // 仍悬停在按钮内且开 hoverEffect → 回弹到 hoverScale,否则回基准
         if (hoverEffect && _inside && CanRespond())
             PlayScale(_baseScale * hoverScale, pressDuration, pressEase);
@@ -184,6 +222,8 @@ public class UIButtonFeedback : MonoBehaviour,
             PlayContentFloat(floatUpPixels, hoverDuration, hoverEase);
         if (shadowLiftEffect && _shadow != null)
             PlayShadow(_baseShadowDistance + shadowLiftOffset, hoverDuration, hoverEase);
+        if (indicatorEffect)
+            PlayIndicator(true, hoverDuration, hoverEase);
     }
 
     public void OnPointerExit(PointerEventData eventData)
@@ -205,6 +245,8 @@ public class UIButtonFeedback : MonoBehaviour,
             PlayContentFloat(0f, wasPressed ? pressDuration : hoverDuration, wasPressed ? pressEase : hoverEase);
         if (shadowLiftEffect && _shadow != null)
             PlayShadow(_baseShadowDistance, wasPressed ? pressDuration : hoverDuration, wasPressed ? pressEase : hoverEase);
+        if (indicatorEffect)
+            PlayIndicator(false, wasPressed ? pressDuration : hoverDuration, wasPressed ? pressEase : hoverEase);
     }
 
     // ============================================================
@@ -276,6 +318,131 @@ public class UIButtonFeedback : MonoBehaviour,
             }
         }
     }
+
+    // ============================================================
+    // 左指示图
+    // ============================================================
+
+    /// <summary>indicatorEffect 开且 Sprite 已拖才启用。运行时创建子 Image 并布置"左外侧 + 透明"初态。</summary>
+    private void SetupIndicatorInitial()
+    {
+        _indicatorReady = false;
+        if (!indicatorEffect || indicatorSprite == null)
+            return;
+
+        if (_indicatorBar == null)
+            _indicatorBar = CreateIndicator();
+        if (_indicatorBar == null)
+            return;
+
+        _indicatorGraphic = _indicatorBar.GetComponent<Graphic>();
+        if (_indicatorGraphic == null)
+            return;
+
+        _indicatorBaseAlpha = _indicatorGraphic.color.a;
+        _indicatorReady = true;
+
+        ComputeIndicatorLayout();
+        _indicatorBar.anchoredPosition = new Vector2(_indicatorStartX, 0f);
+        SetIndicatorAlpha(0f);
+    }
+
+    /// <summary>创建子 Image(只建物体与素材,尺寸由 ComputeIndicatorLayout 按按钮当前高每次重算)。</summary>
+    private RectTransform CreateIndicator()
+    {
+        GameObject go = new GameObject(IndicatorName, typeof(RectTransform), typeof(Image));
+        go.transform.SetParent(transform, false);
+
+        Image img = go.GetComponent<Image>();
+        img.sprite = indicatorSprite;
+        img.raycastTarget = false;
+        img.type = indicatorSprite.border == Vector4.zero ? Image.Type.Simple : Image.Type.Sliced;
+        return go.GetComponent<RectTransform>();
+    }
+
+    /// <summary>
+    /// 按按钮当前 rect 重算指示图尺寸/终点/起点(每次播放前都算,按钮动态尺寸/创建时布局未
+    /// 完成导致的高为 0 都会在首次悬停时修正)。
+    /// 尺寸:高 = 按钮高 × indicatorHeightRatio,宽按素材宽高比。
+    /// 终点:图完全在按钮左外侧,右缘距按钮左边 indicatorGap(负值=骑边/入内);
+    /// 起点:终点再偏 indicatorTravelX(正=靠按钮方向),图在起点透明待命。
+    /// anchoredPosition 原点是父矩形中心,垂直居中 y 恒 0。
+    /// </summary>
+    private void ComputeIndicatorLayout()
+    {
+        RectTransform self = transform as RectTransform;
+        float buttonHeight = self != null ? self.rect.height : 0f;
+        float halfWidth = self != null ? self.rect.width * 0.5f : 0f;
+
+        float ratio = indicatorSprite.rect.height > 0.01f ? indicatorSprite.rect.width / indicatorSprite.rect.height : 1f;
+        float targetHeight = buttonHeight * indicatorHeightRatio;
+        _indicatorBar.sizeDelta = new Vector2(targetHeight * ratio, targetHeight);
+
+        float barHalf = _indicatorBar.rect.width * 0.5f;
+        _indicatorEndX = -(halfWidth + indicatorGap + barHalf);
+        _indicatorStartX = _indicatorEndX + indicatorTravelX;
+
+        _indicatorBar.anchorMin = new Vector2(0.5f, 0.5f);
+        _indicatorBar.anchorMax = new Vector2(0.5f, 0.5f);
+        _indicatorBar.pivot = new Vector2(0.5f, 0.5f);
+    }
+
+    /// <summary>悬停:从起点滑到终点并淡入;离开:滑回起点并淡出。每次播放前重算位置(Kill 旧的防叠加)。</summary>
+    private void PlayIndicator(bool show, float duration, Ease ease)
+    {
+        if (!_indicatorReady)
+            return;
+
+        ComputeIndicatorLayout();
+        KillTween(ref _indicatorMoveTween);
+        KillTween(ref _indicatorFadeTween);
+
+        float targetX = show ? _indicatorEndX : _indicatorStartX;
+        float targetAlpha = show ? _indicatorBaseAlpha : 0f;
+
+        // 进入前强制把图放回起点:即使上次退出动画被中断/未完成,也能保证
+        // 每次悬停都有完整滑入(图透明时跳位无视觉跳变)。
+        if (show)
+            _indicatorBar.anchoredPosition = new Vector2(_indicatorStartX, 0f);
+
+        bool nearX = Mathf.Abs(_indicatorBar.anchoredPosition.x - targetX) < 0.05f && Mathf.Abs(_indicatorBar.anchoredPosition.y) < 0.05f;
+        bool nearAlpha = Mathf.Abs(_indicatorGraphic.color.a - targetAlpha) < 0.002f;
+        if (nearX && nearAlpha)
+        {
+            _indicatorBar.anchoredPosition = new Vector2(targetX, 0f);
+            SetIndicatorAlpha(targetAlpha);
+            return;
+        }
+        if (duration <= 0f)
+        {
+            _indicatorBar.anchoredPosition = new Vector2(targetX, 0f);
+            SetIndicatorAlpha(targetAlpha);
+            return;
+        }
+
+        Tween move = _indicatorBar.DOAnchorPosX(targetX, duration).SetEase(ease);
+        Tween fade = _indicatorGraphic.DOFade(targetAlpha, duration).SetEase(ease);
+        if (useUnscaled)
+        {
+            move.SetUpdate(true);
+            fade.SetUpdate(true);
+        }
+        _indicatorMoveTween = move;
+        _indicatorFadeTween = fade;
+    }
+
+    private void SetIndicatorAlpha(float alpha)
+    {
+        if (_indicatorGraphic == null)
+            return;
+        Color c = _indicatorGraphic.color;
+        c.a = alpha;
+        _indicatorGraphic.color = c;
+    }
+
+    // ============================================================
+    // 播放函数(缩放/颜色/内容上浮/阴影,目标已接近时只落位不空转)
+    // ============================================================
 
     /// <summary>播放一段缩放到 target 的动画:目标已接近时只落位不空转;同维度先 Kill 旧的。</summary>
     private void PlayScale(Vector3 target, float duration, Ease ease)
@@ -421,6 +588,8 @@ public class UIButtonFeedback : MonoBehaviour,
         KillTween(ref _scaleTween);
         KillTween(ref _colorTween);
         KillTween(ref _shadowTween);
+        KillTween(ref _indicatorMoveTween);
+        KillTween(ref _indicatorFadeTween);
         KillFloatTweens();
     }
 }
