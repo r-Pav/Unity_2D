@@ -13,12 +13,22 @@ using UnityEngine;
 ///
 /// 触发:PlayerDashState 按 冲刺时长 ÷ GhostsPerDash 的间隔节奏调 SpawnOnce(无 Update 轮询)。
 /// 接线(编辑器):组件挂 Player 物体,sourceSprite 拖 Anim 的 SpriteRenderer。
+///
+/// 背刺期备用来源(2026-09-10,P7 clone 替身):背刺期间玩家本体 SpriteRenderer 隐藏,残影若还从本体取帧
+/// 就会拷到不可见/旧帧。BackstabClone 在每刀 PlayAt 时把 cloneSourceSprite 指到"最新活跃 clone"的
+/// SpriteRenderer(clone 就是玩家视觉的完整副本,含 clip 当前帧),全部 clone 回收后置回 null。
+/// 取帧来源统一走 ActiveSource(clone 源优先),不引入每帧 Find。
 /// </summary>
 public class DashGhostTrail : MonoBehaviour
 {
     [Header("来源")]
     [Tooltip("玩家视觉当前帧来源 SpriteRenderer(拖 Anim 上的 SpriteRenderer;残影逐帧拷贝它的 sprite/形态)")]
     [SerializeField] private SpriteRenderer sourceSprite;
+
+    [Header("背刺期备用来源(clone 替身)")]
+    [Tooltip("背刺期间由 BackstabClone 运行时写入(最新活跃 clone 的 SpriteRenderer),clone 源非空时残影改从它取帧;" +
+             "本字段一般留空,不需要手工拖")]
+    [SerializeField] private SpriteRenderer cloneSourceSprite;
 
     [Header("残影参数")]
     [Tooltip("单次冲刺的残影总数;PlayerDashState 按 冲刺时长 ÷ 残影数 自动算间隔,均匀铺满冲刺路径")]
@@ -67,6 +77,16 @@ public class DashGhostTrail : MonoBehaviour
     /// <summary>单次冲刺残影总数(PlayerDashState 按 冲刺时长 ÷ 此值 算生成间隔)</summary>
     public int GhostsPerDash => ghostsPerDash;
 
+    /// <summary>取帧来源:背刺期 clone 源优先(cloneSourceSprite 非空),否则本体 sourceSprite</summary>
+    private SpriteRenderer ActiveSource => cloneSourceSprite != null ? cloneSourceSprite : sourceSprite;
+
+    /// <summary>切换背刺期备用取帧来源(BackstabClone 每刀 PlayAt 写入最新活跃 clone 的 SpriteRenderer,
+    /// clone 全部回收时传 null 回到本体)。只在每刀开始/回收时写一次,不参与每帧查找,也不影响冲刺路径。</summary>
+    public void SetCloneSource(SpriteRenderer source)
+    {
+        cloneSourceSprite = source;
+    }
+
     /// <summary>
     /// 冲刺自然结束后启动尾部延续:tailDuration 秒内按 interval 间隔继续生成残影,
     /// 让冲刺完 player 跑动的一小段路径也留残影,残影链延续到 player 身上(消除空隙)。
@@ -84,15 +104,15 @@ public class DashGhostTrail : MonoBehaviour
     private IEnumerator TailRoutine(float interval)
     {
         float elapsed = 0f;
-        Vector3 lastPos = sourceSprite != null ? sourceSprite.transform.position : transform.position;
+        Vector3 lastPos = ActiveSource != null ? ActiveSource.transform.position : transform.position;
         while (elapsed < tailDuration)
         {
             yield return new WaitForSeconds(interval);
             elapsed += interval;
 
-            if (sourceSprite == null)
+            if (ActiveSource == null)
                 break;
-            Vector3 now = sourceSprite.transform.position;
+            Vector3 now = ActiveSource.transform.position;
             if ((now - lastPos).sqrMagnitude >= TailMinStepSqr)
             {
                 SpawnOnce();
@@ -107,11 +127,12 @@ public class DashGhostTrail : MonoBehaviour
 
     /// <summary>
     /// 生成一个残影:运行时克隆独立 GameObject+SpriteRenderer(只拷贝渲染数据),
-    /// 半透明原地淡出后销毁。空引用安全:sourceSprite 未拖 → 静默 return。
+    /// 半透明原地淡出后销毁。空引用安全:取帧来源未拖 → 静默 return。
     /// </summary>
     public void SpawnOnce()
     {
-        if (sourceSprite == null)
+        SpriteRenderer source = ActiveSource;
+        if (source == null)
             return; // 空引用安全:来源未拖 → 静默跳过
 
         // 存活管理:先清理已销毁的克隆体(淡完 OnComplete Destroy 后键为 Unity null)
@@ -128,7 +149,7 @@ public class DashGhostTrail : MonoBehaviour
             _deadKeys.Clear();
         }
 
-        Transform sourceT = sourceSprite.transform;
+        Transform sourceT = source.transform;
 
         // ── 克隆:只建渲染器,不克隆整棵 Anim(避免 Animator/脚本/子物体垃圾,克隆体不会自己播动画)──
         // new GameObject 默认无父级 = 出生即在世界根(天然独立于移动中的 Player,无需父级搬运)
@@ -136,20 +157,20 @@ public class DashGhostTrail : MonoBehaviour
         SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
         go.transform.SetPositionAndRotation(sourceT.position, sourceT.rotation);
 
-        // 克隆体 = sourceSprite 的精确世界副本:玩家怎么渲染,残影就怎么渲染,方向零手动处理。
-        // 材质复用 sourceSprite.sharedMaterial(玩家本体材质,双面渲染 + PNG 透明通道支持 alpha;
+        // 克隆体 = 当前取帧来源(source)的精确世界副本:玩家/clone 怎么渲染,残影就怎么渲染,方向零手动处理。
+        // 材质复用 source.sharedMaterial(玩家本体材质,双面渲染 + PNG 透明通道支持 alpha;
         // 不用独立残影材质——URP/Unlit Cull=Back 会把负 scale(朝左)的残影整面剔除,玩家材质没有此问题)。
         // scale 用 lossyScale 原样(含负号):玩家朝左靠父链负 scale 镜像,克隆体同款负 scale 同款镜像。
         Vector3 lossy = sourceT.lossyScale;
         go.transform.localScale = lossy;
 
         // 拷贝当前帧渲染数据:sprite/flip/排序层级/材质全部与 source 一致
-        sr.sprite = sourceSprite.sprite;
-        sr.flipX = sourceSprite.flipX;
-        sr.flipY = sourceSprite.flipY;
-        sr.sortingLayerID = sourceSprite.sortingLayerID;
-        sr.sortingOrder = sourceSprite.sortingOrder;
-        sr.sharedMaterial = sourceSprite.sharedMaterial;
+        sr.sprite = source.sprite;
+        sr.flipX = source.flipX;
+        sr.flipY = source.flipY;
+        sr.sortingLayerID = source.sortingLayerID;
+        sr.sortingOrder = source.sortingOrder;
+        sr.sharedMaterial = source.sharedMaterial;
 
         // 出生透明度(tint 只取 rgb;alpha 固定 startAlpha,靠玩家材质的顶点色 alpha 生效)
         sr.color = new Color(tint.r, tint.g, tint.b, startAlpha);

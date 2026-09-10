@@ -430,42 +430,77 @@ public class PlayerController : PlayerCharacterBase
     }
 
     // ============================================================
-    // 重音背刺 F 键入口(方案 v2)
+    // 重音背刺 / 连音背刺 F 键入口(方案 v2 + P8 连音)
     // 窗口内 F:强制打断进 PlayerBackstabState;窗口外 F:无效,什么也不触发。
-    // 仅当当前曲启用自动重音(barIntervalSeconds>0)时接管 F;Boss 曲/未配置曲 F 保持原行为
-    // (技能槽 3 由 SkillManager 处理、Boss 战判定由 PlayerBeatJudge 处理)。
+    // 两条判定路径(规格 P2「判定优先级」):
+    //   ① 当前曲配了 PlayerBackstab 连音组(HasChain)→ 判定条件 = 本组内存在"活跃且未被消费"的点
+    //      (IsInChainWindow,P2 产物);组内后续点由状态就地推进(见 TryEnterBackstab);
+    //   ② 当前曲无连音组 → 原自动重音窗口路径(barIntervalSeconds>0 才有窗),行为与改前逐帧一致。
+    // Boss 曲/未配置曲无连音组时 F 保持原行为(技能槽 3 由 SkillManager 处理、Boss 战判定由 PlayerBeatJudge 处理)。
     // ============================================================
 
-    /// <summary>每帧 F 键分发:仅自动重音窗口内触发背刺;窗口外按 F 无效果</summary>
+    /// <summary>每帧 F 键分发:连音组曲按"连音点窗口内"触发背刺,无连音组曲按"自动重音窗口内"触发;窗口外按 F 无效果</summary>
     private void HandleBackstabInput()
     {
         if (!Input.GetKeyDown(KeyCode.F)) return;
 
         var mgr = MusicPointManager.Instance;
-        if (mgr == null || mgr.CurrentTrack == null || mgr.CurrentTrack.barIntervalSeconds <= 0f)
+        if (mgr == null || mgr.CurrentTrack == null) return;
+
+        // ── ① 连音路径(P8):当前曲存在连音组 → 判定条件由"自动重音窗口"换成"本组内存在活跃且未消费的点"。
+        // HasChain == _chainPoints.Count > 0,与 NextChainStartTime >= 0 等价(P2 产物);
+        // 存在连音组时自动重音窗口不再接管 F(规格 P2:当前曲存在 PlayerBackstab 组 → 背刺走该组)。
+        if (mgr.HasChain)
+        {
+            if (mgr.IsInChainWindow)
+                TryEnterBackstab(chainMode: true);
+            // 连音窗口外 F:无效,什么都不触发(与下面自动重音路径同口径,不再普攻挥空)
+            return;
+        }
+
+        // ── ② 无连音组:原自动重音路径,逐帧行为与改前完全一致 ──
+        if (mgr.CurrentTrack.barIntervalSeconds <= 0f)
             return;   // 未启用自动重音(Boss 曲/普通曲未配置):F 保持原行为
 
         if (mgr.IsAutoBarWindow)
-            TryEnterBackstab();
+            TryEnterBackstab(chainMode: false);
         // 窗口外 F:无效,什么都不触发(2026-09-01 saika 确认,不再普攻挥空)
     }
 
-    /// <summary>窗口内 F:强制打断进背刺状态(死亡/受击硬直/背刺自身执行中除外,防重入)。
+    /// <summary>窗口内 F:强制打断进背刺状态(死亡/受击硬直除外)。连音路径放开"背刺执行中重入"(P7 产物)。
     /// 背刺最高优先级:打断攻击连段前清掉其排队/缓冲输入,防旧点击在背刺后污染追击窗口(2026-09-03 saika)</summary>
-    private void TryEnterBackstab()
+    private void TryEnterBackstab(bool chainMode)
     {
         if (PlayerFsm == null || BackstabState == null) return;
         var cur = PlayerFsm.CurrentState;
         if (cur is PlayerDeadState
             || cur is PlayerHurtState
-            || cur is PlayerAirHurtState
-            || cur is PlayerBackstabState) return;
+            || cur is PlayerAirHurtState) return;
+
+        // ── 已在背刺状态中(P8 核心:放开重入,原实现直接 return → 连音第二拍被吞)──
+        if (cur is PlayerBackstabState backstabState)
+        {
+            // 非连音路径(自动重音)保持原语义:背刺执行中按 F 不重入(该窗口进状态时已消费)
+            if (!chainMode) return;
+
+            // 连音路径:同一状态实例就地推进下一刀,不 ChangeState(FSM 对同实例直接 return,切不动也不重播动画)。
+            //   返回 true = 这一刀已执行(状态内 ExecuteStrike 已按点 ConsumePoint);
+            //   返回 false = 这一刀没执行(当前组已切走 = 本状态正在退出):不消费,留给下一拍 ——
+            //     状态在最后一刀动画结束后自然 Exit,之后的 F 走上面的"全新进入"分支(ChangeState 生效)重新绑定新组。
+            // 消费口径(P7 约定①):消费一律由 PlayerBackstabState 每刀执行时按点完成 —— 它要在同一时点取
+            //   点序号/目标/环序号;入口层禁止 ConsumePoint,否则 OnEnter 读到的是"下一个点序号",目标与环全部错位。
+            backstabState.TryExecuteNextPoint();
+            return;
+        }
+
         // 背刺最高优先级:当前若在连段中(地面/空中攻击),清掉待处理输入,打断前不留残留
         if (cur is PlayerComboState comboState)
             comboState.CancelPendingComboInput();
         PlayerFsm.ChangeState(BackstabState);
-        // 消费当前自动重音窗口:本 bar 限一次背刺,防窗口内连按 F 连触发(空挥也消耗,miss 就过)
-        MusicPointManager.Instance?.ConsumeAutoBarWindow();
+        // 消费:连音路径的按点消费由 PlayerBackstabState.OnEnter → ExecuteStrike 完成(同上,入口层不消费);
+        // 自动重音路径消费当前窗口(本 bar 限一次背刺,防窗口内连按 F 连触发;空挥也消耗,miss 就过)。
+        if (!chainMode)
+            MusicPointManager.Instance?.ConsumeAutoBarWindow();
     }
 
     // ============================================================

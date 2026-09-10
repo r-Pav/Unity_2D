@@ -12301,6 +12301,58 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 250801841}
   m_CullTransparentMesh: 1
+--- !u!1 &261021928
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 7
+  m_Component:
+  - component: {fileID: 261021929}
+  - component: {fileID: 261021931}
+  m_Layer: 6
+  m_HasEditorInfo: 1
+  m_Name: BackstabChainPlanner
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &261021929
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 261021928}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1427529636}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &261021931
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 261021928}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 94f69521c52186241aee18649589bafd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  worldCamera: {fileID: 519420031}
+  enemyLayer:
+    serializedVersion: 2
+    m_Bits: 128
+  player: {fileID: 1427529636}
+  viewportMargin: 0
+  snapshotLeadSeconds: 0.8
 --- !u!1 &261224622
 GameObject:
   m_ObjectHideFlags: 0
@@ -16675,6 +16727,7 @@ MonoBehaviour:
   windowHalfWidth: 0.2
   triggerLead: 0.033
   previewLead: 0.3
+  chainGapThreshold: 0.5
   crossFadeDuration: 1
   debugDisplay: 0
 --- !u!1 &337140642
@@ -78877,6 +78930,7 @@ GameObject:
   - component: {fileID: 1427529668}
   - component: {fileID: 1427529669}
   - component: {fileID: 1427529670}
+  - component: {fileID: 1427529671}
   m_Layer: 6
   m_HasEditorInfo: 1
   m_Name: Player
@@ -78969,6 +79023,7 @@ Transform:
   - {fileID: 1201186224}
   - {fileID: 952423016}
   - {fileID: 1329078682}
+  - {fileID: 261021929}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &1427529637
@@ -79556,7 +79611,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   searchRadius: 7
-  leadSeconds: 1
+  leadSeconds: 0.8
+  chainPlanner: {fileID: 261021931}
 --- !u!114 &1427529669
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -79594,11 +79650,31 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   sourceSprite: {fileID: 1523805912}
+  cloneSourceSprite: {fileID: 0}
   ghostsPerDash: 3
   startAlpha: 0.4
   fadeDuration: 0.5
   tint: {r: 1, g: 1, b: 1, a: 1}
   tailDuration: 0.3
+--- !u!114 &1427529671
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1427529632}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3cd849b8673e13d419263a1a232dad02, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  visualRoot: {fileID: 1427529636}
+  baseSprite: {fileID: 1523805912}
+  baseAnimator: {fileID: 1523805911}
+  ghostTrail: {fileID: 1427529670}
+  poolSize: 5
+  recycleTimeout: 1.2
+  prewarmOnStart: 1
 --- !u!1 &1429523397
 GameObject:
   m_ObjectHideFlags: 0

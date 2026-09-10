@@ -6,6 +6,7 @@ using UnityEngine;
 /// 双模式:
 /// ① 拖 aimPrefab(背刺标识 BackstabAim_Template)= 挂点 + prefab 槽生成器:Flash 时在其位置实例化 prefab
 ///    (BackstabAimIndicator.Show 重置粒子从头播:圆环收缩穿过固定判定圈),Hide 收起实例。enemy 背刺预告用。
+///    P5 连音组走 ShowChain(每个点各占一个金色环,错开收缩;同一个敌人的多点一次传入)。
 /// ② 没拖 = 原 SpriteRenderer 闪烁(flashSprite 颜色闪一下),player 触发重音(音乐窗口开启)时闪烁。Boss 用。
 /// autoSubscribe=true 自动订阅全局窗口;普通 enemy 由 EnemyBeatIndicator 手动触发。
 /// </summary>
@@ -93,15 +94,58 @@ public class BeatFlashPoint : MonoBehaviour
         _flashRoutine = StartCoroutine(FlashRoutine());
     }
 
-    /// <summary>生成/复用标识实例并从头播一轮(实例挂本物体下,位置 = 挂点;重复 Flash 只重置播放不重复生成)</summary>
+    /// <summary>连音组按点显示标识(P5):把「每个点各自的剩余秒数」一次转发给实例上的 BackstabAimIndicator.ShowChain
+    /// (第 i 个点各占一个金色环、错开收缩;内外圈仍只播一组、不叠加)。
+    /// 生成/复用实例、激活挂点、隐藏旧闪点的逻辑与 Flash 完全一致,只是把驱动接口从单点 Show 换成按点 ShowChain。
+    /// secondsToPoints[i] = 该点时刻 - 当前曲时间(晚触发可传负数,组件内部反推起点兜底);
+    /// 没拖 aimPrefab(闪烁模式/Boss)= 退化为单点 Flash(取首个剩余秒数),行为与现状一致。</summary>
+    public void ShowChain(float[] secondsToPoints, float windowSeconds)
+    {
+        if (aimPrefab == null)
+        {
+            // ── 无标识 prefab(模式②/未配):退化为单点闪烁,取首个剩余秒数
+            float first = (secondsToPoints != null && secondsToPoints.Length > 0) ? secondsToPoints[0] : 1f;
+            Flash(first, windowSeconds);
+            return;
+        }
+        if (flashSprite != null) flashSprite.enabled = false;   // 旧闪点不显示,防头顶双视觉
+        if (!gameObject.activeSelf)
+            gameObject.SetActive(true);                          // 挂点初始 inactive:激活才能承载实例
+        ShowAimInstance(secondsToPoints, windowSeconds);
+    }
+
+    /// <summary>单点兼容入口(Flash 用):等价 ShowChain(new[]{ secondsToWindowStart }, windowSeconds)</summary>
     private void ShowAimInstance(float secondsToWindowStart, float windowSeconds)
+    {
+        ShowAimInstance(new[] { secondsToWindowStart }, windowSeconds);
+    }
+
+    /// <summary>生成/复用标识实例并按点驱动环池(实例挂本物体下,位置 = 挂点;重复调用只重置播放不重复生成)。
+    /// 取实例上的 BackstabAimIndicator 调 ShowChain;无组件时保持原兜底(激活实例让 playOnAwake 播)。</summary>
+    private void ShowAimInstance(float[] secondsToPoints, float windowSeconds)
     {
         if (_aimInstance == null && aimPrefab != null)
             _aimInstance = Instantiate(aimPrefab, transform, false);
         if (_aimInstance == null) return;
         var ctrl = _aimInstance.GetComponentInChildren<BackstabAimIndicator>(true);
-        if (ctrl != null) ctrl.Show(secondsToWindowStart, windowSeconds);
+        if (ctrl != null) ctrl.ShowChain(secondsToPoints, windowSeconds);
         else _aimInstance.SetActive(true);   // 无组件兜底:激活让 playOnAwake 播
+    }
+
+    /// <summary>只收「本敌人身上第 index 个金色环」(P7 连音背刺命中帧按序收环):index 口径 = ShowChain 传入数组的下标
+    /// (EnemyBeatIndicator 按「组内点序号升序」合并同一敌人的点 → 第 i 个点就占第 i 个环)。
+    /// 实例/组件缺失空安全跳过;闪烁模式(没拖 aimPrefab)没有环概念 → 退化为整只 Hide()(与现状一致)。
+    /// 组结束/状态退出仍走 Hide() 收全部(现状不变)。</summary>
+    public void HideRing(int index)
+    {
+        if (aimPrefab == null)
+        {
+            Hide();   // 模式②:无环,整只收起
+            return;
+        }
+        if (_aimInstance == null) return;
+        var ctrl = _aimInstance.GetComponentInChildren<BackstabAimIndicator>(true);
+        if (ctrl != null) ctrl.HideRing(index);
     }
 
     /// <summary>收起标识实例(BackstabAimIndicator.Hide = 停粒子 + 实例失活;无组件直接失活)</summary>
