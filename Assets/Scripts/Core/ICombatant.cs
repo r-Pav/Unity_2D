@@ -69,6 +69,9 @@ public struct DamageInfo
     /// <summary>true = 本次命中跳过敌人空中滞空吸附(_pullToPlayer)。背刺等终结技用:
     /// 敌人被击退正常飞出自然落地,不向玩家吸附、不被吊在空中。默认 false = 走原空中连段吸附。</summary>
     public bool suppressAirHang;
+
+    /// <summary>true = 背刺终结技命中(PlayerCombat.ExecuteBackstab 置位):受击方播背刺受击 VFX(backstabHitVFX)。默认 false。</summary>
+    public bool isBackstabFinisher;
 }
 
 /// <summary>

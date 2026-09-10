@@ -30,7 +30,7 @@ public class AttackVFXAnchor : MonoBehaviour
         public float showDelay = 0f;
     }
 
-    /// <summary>玩家分组槽:一段攻击一个特效 prefab(位置/大小在 prefab 内调好;多个粒子效果放同一 prefab 子物体)</summary>
+    /// <summary>玩家分组槽:一段攻击一个特效 prefab + 一个挥刀音效(位置/大小在 prefab 内调好;多个粒子效果放同一 prefab 子物体)</summary>
     [System.Serializable]
     public class ComboSlot
     {
@@ -39,6 +39,12 @@ public class AttackVFXAnchor : MonoBehaviour
 
         [Tooltip("出现延迟(秒):播放后等这么久才实例化;0 = 立即")]
         public float showDelay = 0f;
+
+        [Tooltip("本段挥刀音效(空 = 不播)。与特效同槽配置,攻击起手/切段瞬间立即播放")]
+        public AudioClip sfx;
+
+        [Tooltip("挥刀音效相对音量(最终响度 = 设置面板 SFX 音量 × 此值)")]
+        [Range(0f, 1f)] public float sfxVolume = 1f;
     }
 
     [Header("通用槽(Show 按名字 — Boss/敌人用,玩家不填)")]
@@ -102,12 +108,22 @@ public class AttackVFXAnchor : MonoBehaviour
         }
     }
 
-    /// <summary>播放一个玩家分组槽(空 prefab 静默跳过;自动收上一组)</summary>
+    /// <summary>播放一个玩家分组槽(VFX / 音效各自判空,两个都空则静默跳过;自动收上一组)</summary>
     private void PlayComboSlot(ComboSlot slot)
     {
-        if (slot == null || slot.prefab == null) return;   // 未配置:不播不警告
+        if (slot == null) return;
 
-        Hide();  // 收上一组(停发射,淡出后回池,不阻塞)
+        bool hasVfx = slot.prefab != null;
+        bool hasSfx = slot.sfx != null;
+        if (!hasVfx && !hasSfx) return;   // 未配置:不播不警告
+
+        Hide();  // 收上一组(与是否配 VFX 无关,无 VFX 时内部空转)
+
+        // 挥刀音效立即播(showDelay 只作用于 VFX 延迟生成,不影响音效手感)
+        if (hasSfx)
+            AudioManager.Instance?.PlaySfx(slot.sfx, slot.sfxVolume);
+
+        if (!hasVfx) return;   // 只配了音效:不动特效,也不启动特效超时保险
 
         if (_delayedRoutine != null) { StopCoroutine(_delayedRoutine); _delayedRoutine = null; }
         if (_lifeRoutine != null) { StopCoroutine(_lifeRoutine); _lifeRoutine = null; }

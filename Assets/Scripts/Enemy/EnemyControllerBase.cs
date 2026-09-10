@@ -71,6 +71,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     [SerializeField] protected GameObject directionalHitVFXPrefab;
     [Tooltip("死亡 VFX 预制体 — 死亡时 Instantiate")]
     [SerializeField] protected GameObject deathVFXPrefab;
+    [Tooltip("背刺受击 VFX 预制体 — 被玩家背刺终结命中时生成(伤害结算同一帧,挂 enemy 下跟随击飞);空 = 不播")]
+    [SerializeField] protected GameObject backstabHitVFX;
 
     [Header("VFX 变体")]
     [Tooltip("按攻击类型匹配的受击 VFX 列表（匹配到时覆盖 hitVFXPrefab）")]
@@ -701,7 +703,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     /// <summary>
     /// 敌人动画参数更新 — 每帧聚合 Locomotion 双参数（IsIdle/IsMove 互斥）。
     /// busy（死亡/攻击/受击）时两者全 false → 当前 Locomotion 状态 Exit → Entry 重判命中 IsDead/IsAttacking/IsHurt。
-    /// stun 无 hurt 动画：moveInput=0 → 自然回落 Idle。
+    /// stun 期间驱动 IsHurt → Animator Entry 路由 Hurt(非循环,播完定末帧直到 stun 结束)。
     /// </summary>
     protected override void UpdateAnimation()
     {
@@ -1061,6 +1063,14 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         Vector2? hitDir = hasDirection ? (Vector2?)fromSource.normalized : null;
 
         if (ApplyDamage(info.amount, info.attackLabel, vfxPos, hitDir)) Die();
+
+        // 背刺受击 VFX(伤害结算同一帧、同一点):挂 enemy 下跟随被击飞,特效不会留在原地。
+        // 标记由 PlayerCombat.ExecuteBackstab 置位(背刺标签与普通重击共用 Sword_Heavy,不能只按标签区分)。
+        if (info.isBackstabFinisher && backstabHitVFX != null)
+        {
+            GameObject burst = VFXSpawner.Spawn(VFXCategory.EnemyVFX, backstabHitVFX, vfxPos, Quaternion.identity);
+            if (burst != null) burst.transform.SetParent(transform);
+        }
         return info.amount;
     }
 

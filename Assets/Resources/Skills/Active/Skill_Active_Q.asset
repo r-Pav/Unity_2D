@@ -14,14 +14,18 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   skillName: TreeA_MagicBolt
   description: "\u53D1\u5C04\u4E00\u679A\u80FD\u91CF\u7403\u653B\u51FB\u654C\u4EBA"
-  icon: {fileID: 0}
+  icon: {fileID: 6789135733701371458, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
   hotkey: 113
   cooldown: 3
   manaCost: 10
+  useCharges: 0
+  maxCharges: 1
+  chargeRechargeTime: 5
   type: 0
   category: 0
   unlockLevel: 0
   castTime: 0
+  interceptsStateAfterActivate: 0
   skillLevel: 0
   maxLevel: 3
   vfxPrefab: {fileID: 0}
@@ -29,56 +33,81 @@ MonoBehaviour:
   lv1Data:
     behaviorId: treeA_bolt
     branchName: Lv1-R
-    icon: {fileID: 6943229999192725836, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
+    icon: {fileID: -1880897976475227799, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
     damage: 10
     cooldown: 3
     manaCost: 10
     range: 0
     duration: 0
+    slowZoneRadius: 2
+    slowZoneDuration: 5
+    slowFactor: 0.5
+    dashDistance: 0
+    dashDuration: 0
     description: "\u53D1\u5C04\u4E00\u679A\u80FD\u91CF\u7403\uFF0C\u5BF9\u9996\u4E2A\u654C\u4EBA\u9020\u6210
       35 \u70B9\u4F24\u5BB3"
   defaultUnlocked: 1
   lv2Left:
     behaviorId: treeA_burst3
     branchName: Q-lv2-l
-    icon: {fileID: 1660957820977104790, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
+    icon: {fileID: 6943229999192725836, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
     damage: 10
     cooldown: 4
     manaCost: 15
     range: 0
     duration: 0
+    slowZoneRadius: 2
+    slowZoneDuration: 5
+    slowFactor: 0.5
+    dashDistance: 0
+    dashDuration: 0
     description: "\u53D1\u5C04 3 \u679A\u5F39\u5E55\uFF0C\u6BCF\u679A\u9020\u6210
       25 \u70B9\u4F24\u5BB3"
   lv2Right:
     behaviorId: treeA_teleport
     branchName: "A-02 \u4F20\u9001\u5F39"
-    icon: {fileID: -5063555655813669412, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
+    icon: {fileID: -7507653759127745917, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
     damage: 10
     cooldown: 5
     manaCost: 18
     range: 0
     duration: 0
+    slowZoneRadius: 2
+    slowZoneDuration: 5
+    slowFactor: 0.5
+    dashDistance: 0
+    dashDuration: 0
     description: "\u53D1\u5C04\u6301\u7EED\u4F20\u9001\u5F39\uFF1A\u60AC\u505C\u4E0D\u6D88\u5931\uFF0C\u518D\u6B21\u6309\u952E\u77AC\u79FB\u5230\u5F39\u4F4D\u7F6E"
   lv3Left:
     behaviorId: treeA_burst5_crit
     branchName: "\u5F39\u5E55\u98CE\u66B4"
-    icon: {fileID: 5000730549932156952, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
+    icon: {fileID: -1516065280842772324, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
     damage: 10
     cooldown: 3.5
     manaCost: 20
     range: 0
     duration: 0
+    slowZoneRadius: 2
+    slowZoneDuration: 5
+    slowFactor: 0.5
+    dashDistance: 0
+    dashDuration: 0
     description: "\u53D1\u5C04 5 \u679A\u5F39\u5E55\uFF0C\u6BCF\u679A\u9020\u6210
       30 \u70B9\u4F24\u5BB3"
   lv3Right:
     behaviorId: treeA_teleport_heal
     branchName: "A-02 \u4F20\u9001\u56DE\u8840"
-    icon: {fileID: 6789135733701371458, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
+    icon: {fileID: 6198878768060006677, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
     damage: 10
     cooldown: 4.5
     manaCost: 25
     range: 0
     duration: 0
+    slowZoneRadius: 2
+    slowZoneDuration: 5
+    slowFactor: 0.5
+    dashDistance: 0
+    dashDuration: 0
     description: "\u53D1\u5C04\u6301\u7EED\u4F20\u9001\u5F39\uFF1A\u518D\u6B21\u6309\u952E\u77AC\u79FB\u5230\u5F39\u4F4D\u7F6E\uFF1B\u4F20\u9001\u65F6\u56DE\u590D\u7A97\u53E3\u5185\u9020\u6210\u4F24\u5BB3\u7684
       50%"
   unlockPassiveOnly: 0

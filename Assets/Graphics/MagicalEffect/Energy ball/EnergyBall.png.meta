@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: 63d38e1592cc9f2438de1c3034c59fa5
+guid: CXlLtiL4Un4xDhFOpUkuyAqxpqYD7H+DfYDjfH3jDn/HB2TToJzuOHo=
 TextureImporter:
   internalIDToNameTable:
   - first:
@@ -39,7 +39,7 @@ TextureImporter:
       213: 7496036457165579053
     second: EnergyBall_11
   externalObjects: {}
-  serializedVersion: 13
+  serializedVersion: 14
   mipmaps:
     mipMapMode: 0
     enableMipMap: 0
@@ -58,6 +58,9 @@ TextureImporter:
     normalMapFilter: 0
     flipGreenChannel: 0
   isReadable: 0
+  webStreaming: 0
+  priorityLevel: 0
+  uploadedMode: 2
   streamingMipmaps: 0
   streamingMipmapsPriority: 0
   vTOnly: 0
@@ -103,9 +106,10 @@ TextureImporter:
   swizzle: 50462976
   cookieLightType: 0
   platformSettings:
-  - serializedVersion: 4
+  - serializedVersion: 3
     buildTarget: DefaultTexturePlatform
     maxTextureSize: 2048
+    maxPlaceholderSize: 32
     resizeAlgorithm: 0
     textureFormat: -1
     textureCompression: 1
@@ -116,9 +120,52 @@ TextureImporter:
     ignorePlatformSupport: 0
     androidETC2FallbackOverride: 0
     forceMaximumCompressionQuality_BC6H_BC7: 0
-  - serializedVersion: 4
+  - serializedVersion: 3
     buildTarget: Standalone
     maxTextureSize: 2048
+    maxPlaceholderSize: 32
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 3
+    buildTarget: Server
+    maxTextureSize: 2048
+    maxPlaceholderSize: 32
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 3
+    buildTarget: WebGL
+    maxTextureSize: 2048
+    maxPlaceholderSize: 32
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 3
+    buildTarget: WeixinMiniGame
+    maxTextureSize: 2048
+    maxPlaceholderSize: 32
     resizeAlgorithm: 0
     textureFormat: -1
     textureCompression: 1
@@ -136,14 +183,13 @@ TextureImporter:
       name: EnergyBall_0
       rect:
         serializedVersion: 2
-        x: 11
-        y: 47
-        width: 88
-        height: 38
+        x: 0
+        y: 0
+        width: 128
+        height: 128
       alignment: 0
       pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
@@ -158,14 +204,13 @@ TextureImporter:
       name: EnergyBall_1
       rect:
         serializedVersion: 2
-        x: 137
-        y: 47
-        width: 86
-        height: 40
+        x: 128
+        y: 0
+        width: 128
+        height: 128
       alignment: 0
       pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
@@ -180,14 +225,13 @@ TextureImporter:
       name: EnergyBall_2
       rect:
         serializedVersion: 2
-        x: 225
-        y: 59
-        width: 8
-        height: 16
+        x: 256
+        y: 0
+        width: 128
+        height: 128
       alignment: 0
       pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
@@ -202,14 +246,13 @@ TextureImporter:
       name: EnergyBall_3
       rect:
         serializedVersion: 2
-        x: 263
-        y: 45
-        width: 88
-        height: 42
+        x: 384
+        y: 0
+        width: 128
+        height: 128
       alignment: 0
       pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
@@ -224,14 +267,13 @@ TextureImporter:
       name: EnergyBall_4
       rect:
         serializedVersion: 2
-        x: 393
-        y: 45
-        width: 86
-        height: 42
+        x: 512
+        y: 0
+        width: 128
+        height: 128
       alignment: 0
       pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
@@ -246,14 +288,13 @@ TextureImporter:
       name: EnergyBall_5
       rect:
         serializedVersion: 2
-        x: 479
-        y: 59
-        width: 8
-        height: 16
+        x: 640
+        y: 0
+        width: 128
+        height: 128
       alignment: 0
       pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
@@ -268,14 +309,13 @@ TextureImporter:
       name: EnergyBall_6
       rect:
         serializedVersion: 2
-        x: 527
-        y: 45
-        width: 82
-        height: 40
+        x: 768
+        y: 0
+        width: 128
+        height: 128
       alignment: 0
       pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
@@ -290,14 +330,13 @@ TextureImporter:
       name: EnergyBall_7
       rect:
         serializedVersion: 2
-        x: 649
-        y: 61
-        width: 6
-        height: 8
+        x: 896
+        y: 0
+        width: 128
+        height: 128
       alignment: 0
       pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
@@ -312,14 +351,13 @@ TextureImporter:
       name: EnergyBall_8
       rect:
         serializedVersion: 2
-        x: 655
-        y: 45
-        width: 82
-        height: 42
+        x: 1024
+        y: 0
+        width: 128
+        height: 128
       alignment: 0
       pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
@@ -330,90 +368,19 @@ TextureImporter:
       indices: 
       edges: []
       weights: []
-    - serializedVersion: 2
-      name: EnergyBall_9
-      rect:
-        serializedVersion: 2
-        x: 773
-        y: 47
-        width: 92
-        height: 38
-      alignment: 0
-      pivot: {x: 0, y: 0}
-      border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
-      outline: []
-      physicsShape: []
-      tessellationDetail: -1
-      bones: []
-      spriteID: d4107438398b40f90800000000000000
-      internalID: -6988257778069995187
-      vertices: []
-      indices: 
-      edges: []
-      weights: []
-    - serializedVersion: 2
-      name: EnergyBall_10
-      rect:
-        serializedVersion: 2
-        x: 903
-        y: 47
-        width: 88
-        height: 38
-      alignment: 0
-      pivot: {x: 0, y: 0}
-      border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
-      outline: []
-      physicsShape: []
-      tessellationDetail: -1
-      bones: []
-      spriteID: 812f9840e113ca950800000000000000
-      internalID: 6461593570364748312
-      vertices: []
-      indices: 
-      edges: []
-      weights: []
-    - serializedVersion: 2
-      name: EnergyBall_11
-      rect:
-        serializedVersion: 2
-        x: 1027
-        y: 47
-        width: 92
-        height: 38
-      alignment: 0
-      pivot: {x: 0, y: 0}
-      border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
-      outline: []
-      physicsShape: []
-      tessellationDetail: -1
-      bones: []
-      spriteID: d236bbc2175470860800000000000000
-      internalID: 7496036457165579053
-      vertices: []
-      indices: 
-      edges: []
-      weights: []
     outline: []
-    customData: 
     physicsShape: []
     bones: []
-    spriteID: 
+    spriteID: 7766ad9625dfab3409d7dd93d527a164
     internalID: 0
     vertices: []
     indices: 
     edges: []
     weights: []
     secondaryTextures: []
-    spriteCustomMetadata:
-      entries: []
     nameFileIdTable:
       EnergyBall_0: -7585660988095454295
       EnergyBall_1: -3331487606584094558
-      EnergyBall_10: 6461593570364748312
-      EnergyBall_11: 7496036457165579053
       EnergyBall_2: 767724539417163884
       EnergyBall_3: -1559554707437419804
       EnergyBall_4: 1432958139363966512
@@ -421,9 +388,10 @@ TextureImporter:
       EnergyBall_6: -5686064151849331640
       EnergyBall_7: -309615286884111360
       EnergyBall_8: 963973627931636530
-      EnergyBall_9: -6988257778069995187
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
+  doOverrideTextureManagerOperations: 0
+  platformOperationGroupSettings: 
   userData: 
   assetBundleName: 
   assetBundleVariant: 

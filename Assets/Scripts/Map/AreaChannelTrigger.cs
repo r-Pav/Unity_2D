@@ -223,7 +223,8 @@ public class AreaChannelTrigger : MonoBehaviour
         //     (卡在跳跃帧滑行过管道)。必须主动复位:
         //     - FSM 切回 Idle(ChangeState 立即执行,不依赖被冻结的 Update)
         //     - 清全部动画 Bool(IsJumping/IsFalling/IsAttacking/IsAirAttacking/IsHurt/IsAirHurt/IsDashing)
-        //     - anim.Play 强制直切,绕过渡竞争(坑39:代码切状态时动画过渡竞争)
+        //       残留状态出口条件满足 → Exit → Entry 重判落 Locomotion;管道内速度 6 由 PlayerAnimation
+        //       每帧分档驱动 BlendTree 显示奔跑(不再 anim.Play 直切,动画器无独立 Idle 状态)
         //     - 恢复被空中攻击改过的 gravityScale
         var anim = player.Animator;
         if (anim != null)
@@ -235,7 +236,6 @@ public class AreaChannelTrigger : MonoBehaviour
             anim.SetBool(AnimParams.IsHurt, false);
             anim.SetBool(AnimParams.IsAirHurt, false);
             anim.SetBool(AnimParams.IsDashing, false);
-            anim.Play("Idle", 0, 0f); // 强制直切待机,绕过渡竞争
         }
         if (player.PlayerFsm != null && player.IdleState != null)
             player.PlayerFsm.ChangeState(player.IdleState);

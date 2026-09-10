@@ -91,6 +91,29 @@ public class MusicPointManager : MonoBehaviour
     /// <summary>当前主源音频时间(唯一时钟;P5 Boss 模式跟随当前主源)</summary>
     public float TrackTime => _activeSource != null ? _activeSource.time : 0f;
 
+    // ── 自动重音预告查询(供 EnemyBeatIndicator 轮询;公式与 AutoBarRoutine 的 next 对齐,纯只读)──
+    // 注意:禁止为复用这些 getter 去重构 AutoBarRoutine 内部计算(AutoBarRoutine 在排程协程内自己算即可,改它有回归风险)。
+
+    /// <summary>当前曲是否配置自动重音(barIntervalSeconds>0)</summary>
+    public bool HasAutoBar => _currentTrack != null && _currentTrack.barIntervalSeconds > 0f;
+
+    /// <summary>下一个自动重音窗口时刻(-1 = 无自动重音);公式与 AutoBarRoutine 的 next 对齐</summary>
+    public float NextAutoBarTime
+    {
+        get
+        {
+            if (!HasAutoBar) return -1f;
+            float interval = _currentTrack.barIntervalSeconds;
+            return Mathf.Floor(TrackTime / interval) * interval + interval;
+        }
+    }
+
+    /// <summary>距下个自动重音窗口剩余秒数(-1 = 无);窗口已开后为负,调用方用 >0 判断</summary>
+    public float TimeToNextAutoBar => HasAutoBar ? NextAutoBarTime - TrackTime : -1f;
+
+    /// <summary>当前自动重音判定窗口时长(秒)= 2×windowHalfWidth;背刺标识动态适配内环用</summary>
+    public float WindowSeconds => windowHalfWidth * 2f;
+
     /// <summary>当前是否在触发窗口内(特殊攻击按键事件查询,不做每帧轮询)</summary>
     public bool IsInWindow() => _inWindow;
 

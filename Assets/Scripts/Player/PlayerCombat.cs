@@ -54,6 +54,20 @@ public class PlayerCombat : MonoBehaviour
     //[Tooltip("重音命中特效:背刺命中帧在敌人位置(击飞点)生成的一次性粒子;允许空")]
     //[SerializeField] private GameObject backstabHitVFX;
 
+    // ============================================================
+    // 攻击音效(统一走 AudioManager.PlaySfx,响度随设置面板 SFX 滑条)
+    // ============================================================
+
+    [Header("攻击音效")]
+    [Tooltip("普通挥砍命中音效(空 = 不播)")]
+    [SerializeField] private AudioClip hitSfx;
+
+    [Tooltip("命中 Boss 音效(空 = 回退 hitSfx)")]
+    [SerializeField] private AudioClip hitBossSfx;
+
+    [Tooltip("命中音效相对音量(最终响度 = 设置面板 SFX 音量 × 此值)")]
+    [Range(0f, 1f)] [SerializeField] private float hitSfxVolume = 1f;
+
     [Header("近战")]
     [Tooltip("近战伤害")]
     [SerializeField] private float meleeDamage = 1f;
@@ -414,6 +428,8 @@ public class PlayerCombat : MonoBehaviour
 
         if (hitAnything)
         {
+            PlayHitSfx(hitBoss);   // 命中音效(空挥不响;命中 Boss 走 hitBossSfx)
+
             // 命中震屏随卡帧同入口触发（真实时间驱动，卡帧冻结期间照常播放）；命中 Boss 用 Boss 档位；
             // 震屏沿攻击方向为主（AttackDir = 武器攻击线朝向，带少量垂直抖动）
             float shakeDur = hitBoss ? bossHitShakeDuration : enemyHitShakeDuration;
@@ -440,6 +456,16 @@ public class PlayerCombat : MonoBehaviour
             canTriggerElementProc = true,   // player 攻击默认可触发元素 proc（C#9 结构体无字段默认值，显式设置）
             critMultiplier = _lastCritMultiplier   // 暴击仲裁结果透传（0=未暴击）
         };
+    }
+
+    /// <summary>
+    /// 命中音效统一出口:命中 Boss 优先 hitBossSfx,未配则回退 hitSfx;两者都空静默跳过。
+    /// 由普攻命中 / 弹反重击 / 背刺三处命中结算调用,空挥不调。
+    /// </summary>
+    private void PlayHitSfx(bool isBoss)
+    {
+        AudioClip clip = (isBoss && hitBossSfx != null) ? hitBossSfx : hitSfx;
+        AudioManager.Instance?.PlaySfx(clip, hitSfxVolume);
     }
 
     /// <summary>
@@ -550,6 +576,8 @@ public class PlayerCombat : MonoBehaviour
 
         if (hitAnything)
         {
+            PlayHitSfx(hitBoss);   // 命中音效(弹反重击同普通路径;命中 Boss 走 hitBossSfx)
+
             // 命中震屏随卡帧同入口触发；命中 Boss 用 Boss 档位；震屏沿攻击方向为主（弹反重击同普通路径）
             float shakeDur = hitBoss ? bossHitShakeDuration : enemyHitShakeDuration;
             float shakeMag = hitBoss ? bossHitShakeMagnitude : enemyHitShakeMagnitude;
@@ -586,7 +614,9 @@ public class PlayerCombat : MonoBehaviour
         };
         var info = BuildDamageInfo(dmg, meleeFinisherAttackType, knock);
         info.suppressAirHang = true;   // 背刺=终结技:跳过敌人空中滞空吸附(_pullToPlayer),enemy 正常击退飞出自然落地
+        info.isBackstabFinisher = true;   // 受击方播背刺受击 VFX(EnemyControllerBase.backstabHitVFX,跟随击飞)
         CombatResolver.Resolve(info.source, target, info);
+        PlayHitSfx(target.IsBoss);   // 背刺命中音效(命中 Boss 走 hitBossSfx)
 
         // [2026-09-07 AttackVFXAnchor 收敛暂停] 背刺命中特效由被刺槽(PlayBackstab)统一承担
         //if (backstabHitVFX != null)

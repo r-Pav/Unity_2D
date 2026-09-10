@@ -57,7 +57,7 @@ public class EnemyRangedController : EnemyControllerBase
         rangedAttackWidth = Resolve(rangedAttackWidth, LvStats?.rangedAttackWidth ?? 0f, DefaultRangedAttackWidth);
         rangedAttackHeight = Resolve(rangedAttackHeight, LvStats?.rangedAttackHeight ?? 0f, DefaultRangedAttackHeight);
 
-        stunState = new EnemyStunState(this, Fsm);
+        stunState = new EnemyStunState(this, Fsm, Animator);
         SetStunState(stunState);
         base.Start();
     }

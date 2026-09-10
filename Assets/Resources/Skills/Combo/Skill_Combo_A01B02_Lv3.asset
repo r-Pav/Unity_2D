@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 58432dd9f20e9514fa512d9d9ff0a9e3, type: 3}
   m_Name: Skill_Combo_A01B02_Lv3
   m_EditorClassIdentifier: 
-  skillName: Combo_A01B02_Lv3
+  skillName: A01B02_Lv3
   description: "\u6CBF\u9014\u653B\u51FB\u5FC5\u5B9A\u66B4\u51FB + \u56FA\u5B9A\u5F53\u524D\u5143\u7D20"
-  icon: {fileID: 1435083807972979427, guid: f2c3060b2bafe0146877a72c930086e0, type: 3}
+  icon: {fileID: 5466908159382051022, guid: f2c3060b2bafe0146877a72c930086e0, type: 3}
   hotkey: 0
   cooldown: 10
   manaCost: 20

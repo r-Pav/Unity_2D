@@ -12,14 +12,20 @@ public class EnemyStunState : EntityState
     private readonly EnemyControllerBase enemy;
     private float timer;
 
-    public EnemyStunState(EnemyControllerBase enemy, StateMachine stateMachine)
-        : base(enemy, stateMachine)
+    /// <summary>
+    /// 构造:传入 Animator 让基类的 animBoolNames 机制驱动受击动画(IsHurt=true → Animator Entry 路由 Hurt,
+    /// Exit 时置 false 回落)。Hurt.anim 非循环,播完保持末帧定住,直到 stun 结束。
+    /// </summary>
+    public EnemyStunState(EnemyControllerBase enemy, StateMachine stateMachine, Animator anim = null)
+        : base(enemy, stateMachine, anim, new[] { AnimParams.IsHurt })
     {
         this.enemy = enemy;
     }
 
     public override void OnEnter()
     {
+        base.OnEnter(); // IsHurt=true → Animator Entry 路由进 Hurt(漏这句则参数永不设置,动画不切)
+
         enemy.moveInput = 0f;
         // enemy.ApplyStateColor(new Color(1f, 0f, 1f)); // 品红色（硬直）[状态色已移除]
         timer = 1f;
@@ -53,6 +59,6 @@ public class EnemyStunState : EntityState
 
     public override void OnExit()
     {
-        // 无需特殊处理
+        base.OnExit(); // IsHurt=false → Hurt 状态 Exit，Entry 重判回落 Locomotion
     }
 }

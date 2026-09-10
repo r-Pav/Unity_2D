@@ -149,8 +149,7 @@ public static class ParticleFXGenerator
             Debug.LogError("[ParticleFXGenerator] 输出目录不存在:" + OutputDir);
             return;
         }
-        if (AssetDatabase.LoadAssetAtPath<GameObject>(path) != null)
-            AssetDatabase.DeleteAsset(path);
+        // 不 DeleteAsset:已存在时覆盖保存(保 guid,场景已拖的槽位引用不断)
 
         GameObject root = new GameObject("BackstabBurst_Template");
         ConfigureBackstabBurst(root);
@@ -188,7 +187,7 @@ public static class ParticleFXGenerator
         ringMain.startSpeed = new ParticleSystem.MinMaxCurve(0f);
         ringMain.startSize = new ParticleSystem.MinMaxCurve(0.5f);
         ringMain.startColor = new Color(1f, 0.92f, 0.75f);
-        ringMain.simulationSpace = ParticleSystemSimulationSpace.World;
+        ringMain.simulationSpace = ParticleSystemSimulationSpace.Local;   // Local:挂 enemy 下随被击飞移动(背刺受击 VFX 用)
         ringMain.maxParticles = 20;
 
         ParticleSystem.EmissionModule ringEmi = ring.emission;
@@ -220,7 +219,7 @@ public static class ParticleFXGenerator
         flashMain.startSpeed = new ParticleSystem.MinMaxCurve(0f);
         flashMain.startSize = new ParticleSystem.MinMaxCurve(0.9f);
         flashMain.startColor = new Color(1f, 0.95f, 0.8f);
-        flashMain.simulationSpace = ParticleSystemSimulationSpace.World;
+        flashMain.simulationSpace = ParticleSystemSimulationSpace.Local;
         flashMain.maxParticles = 20;
 
         ParticleSystem.EmissionModule flashEmi = flash.emission;
@@ -251,7 +250,7 @@ public static class ParticleFXGenerator
         shardMain.startSpeed = new ParticleSystem.MinMaxCurve(3f, 7f);
         shardMain.startSize = new ParticleSystem.MinMaxCurve(0.1f, 0.16f);
         shardMain.startColor = new Color(1f, 0.85f, 0.5f);
-        shardMain.simulationSpace = ParticleSystemSimulationSpace.World;
+        shardMain.simulationSpace = ParticleSystemSimulationSpace.Local;
         shardMain.gravityModifier = 1.2f; // 轻微下落,像被击溅出的碎屑
         shardMain.maxParticles = 30;
 
@@ -640,6 +639,88 @@ public static class ParticleFXGenerator
         mSize.enabled = true;
         mSize.size = new ParticleSystem.MinMaxCurve(1f, new AnimationCurve(
             new Keyframe(0f, 0.8f), new Keyframe(1f, 2.4f)));
+    }
+
+    /// <summary>
+    /// 背刺判定环标识:固定外环(RangeOuter,窗口起点锚)+ 动态内环(RangeInner,窗口关,按窗口时长适配)
+    /// 夹出判定带 + 金色判定环(Ring,匀速收缩由 BackstabAimIndicator 协程按剩余时间设 localScale)。
+    /// 用法:enemy 头顶 BeatFlashPoint(挂点)拖 aimPrefab 槽 = 本 prefab;窗口前 lead 秒由 EnemyBeatIndicator
+    /// → BeatFlashPoint.Flash(lead, window) 实例化到挂点,组件按"重音拍锚点反推"控制三环尺寸。
+    /// 三个粒子都是基准单环(startSize=1.0,长 lifetime 单发),实际尺寸 = transform.localScale(同心缩放),
+    /// 所以不需要粒子自身曲线;根默认 inactive(防未到窗口就显示),Local simulation space 跟随 enemy。
+    /// </summary>
+    private static void ConfigureBackstabAim(GameObject root)
+    {
+        // 三基准环(全 startSize=1.0,尺寸由组件 localScale 控制):淡蓝外环/内环 + 金色判定环
+        ParticleSystem rangeOuter = ConfigureStaticRing(root.transform, "RangeOuter", 1f, new Color(0.75f, 0.88f, 1f, 0.55f));
+        ParticleSystem rangeInner = ConfigureStaticRing(root.transform, "RangeInner", 1f, new Color(0.75f, 0.88f, 1f, 0.55f));
+        ParticleSystem ring = ConfigureStaticRing(root.transform, "Ring", 1f, new Color(1f, 0.85f, 0.45f));
+
+        // 根挂 BackstabAimIndicator 并拖好引用(序列化写入 prefab);根默认 inactive
+        // (由 BeatFlashPoint.Flash 实例化并激活播放,防拖进场景未到窗口就显示)
+        var ctrl = root.AddComponent<BackstabAimIndicator>();
+        var so = new SerializedObject(ctrl);
+        so.FindProperty("rangeOuter").objectReferenceValue = rangeOuter;
+        so.FindProperty("rangeInner").objectReferenceValue = rangeInner;
+        so.FindProperty("ring").objectReferenceValue = ring;
+        so.ApplyModifiedPropertiesWithoutUndo();
+        root.SetActive(false);
+    }
+
+    /// <summary>静态单环粒子(长 lifetime 单发,不循环不闪;startSize = 环外圈直径基准,1.0 = 完美点圈大小)</summary>
+    private static ParticleSystem ConfigureStaticRing(Transform parent, string name, float size, Color color)
+    {
+        ParticleSystem ps = CreateChildParticle(parent, name,
+            "Assets/Epic Toon FX/Materials/Misc/ring (additive).mat");
+        ParticleSystem.MainModule main = ps.main;
+        main.duration = 1f;
+        main.loop = false;
+        main.playOnAwake = true;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(60f);   // 近似常驻:单发长命,不循环不闪
+        main.startSpeed = new ParticleSystem.MinMaxCurve(0f);
+        main.startSize = new ParticleSystem.MinMaxCurve(size);
+        main.startColor = color;
+        main.simulationSpace = ParticleSystemSimulationSpace.Local;
+        main.maxParticles = 4;
+
+        ParticleSystem.EmissionModule emi = ps.emission;
+        emi.rateOverTime = new ParticleSystem.MinMaxCurve(0f);
+        emi.SetBursts(new[] { new ParticleSystem.Burst(0f, 1) });
+        ParticleSystem.ShapeModule shape = ps.shape;
+        shape.enabled = true;
+        shape.shapeType = ParticleSystemShapeType.Sphere;
+        shape.radius = 0.01f;
+        return ps;
+    }
+
+    [MenuItem("Tools/粒子特效/背刺标识(圆圈+收缩环)")]
+    public static void CreateBackstabAimTemplate()
+    {
+        string path = OutputDir + "/BackstabAim_Template.prefab";
+
+        if (!AssetDatabase.IsValidFolder(OutputDir))
+        {
+            Debug.LogError("[ParticleFXGenerator] 输出目录不存在:" + OutputDir);
+            return;
+        }
+        // 不 DeleteAsset:已存在时直接覆盖保存(保 prefab guid,场景已有实例引用不断)
+
+        GameObject root = new GameObject("BackstabAim_Template");
+        ConfigureBackstabAim(root);
+
+        GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, path);
+        Object.DestroyImmediate(root);
+
+        if (prefab != null)
+        {
+            EditorGUIUtility.PingObject(prefab);
+            Selection.activeObject = prefab;
+            Debug.Log("[ParticleFXGenerator] 已生成:" + path, prefab);
+        }
+        else
+        {
+            Debug.LogError("[ParticleFXGenerator] prefab 保存失败:" + path);
+        }
     }
 
     /// <summary>在父级下建一个子粒子物体并挂上指定材质。</summary>

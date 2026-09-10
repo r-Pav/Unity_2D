@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   skillName: TreeB_Dash
   description: "\u671D\u524D\u65B9\u51B2\u523A\u4E00\u6BB5\u8DDD\u79BB"
-  icon: {fileID: -7668790182515900673, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
+  icon: {fileID: 6789135733701371458, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
   hotkey: 101
   cooldown: 3
   manaCost: 8
@@ -64,7 +64,7 @@ MonoBehaviour:
   lv2Right:
     behaviorId: 
     branchName: "\u653B\u51FB\u5E7B\u8C61"
-    icon: {fileID: -6739525477993420851, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
+    icon: {fileID: -5278310724755141886, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
     damage: 15
     cooldown: 2
     manaCost: 6
@@ -79,7 +79,7 @@ MonoBehaviour:
   lv3Left:
     behaviorId: 
     branchName: "\u5927\u8303\u56F4\u5632\u8BBD\u5E7B\u8C61"
-    icon: {fileID: -1289143293111609116, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
+    icon: {fileID: 2072017630249256147, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
     damage: 5
     cooldown: 4
     manaCost: 15
@@ -94,7 +94,7 @@ MonoBehaviour:
   lv3Right:
     behaviorId: 
     branchName: "\u6CBF\u9014\u653B\u51FB+\u8DDD\u79BB\u589E\u52A0"
-    icon: {fileID: 2072017630249256147, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
+    icon: {fileID: 6592680923324011761, guid: 288db54d6909e2a439a6d6e8389d68d1, type: 3}
     damage: 20
     cooldown: 2.5
     manaCost: 10

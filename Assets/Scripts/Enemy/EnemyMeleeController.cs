@@ -35,7 +35,7 @@ public class EnemyMeleeController : EnemyControllerBase
         // [Lv 收敛] patrolRange：Inspector(>0) → SO 对应 Lv 档 → 内置 3f（0 = 未设置）
         patrolRange = Resolve(patrolRange, LvStats?.patrolRange ?? 0f, DefaultPatrolRange);
 
-        stunState = new EnemyStunState(this, Fsm);
+        stunState = new EnemyStunState(this, Fsm, Animator);
         SetStunState(stunState);
         base.Start();
     }

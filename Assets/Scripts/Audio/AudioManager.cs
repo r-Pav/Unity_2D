@@ -48,10 +48,18 @@ public class AudioManager : MonoBehaviour
     [Tooltip("SFX 源：音效，随 sfx 音量")]
     [SerializeField] private List<AudioSource> sfxSources = new List<AudioSource>();
 
+    [Header("SFX 播放池(运行时自建,无需拖引用)")]
+    [Tooltip("一次性音效并发音源数量(轮转取源 + PlayOneShot,连击多声可重叠)")]
+    [SerializeField] private int sfxPoolSize = 6;
+
     /// <summary>最近一次音量值(注册新源时应用,不重新读档)</summary>
     private float _masterVol = 1f;
     private float _bgmVol = 1f;
     private float _sfxVol = 1f;
+
+    /// <summary>SFX 播放池(轮转取源,PlayOneShot 支持重叠)</summary>
+    private AudioSource[] _sfxPool;
+    private int _sfxNext;
 
     /// <summary>PlayerPrefs 持久化 key（与 SettingsPanel 共用）</summary>
     private const string SettingsKey = "GameSettings";
@@ -68,6 +76,7 @@ public class AudioManager : MonoBehaviour
 
         GameSettingsData data = LoadSettings();
         SetVolumes(data.master, data.bgm, data.sfx);
+        CreateSfxPool();
     }
 
     /// <summary>应用三路音量（遍历各组；null 源 / 空列表自动跳过）</summary>
@@ -83,6 +92,50 @@ public class AudioManager : MonoBehaviour
 
     /// <summary>当前 BGM 音量(切换协程缩放基准,避免覆盖用户设置)</summary>
     public float BgmVolume => _bgmVol;
+
+    /// <summary>当前 SFX 音量</summary>
+    public float SfxVolume => _sfxVol;
+
+    // ============================================================
+    // SFX 播放池(运行时自建,零拖拽)
+    // ============================================================
+
+    /// <summary>
+    /// 运行时创建 SFX 音源池(2D)。每个源注册进 sfxSources → 音量自动跟随设置面板 SFX 滑条;
+    /// 挂在 AudioManager 自身子节点下,随单例常驻跨场景。
+    /// </summary>
+    private void CreateSfxPool()
+    {
+        int count = Mathf.Max(1, sfxPoolSize);
+        _sfxPool = new AudioSource[count];
+        for (int i = 0; i < count; i++)
+        {
+            var go = new GameObject($"SfxSource_{i + 1}");
+            go.transform.SetParent(transform, false);
+            var src = go.AddComponent<AudioSource>();
+            src.playOnAwake = false;
+            src.loop = false;
+            src.spatialBlend = 0f;   // 2D:不随距离衰减
+            src.volume = _sfxVol;
+            _sfxPool[i] = src;
+            RegisterSource(AudioGroup.Sfx, src);   // 音量跟随 sfx 组(含后续 SetVolumes 广播)
+        }
+    }
+
+    /// <summary>
+    /// 播放一次性音效(clip 空 = 静默跳过,不警告)。轮转取源 + PlayOneShot,快速连击时多声可重叠不互相打断。
+    /// volume 为 0~1 相对缩放,最终响度 = SFX 音量 × volume。
+    /// </summary>
+    public void PlaySfx(AudioClip clip, float volume = 1f)
+    {
+        if (clip == null) return;
+        if (_sfxPool == null || _sfxPool.Length == 0) return;
+
+        var src = _sfxPool[_sfxNext];
+        _sfxNext = (_sfxNext + 1) % _sfxPool.Length;
+        if (src == null) return;
+        src.PlayOneShot(clip, Mathf.Clamp01(volume));
+    }
 
     /// <summary>音源自动注册(场景播放器 Awake 调用):加入对应组并立即应用当前音量</summary>
     public void RegisterSource(AudioGroup group, AudioSource source)

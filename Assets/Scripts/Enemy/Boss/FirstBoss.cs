@@ -98,7 +98,7 @@ public class FirstBoss : BossControllerBase
 
     private new void Start()
     {
-        stunState = new EnemyStunState(this, Fsm);
+        stunState = new EnemyStunState(this, Fsm, Animator);
         SetStunState(stunState);
         base.Start();
     }

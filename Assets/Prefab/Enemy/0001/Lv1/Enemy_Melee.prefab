@@ -126,6 +126,7 @@ GameObject:
   - component: {fileID: 1230724548114252562}
   - component: {fileID: 5440586817922250902}
   - component: {fileID: 1801505091698427895}
+  - component: {fileID: 4330448440717478073}
   m_Layer: 7
   m_HasEditorInfo: 1
   m_Name: Enemy_Melee
@@ -142,7 +143,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2456788335929557319}
   serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 4.68, y: -2.1, z: -0.022004815}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -236,11 +237,11 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 2056
   groundCheckDist: 0.7
-  groundCheckColor: {r: 0, g: 1, b: 0.02520442, a: 1}
+  groundCheckColor: {r: 0, g: 1, b: 0.02352953, a: 1}
   speedMultiplier: 1
   config: {fileID: 11400000, guid: 1f53c3acc62abae489469e670692b89b, type: 2}
   level: 1
-  maxHealth: 100
+  maxHealth: 500
   hitColor: {r: 1, g: 1, b: 1, a: 1}
   hitFlashDuration: 0.1
   enemyHitPause: 0
@@ -250,7 +251,8 @@ MonoBehaviour:
   chargeFlashMaxFreq: 20
   hitVFXPrefab: {fileID: 184316, guid: 14bb13abe3804f242b49ffc7f2604227, type: 3}
   directionalHitVFXPrefab: {fileID: 0}
-  deathVFXPrefab: {fileID: 0}
+  deathVFXPrefab: {fileID: 6625299371266367536, guid: 6e562d7d4048bcc43bc5ec1e8f954a8a, type: 3}
+  backstabHitVFX: {fileID: 3891496703827485365, guid: 7d156202ee692a347a366a2d96f019b9, type: 3}
   hitVFXVariants: []
   attackWidth: 2.31
   attackHeight: 1.26
@@ -277,7 +279,8 @@ MonoBehaviour:
     m_Bits: 65536
   channelCheckForward: 6
   channelRayHeightOffset: 0
-  combatSightHeight: 3
+  patrolBoundaryDistance: 3
+  combatSightHeight: 6
   facingDeadZone: 0.3
   moveInput: 0
   attackCooldownTimer: 0
@@ -295,7 +298,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   config: {fileID: 0}
-  damage: 5
+  damage: 0
   attackFlashColor: {r: 1, g: 1, b: 1, a: 1}
   attackFlashDuration: 0.08
   rangeIndicator: {fileID: 5531476928863027412}
@@ -383,6 +386,21 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   moveSpeedMin: 0.5
   defaultMin: 0
+--- !u!114 &4330448440717478073
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2456788335929557319}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ce55d5cfcef83d446bd80c46ece161ef, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  totalMin: 30
+  totalMax: 50
+  orbPrefab: {fileID: 3043132929467915962, guid: 7082f5e398de6954eb366906cf0042de, type: 3}
 --- !u!1 &3078683569224001834
 GameObject:
   m_ObjectHideFlags: 0
@@ -769,7 +787,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &612896648944777804
 Transform:
   m_ObjectHideFlags: 0
@@ -944,7 +962,7 @@ Transform:
   m_GameObject: {fileID: 6451405307376015282}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.956, z: 0}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 0.55, y: 0.55, z: 0.55}
   m_ConstrainProportionsScale: 1
   m_Children: []
@@ -1017,6 +1035,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5737f6d7d82132744b78395ce13d20ce, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  aimPrefab: {fileID: 297918510233002943, guid: ed819b90865f14646a6d5ee15109694c, type: 3}
   flashSprite: {fileID: 2956777605993204997}
   flashColor: {r: 1, g: 0.92, b: 0.4, a: 1}
   flashDuration: 0.25

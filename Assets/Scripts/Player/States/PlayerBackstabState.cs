@@ -200,6 +200,7 @@ public class PlayerBackstabState : EntityState
         // 重音成功:头顶 combo 计数 +1(BeatComboIndicator,不存在则跳过);
         // 在 _target 非空非死分支内执行,挥空/目标死亡不计数,天然满足"挥空无效"
         owner.GetComponentInChildren<BeatComboIndicator>(true)?.NotifyBeatHit();
+        // 命中即收标识实例/旧闪点(爆炸特效由 PlayerCombat.ExecuteBackstab 伤害结算事件统一处理,不在此处)
         _target.GetComponentInChildren<BeatFlashPoint>(true)?.Hide();
 
         // 背刺命中成功 → 开启追击窗口(玩家侧共享数据,PlayerController.BeginBackstabChase):
