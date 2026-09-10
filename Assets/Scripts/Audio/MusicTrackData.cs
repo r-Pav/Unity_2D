@@ -6,7 +6,15 @@ using UnityEngine;
 /// loopPoint:0 = 普通循环(场景曲:单源 loop=true,播完重复);>0 = 交叠循环(Boss 曲:循环内容 0→loopPoint,结尾段与开头段交叠)。
 /// points:音乐点时间秒,升序,手工标。场景曲整曲范围;Boss 曲 0→loopPoint 区间内(区间外为交叠结尾段,不标点)。每圈重复生效。
 /// 两段式(Boss 曲):introClip 第一首(前奏),播到 introSwitchTime 交叠切到 clip(第二首/主体循环段);introPoints 第一首的音乐点。
-/// pointGroups:命名标点组(多数组),如 BossHeavy(重击)/BossOrb1~5(法球)/PlayerCombo(玩家连击)/BossHeavySound(重击音)。
+/// pointGroups:命名标点组(多数组),如 BossHeavy(重击)/BossOrb1~5(法球)/PlayerCombo(玩家连击)/BossHeavySound(重击音)/PlayerBackstab(连音背刺)。
+///
+/// 【背刺标点组约定 — 连音背刺 P2】groupName 固定 "PlayerBackstab"(复用 MusicPointGroup 结构,不新增字段):
+///   · 组内标点 = 连音点(秒,升序);MusicPointManager 按 chainGapThreshold(默认 0.5s = Backstab.anim 时长)
+///     把相邻间隔 < 阈值的点切成若干「连音组」(孤立点自成一组,长度 1)。
+///   · 启用连音时必须把本曲 barIntervalSeconds 设为 0:否则自动重音窗口与标点窗口两路同时开,
+///     背刺判定会出现两条来源不同的窗口,行为不可预期。
+///   · 未配置该组(或组为空)的曲 = 未启用连音:背刺判定回退自动重音窗口,行为与改前一致。
+///   · 该组只服务玩家背刺判定;禁止接进 PlayerBeatJudge(Boss 判定链走 BossHeavySound)。
 /// </summary>
 [CreateAssetMenu(fileName = "MusicTrack_", menuName = "Data/MusicTrack")]
 public class MusicTrackData : ScriptableObject
@@ -35,7 +43,8 @@ public class MusicTrackData : ScriptableObject
     public float[] introPoints;
 
     [Header("标点组(命名多数组)")]
-    [Tooltip("命名标点组:BossHeavy(重击)/BossOrb1~5(法球)/PlayerCombo(玩家连击)/BossHeavySound(重击音),秒数两位小数")]
+    [Tooltip("命名标点组:BossHeavy(重击)/BossOrb1~5(法球)/PlayerCombo(玩家连击)/BossHeavySound(重击音)/PlayerBackstab(连音背刺),秒数两位小数。" +
+             "配 PlayerBackstab 的曲须把 barIntervalSeconds 设为 0")]
     public MusicPointGroup[] pointGroups;
 
     /// <summary>按组名取标点组(未配置返回 null)</summary>
@@ -54,7 +63,7 @@ public class MusicTrackData : ScriptableObject
 [Serializable]
 public class MusicPointGroup
 {
-    [Tooltip("组名(代码按名查,固定约定:BossHeavy/BossOrb1~5/PlayerCombo/BossHeavySound)")]
+    [Tooltip("组名(代码按名查,固定约定:BossHeavy/BossOrb1~5/PlayerCombo/BossHeavySound/PlayerBackstab)")]
     public string groupName;
 
     [Tooltip("标点时间秒,升序,两位小数")]
