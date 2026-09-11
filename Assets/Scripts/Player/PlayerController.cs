@@ -9,6 +9,7 @@ using UnityEngine;
 [RequireComponent(typeof(PlayerJump))]
 [RequireComponent(typeof(PlayerDash))]
 [RequireComponent(typeof(PlayerHealth))]
+[DefaultExecutionOrder(-10000)]   // 早于默认顺序的业务脚本 Awake：Instance 静态读取才有值（替代旧 Find 兜底）
 public class PlayerController : PlayerCharacterBase
 {
     // ============================================================
@@ -17,15 +18,11 @@ public class PlayerController : PlayerCharacterBase
 
     private static PlayerController _instance;
 
-    public static PlayerController Instance
-    {
-        get
-        {
-            if (_instance == null)
-                _instance = FindObjectOfType<PlayerController>();
-            return _instance;
-        }
-    }
+    /// <summary>
+    /// 当前实例。无 Find 兜底：靠 Awake 接管 + OnDestroy 自清维护，
+    /// 避免兜底把"还没 Awake 的自己"提前写进静态字段导致自身被当重复实例销毁。
+    /// </summary>
+    public static PlayerController Instance => _instance;
 
     // ============================================================
     // 蹬墙跳
@@ -205,6 +202,7 @@ public class PlayerController : PlayerCharacterBase
 
     protected override void Awake()
     {
+        _instance = this;   // 先接管：本类 Awake 内 AddComponent 出的组件可能立刻访问 Instance
         base.Awake();
         combat = GetComponent<PlayerCombat>();
         groundPound = GetComponent<PlayerGroundPound>();
@@ -270,6 +268,12 @@ public class PlayerController : PlayerCharacterBase
             backstabWeapon != null ? backstabWeapon.BackstabChaseWindow : 2f,
             backstabWeapon != null ? backstabWeapon.BackstabChaseEnabled : true);
         PlayerFsm.ChangeState(IdleState);
+    }
+
+    /// <summary>自清单例引用：Instance 不再需要 Find 兜底(销毁后静态字段不留脏引用)</summary>
+    private void OnDestroy()
+    {
+        if (_instance == this) _instance = null;
     }
 
     private void Start()

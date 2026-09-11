@@ -9,6 +9,7 @@ using UnityEngine;
 ///   初始 targetX = player.x + biasLeft，让人物出现在屏幕左侧
 /// </summary>
 [RequireComponent(typeof(Camera))]
+[DefaultExecutionOrder(-10000)]   // 早于默认顺序业务脚本:PlayerGroundPound.Awake / PlayerHitFeedback.Awake 都要读 Instance
 public class CameraFollow : MonoBehaviour
 {
     // ============================================================
@@ -17,15 +18,11 @@ public class CameraFollow : MonoBehaviour
 
     private static CameraFollow _instance;
 
-    public static CameraFollow Instance
-    {
-        get
-        {
-            if (_instance == null)
-                _instance = FindObjectOfType<CameraFollow>();
-            return _instance;
-        }
-    }
+    /// <summary>
+    /// 当前实例。无 Find 兜底：靠 Awake 接管 + OnDestroy 自清维护，
+    /// 避免兜底把"还没 Awake 的自己"提前写进静态字段导致自身被当重复实例销毁。
+    /// </summary>
+    public static CameraFollow Instance => _instance;
 
     [Header("目标")]
     [SerializeField] private Transform target;
@@ -60,6 +57,17 @@ public class CameraFollow : MonoBehaviour
     private float _savedOrthoSize;
     private float _targetZoom;
     private Vector3 _posVelocity;
+
+    private void Awake()
+    {
+        _instance = this;   // 单例接管(Instance 无 Find 兜底,靠本行 + OnDestroy 自清维护)
+    }
+
+    /// <summary>自清单例引用：Instance 无 Find 兜底(销毁后静态字段不留脏引用)</summary>
+    private void OnDestroy()
+    {
+        if (_instance == this) _instance = null;
+    }
 
     private void Start()
     {

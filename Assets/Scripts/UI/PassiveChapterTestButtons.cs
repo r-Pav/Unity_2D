@@ -18,7 +18,7 @@ public class PassiveChapterTestButtons : MonoBehaviour
     {
         passiveEquipManager = GetComponentInParent<PassiveEquipManager>();
         if (passiveEquipManager == null)
-            passiveEquipManager = FindObjectOfType<PassiveEquipManager>();
+            passiveEquipManager = PassiveEquipManager.Instance;   // 去 Find 兜底：PassiveEquipManager 已是 -10000 先 Awake，本脚本默认序拿得到
 
         if (layerRows == null || layerRows.Length == 0)
             layerRows = FindLayerRows();

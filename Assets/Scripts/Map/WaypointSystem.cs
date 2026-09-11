@@ -16,21 +16,30 @@ using UnityEngine;
 /// 协程宿主:本组件所在 GO 是场景根常驻物,后续传送/黑场协程挂这里,
 /// 不会因 ZoneManager.ShowArea/HideArea 的 SetActive(false) 被杀(R1 风险)。
 /// </summary>
+[DefaultExecutionOrder(-10000)]   // 早于默认顺序业务脚本:WaypointTrigger.Awake / SaveSystem.Awake 都要读 Instance
 public class WaypointSystem : MonoBehaviour
 {
     // ============================================================
-    // Singleton(对齐 ZoneManager.Instance 模式:懒查找)
+    // Singleton(对齐 ZoneManager.Instance 模式:纯静态读取,无 Find 兜底)
     // ============================================================
 
     private static WaypointSystem _instance;
-    public static WaypointSystem Instance
+
+    /// <summary>
+    /// 当前实例。无 Find 兜底：靠 Awake 接管 + OnDestroy 自清维护，
+    /// 避免兜底把"还没 Awake 的自己"提前写进静态字段导致自身被当重复实例销毁。
+    /// </summary>
+    public static WaypointSystem Instance => _instance;
+
+    private void Awake()
     {
-        get
-        {
-            if (_instance == null)
-                _instance = FindObjectOfType<WaypointSystem>();
-            return _instance;
-        }
+        _instance = this;   // 单例接管(Instance 无 Find 兜底,靠本行 + OnDestroy 自清维护)
+    }
+
+    /// <summary>自清单例引用：Instance 无 Find 兜底(销毁后静态字段不留脏引用)</summary>
+    private void OnDestroy()
+    {
+        if (_instance == this) _instance = null;
     }
 
     // ============================================================

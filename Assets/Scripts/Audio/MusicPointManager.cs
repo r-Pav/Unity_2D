@@ -17,19 +17,17 @@ using UnityEngine;
 /// 连音分组(P2):当前曲 PlayerBackstab 组标点按 chainGapThreshold 切成若干连音组(相邻间隔 &lt; 阈值归一组的),
 /// 分组结果缓存(只在切曲/切圈/资产重载时重算),对外提供 CurrentChainPoints/PendingChainPointIndex 等只读查询。
 /// </summary>
+[DefaultExecutionOrder(-9999)]   // 早于所有默认顺序业务脚本(Awake/OnEnable 里读 Instance 的调用点)；
+                                 // 严格晚于 AudioManager(-10000)——Awake → RegisterAudioSources 依赖它已完成接管
 public class MusicPointManager : MonoBehaviour
 {
     private static MusicPointManager _instance;
 
-    public static MusicPointManager Instance
-    {
-        get
-        {
-            if (_instance == null)
-                _instance = FindObjectOfType<MusicPointManager>();
-            return _instance;
-        }
-    }
+    /// <summary>
+    /// 当前实例。无 Find 兜底：靠 Awake 接管 + OnDestroy 自清维护，
+    /// 避免兜底把"还没 Awake 的自己"提前写进静态字段导致自身被当重复实例销毁。
+    /// </summary>
+    public static MusicPointManager Instance => _instance;
 
     [Header("曲目")]
     [Tooltip("场景初始曲(场景加载自动播)")]
@@ -545,6 +543,8 @@ public class MusicPointManager : MonoBehaviour
 
     private void Awake()
     {
+        _instance = this;   // 单例接管(Instance 无 Find 兜底,靠本行 + OnDestroy 自清维护)
+
         if (initialTrack != null)
             PlayTrack(initialTrack);
         // 音量自动注册(替代手动拖 AudioManager.bgmSources):挂上即生效,场景销毁自动注销
@@ -571,6 +571,8 @@ public class MusicPointManager : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (_instance == this) _instance = null;   // 自清单例引用(Instance 无 Find 兜底,销毁后不留脏引用)
+
         var am = AudioManager.Instance;
         if (am == null) return;
         if (audioSourceA != null) am.UnregisterSource(AudioManager.AudioGroup.Bgm, audioSourceA);

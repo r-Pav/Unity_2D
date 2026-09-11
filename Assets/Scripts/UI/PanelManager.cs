@@ -41,6 +41,7 @@ public interface ISlideClose
 /// stack — a single panel that requests pause will pause the game regardless of what
 /// other panels declare.
 /// </summary>
+[DefaultExecutionOrder(-10000)]
 public sealed class PanelManager : MonoBehaviour
 {
     // ============================================================
@@ -49,15 +50,11 @@ public sealed class PanelManager : MonoBehaviour
 
     private static PanelManager _instance;
 
-    public static PanelManager Instance
-    {
-        get
-        {
-            if (_instance == null)
-                _instance = FindObjectOfType<PanelManager>();
-            return _instance;
-        }
-    }
+    /// <summary>
+    /// 当前实例。无 Find 兜底：靠 Awake 接管(判 _instance != this) + OnDestroy 自清维护，
+    /// 避免兜底把"还没 Awake 的自己"提前写进静态字段导致自身被当重复实例销毁。
+    /// </summary>
+    public static PanelManager Instance => _instance;
 
     // ============================================================
     // Internal types
@@ -94,12 +91,19 @@ public sealed class PanelManager : MonoBehaviour
 
     private void Awake()
     {
-        if (_instance != null)
+        // 判 != this：别的脚本先摸 Instance 时不会把自己算成重复实例（同 AudioManager）
+        if (_instance != null && _instance != this)
         {
             Destroy(gameObject);
             return;
         }
         _instance = this;
+    }
+
+    /// <summary>自清单例引用：Instance 不再需要 Find 兜底(销毁后静态字段不留脏引用；重复实例自毁时 _instance != this 不会误清)</summary>
+    private void OnDestroy()
+    {
+        if (_instance == this) _instance = null;
     }
 
     private void Start()

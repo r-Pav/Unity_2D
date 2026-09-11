@@ -17,6 +17,7 @@ using UnityEngine;
 /// T3:CurrentAreaId 运行时状态源(唯一写入口本类):管道到达/传送完成 → NotifyAreaEntered(写+广播
 ///     AreaEnterEvent → SaveSystem.AutoSave);读档恢复 → SetCurrentAreaSilent(只写不广播,防反向覆盖)。
 /// </summary>
+[DefaultExecutionOrder(-10000)]   // 早于默认顺序业务脚本:AreaIdentity.Awake 自注册 Area 根时要读到本实例
 public class ZoneManager : MonoBehaviour
 {
     // ============================================================
@@ -24,15 +25,12 @@ public class ZoneManager : MonoBehaviour
     // ============================================================
 
     private static ZoneManager _instance;
-    public static ZoneManager Instance
-    {
-        get
-        {
-            if (_instance == null)
-                _instance = FindObjectOfType<ZoneManager>();
-            return _instance;
-        }
-    }
+
+    /// <summary>
+    /// 当前实例。无 Find 兜底：靠 Awake 接管 + OnDestroy 自清维护，
+    /// 避免兜底把"还没 Awake 的自己"提前写进静态字段导致自身被当重复实例销毁。
+    /// </summary>
+    public static ZoneManager Instance => _instance;
 
     // ============================================================
     // 配置
@@ -97,9 +95,17 @@ public class ZoneManager : MonoBehaviour
 
     private void Awake()
     {
+        _instance = this;   // 单例接管(Instance 无 Find 兜底,靠本行 + OnDestroy 自清维护)
+
         // CurrentAreaId 兜底:任何 Read/写入口之前,运行时状态源先落到初始地区。
         // 之后由管道到达(NotifyAreaEntered)或读档(SetCurrentAreaSilent)覆盖。
         CurrentAreaId = string.IsNullOrEmpty(initialAreaId) ? DefaultAreaId : initialAreaId;
+    }
+
+    /// <summary>自清单例引用：Instance 无 Find 兜底(销毁后静态字段不留脏引用)</summary>
+    private void OnDestroy()
+    {
+        if (_instance == this) _instance = null;
     }
 
     /// <summary>

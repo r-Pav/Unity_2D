@@ -7,6 +7,7 @@ using System.Collections.Generic;
 ///       自动将修饰器同步到 StatModifierManager、暴露 UI 布局数据
 /// 约束：非战斗可操作、同层不可重复选同线、多层同线效果在 StatModifierManager 层叠加
 /// </summary>
+[DefaultExecutionOrder(-10000)]   // 早于默认顺序的业务脚本 Awake：Instance 静态读取才有值（替代旧 Find 兜底）
 public class PassiveEquipManager : MonoBehaviour
 {
     // ============================================================
@@ -15,15 +16,11 @@ public class PassiveEquipManager : MonoBehaviour
 
     private static PassiveEquipManager _instance;
 
-    public static PassiveEquipManager Instance
-    {
-        get
-        {
-            if (_instance == null)
-                _instance = FindObjectOfType<PassiveEquipManager>();
-            return _instance;
-        }
-    }
+    /// <summary>
+    /// 当前实例。无 Find 兜底：靠 Awake 接管 + OnDestroy 自清维护，
+    /// 避免兜底把"还没 Awake 的自己"提前写进静态字段导致自身被当重复实例销毁。
+    /// </summary>
+    public static PassiveEquipManager Instance => _instance;
 
     // ============================================================
     // 常量
@@ -121,6 +118,8 @@ public class PassiveEquipManager : MonoBehaviour
 
     private void Awake()
     {
+        _instance = this;   // 接管单例（Instance 无 Find 兜底）
+
         // 初始化槽位数组：5层 × 3槽，拍平为一维
         slots = new int[LayerCount * SlotPerLayer];
         for (int i = 0; i < slots.Length; i++)
@@ -129,6 +128,12 @@ public class PassiveEquipManager : MonoBehaviour
         statModManager = GetComponent<StatModifierManager>();
         playerHealth = GetComponent<PlayerHealth>();
         BuildDataIndex();
+    }
+
+    /// <summary>自清单例引用：Instance 不再需要 Find 兜底(销毁后静态字段不留脏引用)</summary>
+    private void OnDestroy()
+    {
+        if (_instance == this) _instance = null;
     }
 
     private void OnEnable()

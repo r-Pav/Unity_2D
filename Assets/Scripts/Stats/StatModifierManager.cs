@@ -6,6 +6,7 @@ using System.Collections.Generic;
 /// 职责：修饰器增删改查、最终值计算（基础值×(1+Σ百分比)+Σ数值）、属性刷新事件触发
 /// 叠加规则：同 source 覆盖、条件修饰器、最小值钳制
 /// </summary>
+[DefaultExecutionOrder(-10000)]   // 早于默认顺序的业务脚本 Awake：Instance 静态读取才有值（替代旧 Find 兜底）
 public class StatModifierManager : MonoBehaviour
 {
     // ============================================================
@@ -14,20 +15,29 @@ public class StatModifierManager : MonoBehaviour
 
     private static StatModifierManager _instance;
 
-    public static StatModifierManager Instance
+    /// <summary>
+    /// 当前实例。无 Find 兜底：靠 Awake 接管 + OnDestroy 自清维护，
+    /// 避免兜底把"还没 Awake 的自己"提前写进静态字段导致自身被当重复实例销毁。
+    /// </summary>
+    public static StatModifierManager Instance => _instance;
+
+    // ============================================================
+    // Unity 生命周期
+    // ============================================================
+
+    private void Awake()
     {
-        get
-        {
-            if (_instance == null)
-            {
-                // P2b-2（cehua 5.3 方案 2）：优先从玩家查找，防止 enemy 挂 StatModifierManager 后
-                // FindObjectOfType 命中 enemy 实例导致玩家侧消费方（PassiveEquipManager/PlayerAttributeSystem）错乱
-                _instance = PlayerController.Instance?.GetComponent<StatModifierManager>();
-                if (_instance == null)
-                    _instance = FindObjectOfType<StatModifierManager>();
-            }
-            return _instance;
-        }
+        // 玩家侧优先注册，非玩家侧只在没人注册时占位：enemy 也挂本组件（走 GetComponent，不走 Instance），
+        // 不能被玩家侧消费方（PlayerStatPanel 等）拿到。语义 = 旧 getter 里「优先从玩家查找」那层保护，
+        // 换成注册时判定，结果不依赖 Awake 顺序（玩家后 Awake 会覆盖敌人，敌人后 Awake 不会覆盖玩家）。
+        bool isPlayer = GetComponent<PlayerHealth>() != null;
+        if (isPlayer || _instance == null) _instance = this;
+    }
+
+    /// <summary>自清单例引用：Instance 不再需要 Find 兜底(销毁后静态字段不留脏引用)</summary>
+    private void OnDestroy()
+    {
+        if (_instance == this) _instance = null;
     }
 
     // ============================================================

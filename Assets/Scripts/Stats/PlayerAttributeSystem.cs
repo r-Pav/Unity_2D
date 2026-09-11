@@ -13,6 +13,7 @@ using System.Collections.Generic;
 /// 
 /// 公开 API：9 个方法 + 2 个事件
 /// </summary>
+[DefaultExecutionOrder(-10000)]   // 早于默认顺序的业务脚本 Awake：Instance 静态读取才有值（替代旧 Find 兜底）
 public class PlayerAttributeSystem : MonoBehaviour
 {
     // ============================================================
@@ -21,15 +22,11 @@ public class PlayerAttributeSystem : MonoBehaviour
 
     private static PlayerAttributeSystem _instance;
 
-    public static PlayerAttributeSystem Instance
-    {
-        get
-        {
-            if (_instance == null)
-                _instance = FindObjectOfType<PlayerAttributeSystem>();
-            return _instance;
-        }
-    }
+    /// <summary>
+    /// 当前实例。无 Find 兜底：靠 Awake 接管 + OnDestroy 自清维护，
+    /// 避免兜底把"还没 Awake 的自己"提前写进静态字段导致自身被当重复实例销毁。
+    /// </summary>
+    public static PlayerAttributeSystem Instance => _instance;
 
     // ============================================================
     // 配置
@@ -90,12 +87,19 @@ public class PlayerAttributeSystem : MonoBehaviour
 
     private void Awake()
     {
+        _instance = this;   // 接管单例（Instance 无 Find 兜底）
         statModManager = GetComponent<StatModifierManager>();
 
         if (attrConfig == null)
         {
             Debug.LogWarning("[PlayerAttributeSystem] attrConfig 未配置，使用默认值（全5）");
         }
+    }
+
+    /// <summary>自清单例引用：Instance 不再需要 Find 兜底(销毁后静态字段不留脏引用)</summary>
+    private void OnDestroy()
+    {
+        if (_instance == this) _instance = null;
     }
 
     private void Start()

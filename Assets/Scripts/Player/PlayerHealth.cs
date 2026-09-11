@@ -8,6 +8,7 @@ using System.Collections;
 /// P1 改造：maxHealth → baseMaxHealth + 修饰器管线，TakeDamage 插入闪避/减伤
 /// P4c 改造：实现 ICombatant，敌人/Boss→玩家伤害统一走 CombatResolver.Resolve
 /// </summary>
+[DefaultExecutionOrder(-10000)]   // 早于默认顺序的业务脚本 Awake：Instance 静态读取才有值（替代旧 Find 兜底）
 public class PlayerHealth : MonoBehaviour, ICombatant
 {
     // ============================================================
@@ -16,15 +17,11 @@ public class PlayerHealth : MonoBehaviour, ICombatant
 
     private static PlayerHealth _instance;
 
-    public static PlayerHealth Instance
-    {
-        get
-        {
-            if (_instance == null)
-                _instance = FindObjectOfType<PlayerHealth>();
-            return _instance;
-        }
-    }
+    /// <summary>
+    /// 当前实例。无 Find 兜底：靠 Awake 接管 + OnDestroy 自清维护，
+    /// 避免兜底把"还没 Awake 的自己"提前写进静态字段导致自身被当重复实例销毁。
+    /// </summary>
+    public static PlayerHealth Instance => _instance;
 
     // ============================================================
     // 配置参数
@@ -171,6 +168,7 @@ public class PlayerHealth : MonoBehaviour, ICombatant
 
     private void Awake()
     {
+        _instance = this;   // 接管单例（Instance 无 Find 兜底）
         statModManager = GetComponent<StatModifierManager>();
         attrSystem = GetComponent<PlayerAttributeSystem>();
         _charBase = GetComponent<CharacterBase>();
@@ -183,6 +181,12 @@ public class PlayerHealth : MonoBehaviour, ICombatant
         _lastMaxHealth = MaxHealth;
         hitFeedback = GetComponent<PlayerHitFeedback>();
         combat = GetComponent<PlayerCombat>();
+    }
+
+    /// <summary>自清单例引用：Instance 不再需要 Find 兜底(销毁后静态字段不留脏引用)</summary>
+    private void OnDestroy()
+    {
+        if (_instance == this) _instance = null;
     }
 
     private void OnEnable()

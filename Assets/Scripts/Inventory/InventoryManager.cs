@@ -18,6 +18,7 @@ using System.Linq;
 /// 
 /// 分类过滤：不触发全量刷新 — 由面板各自处理过滤显示
 /// </summary>
+[DefaultExecutionOrder(-10000)]   // 早于默认顺序业务脚本:PlayerPickupReceiver.Awake / InventoryPanel.OnEnable 等都要读 Instance
 public class InventoryManager : MonoBehaviour, IPickupReceiver
 {
     // ============================================================
@@ -38,15 +39,12 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
     // ============================================================
 
     private static InventoryManager _instance;
-    public static InventoryManager Instance
-    {
-        get
-        {
-            if (_instance == null)
-                _instance = FindObjectOfType<InventoryManager>();
-            return _instance;
-        }
-    }
+
+    /// <summary>
+    /// 当前实例。无 Find 兜底：靠 Awake 接管 + OnDestroy 自清维护，
+    /// 避免兜底把"还没 Awake 的自己"提前写进静态字段导致自身被当重复实例销毁。
+    /// </summary>
+    public static InventoryManager Instance => _instance;
 
     // ============================================================
     // 配置

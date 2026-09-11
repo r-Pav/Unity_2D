@@ -5,6 +5,7 @@ using UnityEngine;
 /// 负责：技能槽管理、冷却计时、法力管理、输入检测、事件触发
 /// Phase 1：只做基础框架，具体技能的施放逻辑留 Phase 2
 /// </summary>
+[DefaultExecutionOrder(-10000)]   // 早于默认顺序的业务脚本 Awake：Instance 静态读取才有值（替代旧 Find 兜底）
 public class SkillManager : MonoBehaviour
 {
     // ============================================================
@@ -13,15 +14,11 @@ public class SkillManager : MonoBehaviour
 
     private static SkillManager _instance;
 
-    public static SkillManager Instance
-    {
-        get
-        {
-            if (_instance == null)
-                _instance = FindObjectOfType<SkillManager>();
-            return _instance;
-        }
-    }
+    /// <summary>
+    /// 当前实例。无 Find 兜底：靠 Awake 接管 + OnDestroy 自清维护，
+    /// 避免兜底把"还没 Awake 的自己"提前写进静态字段导致自身被当重复实例销毁。
+    /// </summary>
+    public static SkillManager Instance => _instance;
 
     // ============================================================
     // 序列化配置
@@ -155,6 +152,7 @@ public class SkillManager : MonoBehaviour
 
     private void Awake()
     {
+        _instance = this;   // 接管单例（Instance 无 Find 兜底）
         owner = GetComponent<PlayerController>();
         skillPool = GetComponent<SkillPool>();
         lastManaEventValue = currentMana;
@@ -207,6 +205,12 @@ public class SkillManager : MonoBehaviour
         var spm = GetComponent<SkillPointManager>();
         skillPointManager = spm;
         branchSystem.Initialize(this, spm, slotLevels, skillSlots);
+    }
+
+    /// <summary>自清单例引用：Instance 不再需要 Find 兜底(销毁后静态字段不留脏引用)</summary>
+    private void OnDestroy()
+    {
+        if (_instance == this) _instance = null;
     }
 
     private void Start()

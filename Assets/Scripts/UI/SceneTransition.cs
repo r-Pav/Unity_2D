@@ -15,20 +15,16 @@ using UnityEngine.UI;
 /// 初始状态：CanvasGroup.alpha = 0（不遮挡游戏）；淡出起 blackImage.raycastTarget = true 阻断输入，淡入完设 false。
 /// 挂载点：场景 Canvas 下独立 TransitionCanvas 物体（saika 手动搭场景时挂，脚本侧保证组件自身逻辑完整）。
 /// </summary>
+[DefaultExecutionOrder(-10000)]
 public class SceneTransition : MonoBehaviour
 {
     private static SceneTransition _instance;
 
-    /// <summary>单例：FindObjectOfType 查找（参照 AudioManager）</summary>
-    public static SceneTransition Instance
-    {
-        get
-        {
-            if (_instance == null)
-                _instance = FindObjectOfType<SceneTransition>();
-            return _instance;
-        }
-    } 
+    /// <summary>
+    /// 当前实例。无 Find 兜底：靠 Awake 接管(判 _instance != this) + OnDestroy 自清维护，
+    /// 避免兜底把"还没 Awake 的自己"提前写进静态字段导致自身被当重复实例销毁。
+    /// </summary>
+    public static SceneTransition Instance => _instance;
 
     [Header("过渡幕布")]
     [Tooltip("全屏黑 Image（拉伸覆盖全屏），用于 raycast 阻断输入")]
@@ -47,7 +43,8 @@ public class SceneTransition : MonoBehaviour
     private void Awake()
     {
         // 单例防重 + 常驻跨场景：首个实例成为唯一过渡幕布，后续场景的重复实例自动销毁
-        if (_instance != null)
+        // 判 != this：别的脚本先摸 Instance 时不会把自己算成重复实例（同 AudioManager）
+        if (_instance != null && _instance != this)
         {
             Destroy(gameObject);
             return;
@@ -58,6 +55,12 @@ public class SceneTransition : MonoBehaviour
         // 初始状态：全透明不遮挡游戏；射线检测关闭（过渡流程开始时打开，结束后关闭）
         if (canvasGroup != null) canvasGroup.alpha = 0f;
         if (blackImage != null) blackImage.raycastTarget = false;
+    }
+
+    /// <summary>自清单例引用：Instance 不再需要 Find 兜底(销毁后静态字段不留脏引用；重复实例自毁时 _instance != this 不会误清)</summary>
+    private void OnDestroy()
+    {
+        if (_instance == this) _instance = null;
     }
 
     /// <summary>进游戏：淡出 → LoadScene("SampleScene") → 淡入</summary>
