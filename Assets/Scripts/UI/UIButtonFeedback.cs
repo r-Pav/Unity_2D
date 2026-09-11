@@ -110,6 +110,13 @@ public class UIButtonFeedback : MonoBehaviour,
     [Tooltip("true=使用不受 Time.timeScale 影响的时间(timeScale=0 暂停时动画照播);false=跟随 timeScale")]
     [SerializeField] private bool useUnscaled = true;
 
+    [Header("音效")]
+    [Tooltip("点击音类型;None = 不播(关闭面板的按钮设 None,避免与面板关闭音叠同一声)")]
+    [SerializeField] private AudioManager.UiSfxKind clickSfxKind = AudioManager.UiSfxKind.Click;
+
+    [Tooltip("true = 悬停播悬停音")]
+    [SerializeField] private bool hoverSfxEnabled = true;
+
     private Button _button;
     private Graphic _graphic;
     private Shadow _shadow;
@@ -184,6 +191,7 @@ public class UIButtonFeedback : MonoBehaviour,
             return;
         EnsureBaseState();
         _pressed = true;
+        AudioManager.Instance?.PlayUiSfx(clickSfxKind);   // 按下即响(clickSfxKind=None 时内部静默跳过)
         if (pressEffect)
             PlayScale(_baseScale * pressScale, pressDuration, pressEase);
     }
@@ -212,6 +220,10 @@ public class UIButtonFeedback : MonoBehaviour,
         if (_pressed)
             return; // 按住状态下不会触发 Enter,此处仅为状态顺序兜底
         EnsureBaseState();
+
+        // 悬停音:与视觉悬停集同点触发(CanRespond 已判过,interactable=false 不响)
+        if (hoverSfxEnabled)
+            AudioManager.Instance?.PlayUiSfx(AudioManager.UiSfxKind.Hover);
 
         // 进入 = 播放全部悬停集,各维度按开关独立生效
         if (hoverEffect)

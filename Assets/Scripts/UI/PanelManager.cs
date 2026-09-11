@@ -206,6 +206,7 @@ public sealed class PanelManager : MonoBehaviour
 
         _panelStack.Push(panel);
         panel.SetActive(true);
+        AudioManager.Instance?.PlayUiSfx(AudioManager.UiSfxKind.Open);   // 面板打开音(素材未到位时留空即静默)
 
         // 统一开关动效：面板根上挂了 UIPanelMotion → 走 PlayOpen（自动补 CanvasGroup 并接管淡入/滑入）；
         // 未挂 → 面板已 SetActive(true) 直接显示（硬切，无淡入）
@@ -221,11 +222,15 @@ public sealed class PanelManager : MonoBehaviour
         GameObject panel = _PopTopValidPanel();
         if (panel == null) return;
 
+        // 关闭音:三条关闭分支(动效 / ISlideClose / 硬切兜底)共用一次,放分支之前全覆盖
+        AudioManager.Instance?.PlayUiSfx(AudioManager.UiSfxKind.Close);
+
         RegisteredPanel closedEntry = _FindRegistered(panel);
         bool isFullScreen = closedEntry != null && closedEntry.type == PanelType.FullScreen;
 
         // 统一开关动效优先：面板根上挂了 UIPanelMotion → 用 PlayClose 播关闭动画（内部 closeEffect=None
         // 时立即回调，等价旧直接隐藏），播完回调里 SetActive(false)；动画期间锁输入/暂停态仍生效
+
         if (!_closingPanels.Contains(panel))
         {
             UIPanelMotion closeMotion = panel.GetComponent<UIPanelMotion>();
@@ -276,6 +281,9 @@ public sealed class PanelManager : MonoBehaviour
             Debug.LogError($"[PanelManager] Panel is not registered: {panel?.name}", this);
             return;
         }
+
+        // 注册校验通过才发声(未注册的调用直接 return,不响)
+        AudioManager.Instance?.PlayUiSfx(AudioManager.UiSfxKind.Close);
 
         _RemoveFromStack(panel, false);
 

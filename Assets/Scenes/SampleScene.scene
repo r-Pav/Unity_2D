@@ -831,6 +831,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &16156033
 GameObject:
   m_ObjectHideFlags: 0
@@ -1064,6 +1066,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &18528722
 GameObject:
   m_ObjectHideFlags: 0
@@ -1551,6 +1555,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &24629003
 GameObject:
   m_ObjectHideFlags: 0
@@ -1844,6 +1850,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &26505235
 GameObject:
   m_ObjectHideFlags: 0
@@ -2001,6 +2009,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &27166359
 GameObject:
   m_ObjectHideFlags: 0
@@ -2315,6 +2325,8 @@ MonoBehaviour:
   indicatorTravelX: -30
   indicatorHeightRatio: 0.8
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &33297063
 GameObject:
   m_ObjectHideFlags: 0
@@ -3456,6 +3468,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &56016485
 GameObject:
   m_ObjectHideFlags: 0
@@ -4006,6 +4020,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &81192196
 GameObject:
   m_ObjectHideFlags: 0
@@ -5630,6 +5646,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &107571147
 GameObject:
   m_ObjectHideFlags: 0
@@ -9484,6 +9502,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &143285068
 GameObject:
   m_ObjectHideFlags: 0
@@ -10289,6 +10309,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &162984225
 GameObject:
   m_ObjectHideFlags: 0
@@ -10490,6 +10512,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &178501128
 GameObject:
   m_ObjectHideFlags: 0
@@ -13083,6 +13107,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &283981230
 GameObject:
   m_ObjectHideFlags: 0
@@ -13316,6 +13342,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &290539811
 GameObject:
   m_ObjectHideFlags: 0
@@ -15273,6 +15301,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &298243772
 GameObject:
   m_ObjectHideFlags: 0
@@ -18257,6 +18287,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &379600597
 GameObject:
   m_ObjectHideFlags: 0
@@ -18414,6 +18446,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &386153848
 GameObject:
   m_ObjectHideFlags: 0
@@ -18562,6 +18596,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &386322091
 GameObject:
   m_ObjectHideFlags: 0
@@ -19202,6 +19238,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 3
+  hoverSfxEnabled: 1
 --- !u!1 &403220425
 GameObject:
   m_ObjectHideFlags: 0
@@ -19767,6 +19805,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &420122579
 GameObject:
   m_ObjectHideFlags: 0
@@ -20525,6 +20565,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &430386267
 GameObject:
   m_ObjectHideFlags: 0
@@ -21463,6 +21505,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 3
+  hoverSfxEnabled: 1
 --- !u!1 &474823933
 GameObject:
   m_ObjectHideFlags: 0
@@ -21760,6 +21804,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &483457679
 GameObject:
   m_ObjectHideFlags: 0
@@ -22833,6 +22879,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &506461347
 GameObject:
   m_ObjectHideFlags: 0
@@ -22981,6 +23029,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &508188859
 GameObject:
   m_ObjectHideFlags: 0
@@ -23410,6 +23460,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &516700372
 GameObject:
   m_ObjectHideFlags: 0
@@ -23916,6 +23968,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &523577691
 GameObject:
   m_ObjectHideFlags: 0
@@ -25424,6 +25478,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &587669697
 GameObject:
   m_ObjectHideFlags: 0
@@ -28704,6 +28760,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &604055865
 GameObject:
   m_ObjectHideFlags: 0
@@ -29561,6 +29619,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &637058365
 GameObject:
   m_ObjectHideFlags: 0
@@ -29739,6 +29799,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &646988918
 GameObject:
   m_ObjectHideFlags: 0
@@ -30790,6 +30852,8 @@ MonoBehaviour:
   indicatorTravelX: -30
   indicatorHeightRatio: 0.8
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &663094648
 GameObject:
   m_ObjectHideFlags: 0
@@ -31331,6 +31395,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &690724386
 GameObject:
   m_ObjectHideFlags: 0
@@ -31488,6 +31554,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &696454325
 GameObject:
   m_ObjectHideFlags: 0
@@ -34911,6 +34979,8 @@ MonoBehaviour:
   indicatorTravelX: -30
   indicatorHeightRatio: 0.8
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &726338127
 GameObject:
   m_ObjectHideFlags: 0
@@ -35716,6 +35786,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &746113722
 GameObject:
   m_ObjectHideFlags: 0
@@ -39061,6 +39133,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &812973769
 GameObject:
   m_ObjectHideFlags: 0
@@ -39451,6 +39525,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &824504011
 GameObject:
   m_ObjectHideFlags: 0
@@ -40475,6 +40551,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &830933171
 GameObject:
   m_ObjectHideFlags: 0
@@ -40632,6 +40710,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &838013521
 GameObject:
   m_ObjectHideFlags: 0
@@ -41571,6 +41651,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &863747873
 GameObject:
   m_ObjectHideFlags: 0
@@ -44254,6 +44336,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &877295672
 GameObject:
   m_ObjectHideFlags: 0
@@ -44416,6 +44500,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &877720110
 GameObject:
   m_ObjectHideFlags: 0
@@ -44761,6 +44847,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &884761770
 GameObject:
   m_ObjectHideFlags: 0
@@ -45129,6 +45217,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &899117191
 GameObject:
   m_ObjectHideFlags: 0
@@ -45422,6 +45512,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &902911259
 GameObject:
   m_ObjectHideFlags: 0
@@ -51691,6 +51783,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1046963244
 GameObject:
   m_ObjectHideFlags: 0
@@ -51848,6 +51942,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1049139776
 GameObject:
   m_ObjectHideFlags: 0
@@ -52818,6 +52914,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1068607522
 GameObject:
   m_ObjectHideFlags: 0
@@ -63337,6 +63435,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1110225518
 GameObject:
   m_ObjectHideFlags: 0
@@ -63499,6 +63599,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1113090127
 GameObject:
   m_ObjectHideFlags: 0
@@ -64054,6 +64156,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1135294592
 GameObject:
   m_ObjectHideFlags: 0
@@ -64289,6 +64393,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1142940415
 GameObject:
   m_ObjectHideFlags: 0
@@ -64591,6 +64697,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1001 &1155263225
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -65338,6 +65446,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1176611200
 GameObject:
   m_ObjectHideFlags: 0
@@ -66827,6 +66937,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1194333404
 GameObject:
   m_ObjectHideFlags: 0
@@ -66999,6 +67111,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1196974722
 GameObject:
   m_ObjectHideFlags: 0
@@ -67147,6 +67261,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1197925951
 GameObject:
   m_ObjectHideFlags: 0
@@ -69523,17 +69639,17 @@ MonoBehaviour:
   ground1:
     prefab: {fileID: 6628538922320286194, guid: 942a065eb1018974bbc80e35d92be84a, type: 3}
     showDelay: 0
-    sfx: {fileID: 0}
+    sfx: {fileID: 8300000, guid: 81e9c84269a5661428085a915157f8fe, type: 3}
     sfxVolume: 1
   ground2:
     prefab: {fileID: 8143434049285013885, guid: 110cfedf12d15524a97a1b21a4a0b83e, type: 3}
     showDelay: 0
-    sfx: {fileID: 0}
+    sfx: {fileID: 8300000, guid: ae4e955be7826614988c76050da5fa2c, type: 3}
     sfxVolume: 1
   ground3:
     prefab: {fileID: 2824062950565088525, guid: c43983efdab34c14eb5fda9a111da28d, type: 3}
     showDelay: 0
-    sfx: {fileID: 0}
+    sfx: {fileID: 8300000, guid: f8c8c26de841a42458374f96c6b45bac, type: 3}
     sfxVolume: 1
   air1:
     prefab: {fileID: 0}
@@ -72774,6 +72890,8 @@ MonoBehaviour:
   indicatorTravelX: -30
   indicatorHeightRatio: 0.8
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1304004507
 GameObject:
   m_ObjectHideFlags: 0
@@ -73906,6 +74024,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1319277346
 GameObject:
   m_ObjectHideFlags: 0
@@ -74380,6 +74500,8 @@ MonoBehaviour:
   indicatorTravelX: -30
   indicatorHeightRatio: 0.8
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1327029107
 GameObject:
   m_ObjectHideFlags: 0
@@ -74552,6 +74674,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1328984850
 GameObject:
   m_ObjectHideFlags: 0
@@ -75031,6 +75155,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1349693764
 GameObject:
   m_ObjectHideFlags: 0
@@ -75188,6 +75314,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1352963443
 GameObject:
   m_ObjectHideFlags: 0
@@ -76227,6 +76355,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1370271479
 GameObject:
   m_ObjectHideFlags: 0
@@ -76384,6 +76514,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1370321583
 GameObject:
   m_ObjectHideFlags: 0
@@ -76556,6 +76688,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1372637935
 GameObject:
   m_ObjectHideFlags: 0
@@ -77127,6 +77261,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1385877535
 GameObject:
   m_ObjectHideFlags: 0
@@ -77581,6 +77717,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1393831429
 GameObject:
   m_ObjectHideFlags: 0
@@ -78177,6 +78315,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1404874482
 GameObject:
   m_ObjectHideFlags: 0
@@ -78421,6 +78561,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1407814088
 GameObject:
   m_ObjectHideFlags: 0
@@ -78583,6 +78725,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1414146607
 GameObject:
   m_ObjectHideFlags: 0
@@ -78761,6 +78905,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1425156908
 GameObject:
   m_ObjectHideFlags: 0
@@ -79668,7 +79814,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3cd849b8673e13d419263a1a232dad02, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  visualRoot: {fileID: 1427529636}
+  visualRoot: {fileID: 1523805910}
   baseSprite: {fileID: 1523805912}
   baseAnimator: {fileID: 1523805911}
   ghostTrail: {fileID: 1427529670}
@@ -81856,6 +82002,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1453023674
 GameObject:
   m_ObjectHideFlags: 0
@@ -82335,6 +82483,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1456571632
 GameObject:
   m_ObjectHideFlags: 0
@@ -82681,6 +82831,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1462346324
 GameObject:
   m_ObjectHideFlags: 0
@@ -85043,6 +85195,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1506058181
 GameObject:
   m_ObjectHideFlags: 0
@@ -85274,6 +85428,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1523805909
 GameObject:
   m_ObjectHideFlags: 0
@@ -88875,6 +89031,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1543157111
 GameObject:
   m_ObjectHideFlags: 0
@@ -89824,6 +89982,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1585590374
 GameObject:
   m_ObjectHideFlags: 0
@@ -90634,6 +90794,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1600129378
 GameObject:
   m_ObjectHideFlags: 0
@@ -90823,6 +90985,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1603815327
 GameObject:
   m_ObjectHideFlags: 0
@@ -90995,6 +91159,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1608189462
 GameObject:
   m_ObjectHideFlags: 0
@@ -91948,6 +92114,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1628946976
 GameObject:
   m_ObjectHideFlags: 0
@@ -93715,6 +93883,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1684706540
 GameObject:
   m_ObjectHideFlags: 0
@@ -93876,6 +94046,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1688197255
 GameObject:
   m_ObjectHideFlags: 0
@@ -95220,6 +95392,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1725241460
 GameObject:
   m_ObjectHideFlags: 0
@@ -95730,6 +95904,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1735217279
 GameObject:
   m_ObjectHideFlags: 0
@@ -96235,6 +96411,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1755648318
 GameObject:
   m_ObjectHideFlags: 0
@@ -97700,6 +97878,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1782951127
 GameObject:
   m_ObjectHideFlags: 0
@@ -98024,6 +98204,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1788169665
 GameObject:
   m_ObjectHideFlags: 0
@@ -98335,6 +98517,8 @@ MonoBehaviour:
   indicatorTravelX: -30
   indicatorHeightRatio: 0.8
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1793249719
 GameObject:
   m_ObjectHideFlags: 0
@@ -98492,6 +98676,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 3
+  hoverSfxEnabled: 1
 --- !u!1 &1799015781
 GameObject:
   m_ObjectHideFlags: 0
@@ -98960,6 +99146,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1807768859
 GameObject:
   m_ObjectHideFlags: 0
@@ -99108,6 +99296,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1816252261
 GameObject:
   m_ObjectHideFlags: 0
@@ -99971,6 +100161,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1833870439
 GameObject:
   m_ObjectHideFlags: 0
@@ -100542,6 +100734,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1842257473
 GameObject:
   m_ObjectHideFlags: 0
@@ -101281,6 +101475,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1884931407
 GameObject:
   m_ObjectHideFlags: 0
@@ -101453,6 +101649,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1885497127
 GameObject:
   m_ObjectHideFlags: 0
@@ -101827,6 +102025,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1893594506
 GameObject:
   m_ObjectHideFlags: 0
@@ -102447,6 +102647,56 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 461720, guid: 4ce7097392940144386c93b851be8a4f, type: 3}
   m_PrefabInstance: {fileID: 929733957}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &1901683434
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 7
+  m_Component:
+  - component: {fileID: 1901683436}
+  - component: {fileID: 1901683435}
+  m_Layer: 0
+  m_HasEditorInfo: 1
+  m_Name: AudioManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1901683435
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1901683434}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 43ca96730998a4746803bb35d524c7e1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  masterSources: []
+  bgmSources: []
+  sfxSources: []
+  sfxPoolSize: 6
+  library: {fileID: 11400000, guid: e9fda8a510f74bc428e03e4f7bbd61bf, type: 2}
+--- !u!4 &1901683436
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1901683434}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -5.950424, y: 1.5860685, z: -0.0876011}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1903043733
 GameObject:
   m_ObjectHideFlags: 0
@@ -102608,6 +102858,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1914076028
 GameObject:
   m_ObjectHideFlags: 0
@@ -102780,6 +103032,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1915455178
 GameObject:
   m_ObjectHideFlags: 0
@@ -103152,6 +103406,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1001 &1921435029
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -103768,6 +104024,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1928977225
 GameObject:
   m_ObjectHideFlags: 0
@@ -104502,6 +104760,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1950959612
 GameObject:
   m_ObjectHideFlags: 0
@@ -106313,6 +106573,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &1986043850
 GameObject:
   m_ObjectHideFlags: 0
@@ -106927,6 +107189,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &2003411213
 GameObject:
   m_ObjectHideFlags: 0
@@ -107360,6 +107624,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &2011110507
 GameObject:
   m_ObjectHideFlags: 0
@@ -107760,6 +108026,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &2013596155
 GameObject:
   m_ObjectHideFlags: 0
@@ -109035,6 +109303,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &2036557531
 GameObject:
   m_ObjectHideFlags: 0
@@ -109552,6 +109822,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &2049672648
 GameObject:
   m_ObjectHideFlags: 0
@@ -110936,6 +111208,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &2073096941
 GameObject:
   m_ObjectHideFlags: 0
@@ -111160,6 +111434,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &2092056748
 GameObject:
   m_ObjectHideFlags: 0
@@ -111428,6 +111704,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 0
+  hoverSfxEnabled: 1
 --- !u!1 &2102335423
 GameObject:
   m_ObjectHideFlags: 0
@@ -111576,6 +111854,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &2104073293
 GameObject:
   m_ObjectHideFlags: 0
@@ -111955,6 +112235,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &2115359256
 GameObject:
   m_ObjectHideFlags: 0
@@ -112301,6 +112583,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &2131260611
 GameObject:
   m_ObjectHideFlags: 3
@@ -112882,6 +113166,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &15810823570121766
 GameObject:
   m_ObjectHideFlags: 0
@@ -116641,6 +116927,8 @@ MonoBehaviour:
   indicatorTravelX: -30
   indicatorHeightRatio: 0.8
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!4 &7866666831555351544
 Transform:
   m_ObjectHideFlags: 0
@@ -117062,6 +117350,8 @@ MonoBehaviour:
   indicatorTravelX: -30
   indicatorHeightRatio: 0.8
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!222 &8207166275004372736
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -117365,6 +117655,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!222 &8474678003665308749
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -117694,6 +117986,8 @@ MonoBehaviour:
   indicatorTravelX: -30
   indicatorHeightRatio: 0.8
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!114 &8901387360886448297
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -117743,6 +118037,8 @@ MonoBehaviour:
   indicatorTravelX: -30
   indicatorHeightRatio: 0.8
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &8947720609924634570
 GameObject:
   m_ObjectHideFlags: 0
@@ -117890,6 +118186,8 @@ MonoBehaviour:
   indicatorTravelX: -30
   indicatorHeightRatio: 0.8
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &9053471373108059440
 GameObject:
   m_ObjectHideFlags: 0
@@ -117947,6 +118245,8 @@ MonoBehaviour:
   indicatorTravelX: -30
   indicatorHeightRatio: 0.8
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!224 &9141467914534786070
 RectTransform:
   m_ObjectHideFlags: 0
@@ -118044,6 +118344,8 @@ MonoBehaviour:
   indicatorTravelX: 20
   indicatorHeightRatio: 0.6
   useUnscaled: 1
+  clickSfxKind: 2
+  hoverSfxEnabled: 1
 --- !u!1 &9208458165064396734
 GameObject:
   m_ObjectHideFlags: 0
@@ -118104,3 +118406,4 @@ SceneRoots:
   - {fileID: 1317235076}
   - {fileID: 1068607524}
   - {fileID: 1998331564}
+  - {fileID: 1901683436}

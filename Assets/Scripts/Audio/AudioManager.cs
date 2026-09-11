@@ -17,28 +17,32 @@ public class GameSettingsData
 
 /// <summary>
 /// 音频管理器（轻量框架）— 单例，管理主音量/BGM/SFX 三路 AudioSource 组。
+/// - 执行顺序 -10000：保证本组件在任何业务脚本 Awake 之前完成接管，
+///   业务脚本(如 MusicPointManager.Awake → RegisterAudioSources)访问 Instance 时拿到的一定是已初始化实例
 /// - masterSources / bgmSources / sfxSources：自动注册制，场景音源通过 RegisterSource 上报，
 ///   不再手动拖引用（100 场景零拖拽）。空列表/空引用安全。
 /// - SetVolumes(master,bgm,sfx)：遍历各组应用音量
-/// - Awake 单例防重 + DontDestroyOnLoad 常驻跨场景（TitleScene 常驻、SampleScene 的重复实例自动销毁）
+/// - Awake 单例防重(判 _instance != this) + DontDestroyOnLoad 常驻跨场景(后加载场景的重复实例自毁)
+/// - OnDestroy 自清单例引用(Instance 无 Find 兜底,靠这一对维护)
 /// - Awake 从 PlayerPrefs("GameSettings") 读初始值应用（跨场景生效）
+/// - library：全局音效配置 SO(AudioLibrary)，UI 音效 clip 与相对音量从它取；为空时 Awake 警告一次并全静默
 /// </summary>
+[DefaultExecutionOrder(-10000)]
 public class AudioManager : MonoBehaviour
 {
     private static AudioManager _instance;
 
-    public static AudioManager Instance
-    {
-        get
-        {
-            if (_instance == null)
-                _instance = FindObjectOfType<AudioManager>();
-            return _instance;
-        }
-    }
+    /// <summary>
+    /// 当前实例。无 Find 兜底：靠 Awake 接管(判 _instance != this) + OnDestroy 自清维护，
+    /// 避免兜底把"还没 Awake 的自己"提前写进静态字段导致自身被当重复实例销毁。
+    /// </summary>
+    public static AudioManager Instance => _instance;
 
     /// <summary>音量分组(RegisterSource/UnregisterSource 用)</summary>
     public enum AudioGroup { Master, Bgm, Sfx }
+
+    /// <summary>UI 音效类型(全局共用;None = 不播)</summary>
+    public enum UiSfxKind { None, Hover, Click, Close, Open }
 
     [Header("音频源组(自动注册,可留空)")]
     [Tooltip("主音量源：全局 master 音量（UI/混音）")]
@@ -51,6 +55,10 @@ public class AudioManager : MonoBehaviour
     [Header("SFX 播放池(运行时自建,无需拖引用)")]
     [Tooltip("一次性音效并发音源数量(轮转取源 + PlayOneShot,连击多声可重叠)")]
     [SerializeField] private int sfxPoolSize = 6;
+
+    [Header("音频库")]
+    [Tooltip("全局音效配置资产(AudioLibrary);为空则音效静默")]
+    [SerializeField] private AudioLibrary library;
 
     /// <summary>最近一次音量值(注册新源时应用,不重新读档)</summary>
     private float _masterVol = 1f;
@@ -66,7 +74,7 @@ public class AudioManager : MonoBehaviour
 
     private void Awake()
     {
-        if (_instance != null)
+        if (_instance != null && _instance != this)   // 判 != this：别的脚本先摸 Instance 时不会把自己算成重复实例
         {
             Destroy(gameObject);
             return;
@@ -74,9 +82,18 @@ public class AudioManager : MonoBehaviour
         _instance = this;
         DontDestroyOnLoad(gameObject); // 常驻跨场景：双场景各挂一份时，后加载的重复实例在上方已销毁
 
+        if (library == null)
+            Debug.LogWarning("[AudioManager] 未挂音频库(AudioLibrary),音效将全部静默"); // 排查配置遗漏:两份 AudioManager 都必须引同一个资产
+
         GameSettingsData data = LoadSettings();
         SetVolumes(data.master, data.bgm, data.sfx);
         CreateSfxPool();
+    }
+
+    /// <summary>自清单例引用：Instance 不再需要 Find 兜底(销毁后静态字段不留脏引用；重复实例自毁时 _instance != this 不会误清)</summary>
+    private void OnDestroy()
+    {
+        if (_instance == this) _instance = null;
     }
 
     /// <summary>应用三路音量（遍历各组；null 源 / 空列表自动跳过）</summary>
@@ -135,6 +152,26 @@ public class AudioManager : MonoBehaviour
         _sfxNext = (_sfxNext + 1) % _sfxPool.Length;
         if (src == null) return;
         src.PlayOneShot(clip, Mathf.Clamp01(volume));
+    }
+
+    /// <summary>
+    /// 播放 UI 音效(全局 4 个音效位:悬停/点击/关闭/打开),clip 从 library(AudioLibrary)取。
+    /// 复用 SFX 轮转池与 sfx 音量组,多声可重叠;库为空 / clip 未拖 / kind=None = 该类静默跳过,不警告、不打日志。
+    /// 不做节流与互斥:各挂点自己触发自己的音,快速划过一排按钮连响属预期。
+    /// </summary>
+    public void PlayUiSfx(UiSfxKind kind)
+    {
+        if (library == null) return;
+
+        AudioClip clip = kind switch
+        {
+            UiSfxKind.Hover => library.uiHover,
+            UiSfxKind.Click => library.uiClick,
+            UiSfxKind.Close => library.uiClose,
+            UiSfxKind.Open => library.uiOpen,
+            _ => null
+        };
+        PlaySfx(clip, library.uiVolume);
     }
 
     /// <summary>音源自动注册(场景播放器 Awake 调用):加入对应组并立即应用当前音量</summary>
