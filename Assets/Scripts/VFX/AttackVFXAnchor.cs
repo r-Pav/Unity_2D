@@ -8,8 +8,9 @@ using UnityEngine;
 ///   地面攻击:段1/段2/段3 各一个特效 prefab 槽(ground1/2/3)
 ///   空中攻击:段1/段2/段3 各一个特效 prefab 槽(air1/2/3)
 ///   被刺:一个背刺特效 prefab 槽(backstab)
+///   地图元素冲刺:一个冲刺特效 prefab 槽(mapDash)
 ///   特效 prefab 位置/大小在 prefab 内调好(相对 attack_VFX 原点,挂 attack_VFX 子物体下,localPosition=0)。
-///   统一入口(攻击开始/切段/结束事件调用):PlayGround(1~3) / PlayAir(1~3) / PlayBackstab() / Stop()。
+///   统一入口(攻击开始/切段/结束事件调用):PlayGround(1~3) / PlayAir(1~3) / PlayBackstab() / PlayMapDash() / Stop()。
 /// 通用槽(Boss/敌人用,玩家不填):slots + Show("slot_xxx"),保留原按名查找/同名槽子物体挂点逻辑。
 /// 实例管理收拢:同 prefab 池化复用;Hide = 停发射 + 粒子飞完延迟回池(保留淡出);KillAll = 立即回池。
 /// 命中类一次性特效不走本组件(继续 VFXSpawner)。
@@ -64,6 +65,9 @@ public class AttackVFXAnchor : MonoBehaviour
     [Header("玩家 · 被刺(PlayBackstab)")]
     public ComboSlot backstab = new ComboSlot();
 
+    [Header("玩家 · 地图元素冲刺(PlayMapDash)")]
+    public ComboSlot mapDash = new ComboSlot();
+
     [Header("保险")]
     [Tooltip("播放后超过此秒数未 Stop 自动清理(防事件丢失残留)")]
     public float maxLifetime = 10f;
@@ -94,6 +98,9 @@ public class AttackVFXAnchor : MonoBehaviour
 
     /// <summary>背刺特效(→ backstab)</summary>
     public void PlayBackstab() => PlayComboSlot(backstab);
+
+    /// <summary>地图元素冲刺特效(→ mapDash)</summary>
+    public void PlayMapDash() => PlayComboSlot(mapDash);
 
     /// <summary>攻击结束:收起当前组(与 Hide 同义,语义化别名)</summary>
     public void Stop() => Hide();

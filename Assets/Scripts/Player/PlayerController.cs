@@ -53,6 +53,17 @@ public class PlayerController : PlayerCharacterBase
     public float AirMaxSpeed => airMaxSpeed;
 
     // ============================================================
+    // 地图元素冲刺(S5) — 窗口内 F 的「先敌后元素」分流参数
+    // ============================================================
+
+    /// <summary>[S5] 元素查询的视口外扩余量(viewport 坐标 0~1,允许 -margin ~ 1+margin):
+    /// 直接喂 MapDashPoint.TryFindNearest。0 = 元素必须完全在屏幕内(默认,符合规格「屏幕内」口径)。
+    /// 敏感度太高/太低时在 Inspector 上微调,不需要改代码。</summary>
+    [Header("地图元素冲刺(S5)")]
+    [Tooltip("元素查询的视口外扩余量(0 = 必须完全在屏幕内)")]
+    [SerializeField] private float mapDashViewportMargin = 0f;
+
+    // ============================================================
 // 子模块引用
 // ============================================================
 
@@ -443,7 +454,9 @@ public class PlayerController : PlayerCharacterBase
     // Boss 曲/未配置曲无连音组时 F 保持原行为(技能槽 3 由 SkillManager 处理、Boss 战判定由 PlayerBeatJudge 处理)。
     // ============================================================
 
-    /// <summary>每帧 F 键分发:连音组曲按"连音点窗口内"触发背刺,无连音组曲按"自动重音窗口内"触发;窗口外按 F 无效果</summary>
+    /// <summary>每帧 F 键分发:连音组曲按"连音点窗口内"触发背刺,无连音组曲按"自动重音窗口内"触发;窗口外按 F 无效果。
+    /// [S5] 窗口内的分流:先敌后元素 —— 有可背刺敌人 → 原背刺;没敌人 + 面朝有就绪元素 + 非攻击态(连音还要"只认首音")
+    ///   → 元素冲刺;都没有 → 走原背刺路径(状态内无目标兜底 = 普通空挥,不新增空挥逻辑)。</summary>
     private void HandleBackstabInput()
     {
         if (!Input.GetKeyDown(KeyCode.F)) return;
@@ -457,7 +470,12 @@ public class PlayerController : PlayerCharacterBase
         if (mgr.HasChain)
         {
             if (mgr.IsInChainWindow)
-                TryEnterBackstab(chainMode: true);
+            {
+                // [S5] 元素冲刺只认组内首音(见 TryMapDashInsteadOfBackstab);返回 false = 本帧该走背刺。
+                // 组内后续点照旧由背刺 TryExecuteNextPoint 逐点推进,完全不受元素冲刺影响。
+                if (!TryMapDashInsteadOfBackstab(chainMode: true, mgr))
+                    TryEnterBackstab(chainMode: true);
+            }
             // 连音窗口外 F:无效,什么都不触发(与下面自动重音路径同口径,不再普攻挥空)
             return;
         }
@@ -467,8 +485,98 @@ public class PlayerController : PlayerCharacterBase
             return;   // 未启用自动重音(Boss 曲/普通曲未配置):F 保持原行为
 
         if (mgr.IsAutoBarWindow)
-            TryEnterBackstab(chainMode: false);
+        {
+            // [S5] 自动重音路径没有连音组 → 不涉及"只认首音";其余分流条件与连音路径同一套。
+            if (!TryMapDashInsteadOfBackstab(chainMode: false, mgr))
+                TryEnterBackstab(chainMode: false);
+        }
         // 窗口外 F:无效,什么都不触发(2026-09-01 saika 确认,不再普攻挥空)
+    }
+
+    // ============================================================
+    // [S5] 地图元素冲刺分流 — 窗口内 F 的「先敌后元素」判定
+    // 只在按键那一帧跑:状态判定是纯属性读取,敌我查询复用背刺同一套搜索,元素查询遍历 MapDashPoint 注册表。
+    // 没有任何每帧轮询/Update 内新增搜索。
+    // ============================================================
+
+    private PlayerMapDash _mapDash;              // 元素冲刺执行器(玩家根);懒缓存一次,未挂 = null → 元素冲刺整体跳过
+    private bool _mapDashResolved;               // 是否已解析过(解析含"没挂"这个结果,不重复 GetComponent)
+
+    /// <summary>
+    /// [S5 地图元素冲刺] 判定本帧 F 是否改走「元素冲刺」:该走则执行并返回 true(调用方不再走背刺)。
+    /// 返回 false = 保持原背刺路径(有敌人 / 攻击中 / 受击死亡 / 连音非首音 / 没元素 / 没挂执行器)。
+    ///
+    /// 判定顺序与依据(规格 §S5):
+    ///   ① 攻击状态(`PlayerComboState`/`PlayerAttackState`/`PlayerAirAttackState`)不冲元素 —— 攻击中的 F 仍由背刺
+    ///      强制打断(原优先级与打断语义一字不改),元素不抢攻击中的 F;
+    ///   ② 受击/死亡不冲(沿用 TryEnterBackstab 的状态守卫口径);
+    ///   ③ 背刺执行中不冲:此时 F 的原有语义是"连音逐点推进 / 非连音无效果",属于禁止项里的背刺打断语义,
+    ///      保守排除,避免元素冲刺在背刺动画中途把玩家瞬移走;
+    ///   ④ 连音路径只认首音(见 IsChainFirstPointActive):组内后续点即使活跃也不触发元素;
+    ///   ⑤ 先敌后元素:「附近有没有可背刺敌人」复用背刺同一套搜索(BackstabState.FindNearestTarget,含搜索半径 /
+    ///      存活判定 / 层级掩码),有敌人 → 让给背刺(含打断攻击语义);不新写一份搜索,防口径漂移;
+    ///   ⑥ 无敌人 → 找「视口内 + 非 CD」的最近元素(MapDashPoint.TryFindNearest,相机用 S3 缓存的
+    ///      CachedCamera,按键路径里不查 Camera.main);**口径与背刺目标分配一致,不判朝向**;
+    ///      找到就执行,没找到 → 让给背刺(原地闪现=普通空挥)。
+    /// 窗口消费口径不变:元素冲刺不调用 ConsumeAutoBarWindow、不 ConsumePoint —— 窗口/点的消费仍只由背刺路径完成。
+    /// </summary>
+    /// <param name="chainMode">true = 连音路径(需要"只认首音");false = 自动重音路径(无连音组)</param>
+    /// <param name="mgr">当前曲的音乐点管理器(调用方已判非空)</param>
+    private bool TryMapDashInsteadOfBackstab(bool chainMode, MusicPointManager mgr)
+    {
+        if (PlayerFsm == null) return false;
+
+        var cur = PlayerFsm.CurrentState;
+
+        // ① 攻击状态不冲元素(①②③ 全是纯状态判定,无副作用,顺序不影响结果)
+        if (cur is PlayerComboState || cur is PlayerAttackState || cur is PlayerAirAttackState) return false;
+        // ② 受击/死亡不冲(与 TryEnterBackstab 的守卫同口径)
+        if (cur is PlayerDeadState || cur is PlayerHurtState || cur is PlayerAirHurtState) return false;
+        // ③ 背刺执行中不冲(保持 F 在背刺中的原有语义)
+        if (cur is PlayerBackstabState) return false;
+
+        // ④ 连音只认首音:组内第一个点不在活跃窗口(或已被消费)时,元素冲刺让位给背刺
+        if (chainMode && !IsChainFirstPointActive(mgr)) return false;
+
+        // ⑤ 先敌后元素:同一套背刺搜索,有可背刺敌人就不抢
+        if (BackstabState != null && BackstabState.FindNearestTarget() != null) return false;
+
+        // ⑥ 找元素(视口/CD 都在 TryFindNearest 内部判;口径与背刺目标分配一致:**不判朝向**);
+        //    没找到 → false,让背刺走空挥兜底
+        var mapDash = ResolveMapDash();
+        if (mapDash == null) return false;
+        if (!MapDashPoint.TryFindNearest((Vector2)transform.position,
+                mapDash.CachedCamera, mapDashViewportMargin, out var point))
+            return false;
+
+        // TryExecute 自带空引用/就绪双守卫;它返回 false(例如元素恰在本帧被别的单位消费)时仍落回背刺路径
+        return mapDash.TryExecute(point);
+    }
+
+    /// <summary>
+    /// [S5 连音只认首音] 当前连音组内是否正处在「首音」的活跃窗口(且未被消费)。
+    /// 判据全部来自 MusicPointManager 的只读查询:`CurrentChainPoints` 是当前组的升序点数组(index 0 = 首音),
+    /// 再要求这个首点自身 IsPointActive(处于活跃窗口)且 !IsPointConsumed(尚未被背刺消费)。
+    /// 组内后续点即使处于活跃窗口也不触发元素冲刺 —— 它们照旧由背刺 TryExecuteNextPoint 逐点推进。
+    /// </summary>
+    private static bool IsChainFirstPointActive(MusicPointManager mgr)
+    {
+        float[] pts = mgr.CurrentChainPoints;
+        if (pts == null || pts.Length == 0) return false;
+
+        float first = pts[0];
+        return mgr.IsPointActive(first) && !mgr.IsPointConsumed(first);
+    }
+
+    /// <summary>解析玩家根上的元素冲刺执行器(S3 挂点=玩家根);只解析一次,未挂则以后都直接跳过。</summary>
+    private PlayerMapDash ResolveMapDash()
+    {
+        if (!_mapDashResolved)
+        {
+            _mapDashResolved = true;
+            _mapDash = GetComponent<PlayerMapDash>();
+        }
+        return _mapDash;
     }
 
     /// <summary>窗口内 F:强制打断进背刺状态(死亡/受击硬直除外)。连音路径放开"背刺执行中重入"(P7 产物)。

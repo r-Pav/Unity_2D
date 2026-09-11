@@ -146,6 +146,12 @@ public abstract class CharacterBase : MonoBehaviour
         grounded = col != null && Physics2D.Raycast(col.bounds.center, Vector2.down, groundCheckDist, groundLayer);
     }
 
+    /// <summary>手动刷新一次接地状态(供瞬移类调用方在位移后立刻拿到正确的 grounded,
+    /// 避免读到"位移前"的旧值 —— 复用本检测,不另开射线)。
+    /// 调用前须保证碰撞体位置已同步:瞬移走 rb.position 时先 Physics2D.SyncTransforms(),
+    /// 否则射线起点(bounds.center)仍停在原位。</summary>
+    public void RefreshGroundCheck() => HandleGroundCheck();
+
     /// <summary>统一速度写入入口 — 击退时自动跳过</summary>
     protected void SetVelocity(float? x = null, float? y = null)
     {

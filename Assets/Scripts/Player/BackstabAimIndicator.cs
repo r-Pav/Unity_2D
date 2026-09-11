@@ -30,6 +30,16 @@ public class BackstabAimIndicator : MonoBehaviour
     [Tooltip("单环兜底(prefab 未扩环池时使用;rings 有引用则被忽略)")]
     [SerializeField] private ParticleSystem ring;         // 金色判定环(单环兼容字段)
 
+    // ------------------------------------------------------------
+    // 只读访问器(仅供外部读引用做表现;不改变本类任何现有行为)
+    // ------------------------------------------------------------
+
+    /// <summary>视觉外环粒子(只读;地图元素 MapDashPoint 在 CD 期间拿它一起变淡)</summary>
+    public ParticleSystem RangeOuter => rangeOuter;
+
+    /// <summary>内环粒子(只读;同上)</summary>
+    public ParticleSystem RangeInner => rangeInner;
+
     [Header("固定参数(其余自动计算;定稿 2026-09-09)")]
     [Tooltip("判定外环尺寸:金色环缩到此尺寸 = 重音拍 = 窗口起点(判定锚;定稿 1.5)")]
     [SerializeField] private float outerRadius = 1.5f;

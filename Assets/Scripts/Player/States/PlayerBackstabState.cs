@@ -660,8 +660,11 @@ public class PlayerBackstabState : EntityState
     }
 
     /// <summary>选最近非死亡敌人(Boss 也可,普通场景无 Boss;空中敌人同样可作目标,允许空中背刺)。
-    /// 连音路径拿不到分配时的兜底(规格 §P6:防无分配时状态卡死)</summary>
-    private EnemyControllerBase FindNearestTarget()
+    /// 连音路径拿不到分配时的兜底(规格 §P6:防无分配时状态卡死)。
+    /// [S5] 访问级别 private → public:PlayerController 的元素冲刺分流要问「附近有没有可背刺敌人」,
+    ///   必须复用这一套搜索(半径 searchRadius / 存活判定 IsDead / 层级掩码 combat.EnemyLayer),
+    ///   不另写一份产生口径漂移。行为、参数、返回值一律未变,且是纯查询(无副作用,状态未激活也可调)。</summary>
+    public EnemyControllerBase FindNearestTarget()
     {
         LayerMask mask = combat != null ? combat.EnemyLayer : ~0;
         Vector2 origin = owner.transform.position;
