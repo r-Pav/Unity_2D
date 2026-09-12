@@ -225,7 +225,7 @@ public class AreaChannelTrigger : MonoBehaviour
         //     - 清全部动画 Bool(IsJumping/IsFalling/IsAttacking/IsAirAttacking/IsHurt/IsAirHurt/IsDashing)
         //       残留状态出口条件满足 → Exit → Entry 重判落 Locomotion;管道内速度 6 由 PlayerAnimation
         //       每帧分档驱动 BlendTree 显示奔跑(不再 anim.Play 直切,动画器无独立 Idle 状态)
-        //     - 恢复被空中攻击改过的 gravityScale
+        //     - 清全部重力倍率并回到基准(空中攻击/缓落可能留下低重力倍率请求)
         var anim = player.Animator;
         if (anim != null)
         {
@@ -239,9 +239,10 @@ public class AreaChannelTrigger : MonoBehaviour
         }
         if (player.PlayerFsm != null && player.IdleState != null)
             player.PlayerFsm.ChangeState(player.IdleState);
-        // 恢复重力:正常重力恒为 1(空中攻击瞬改 0.3 后自行恢复,贴墙状态无重力残留),
-        // 直接设 1 兜底,防进管道瞬间被残留的低重力带飞
-        if (player.Rb != null) player.Rb.gravityScale = 1f;
+        // 恢复重力:清全部倍率并回到基准(进管道强制归位;顺带清掉空中攻击/缓落可能残留的请求)。
+        // 正常重力恒为基准(空中攻击/缓落只报倍率、各自结束时清请求,贴墙状态无倍率残留),
+        // 这里兜底清一次,防进管道瞬间被残留的低重力倍率带飞
+        player.ResetGravityMultipliers();
         // 重置跳跃次数:强制 ChangeState(Idle) 绕过了跳跃状态的落地分支,
         // jumpsLeft 残留为 0 → 出管道后跳不了。必须手动补 ResetJumps(落地副作用)
         var jumpComp = player.GetComponent<PlayerJump>();

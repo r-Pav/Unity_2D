@@ -16,8 +16,10 @@ using UnityEngine;
 ///   · 元素表现复用 MapDashPoint.HideJudgeRing / Consume(判定圈与 CD 淡色都在元素自己身上;
 ///     判定环的**预告**由 S6 MapDashIndicator 提前播,本类只负责触发时把它收掉);
 ///
-/// 【缓落自实现一份】空中触发时给一小段小重力(飘落感),**不动 PlayerBackstabState 那份**:
-///   单例协程 + 原始重力只记第一次 + OnDisable 兜底还原 —— 防「组件被禁/重入后重力永久变小」。
+/// 【缓落只报倍率,不碰重力值】空中触发时给一小段小重力(飘落感):**不再自己捕获/还原 rb.gravityScale**
+///   (旧做法会捕到别人留下的 0.3 当原值,恢复后重力永久变小),改为向 PlayerController 报一个
+///   「重力倍率请求」(SetGravityMultiplier(MapDashHover, hoverGravityScale)),计时结束清请求
+///   → 无其它请求时自动回基准。单例协程 + OnDisable 兜底清请求 —— 防「组件被禁/重入后倍率残留」。
 ///
 /// 挂点:玩家根物体(与 PlayerTeleport / PlayerController 同物体)。
 /// </summary>
@@ -36,10 +38,10 @@ public class PlayerMapDash : MonoBehaviour
     [SerializeField] private float ghostInterval = 0.05f;
 
     [Header("空中缓落")]
-    [Tooltip("缓落时长(秒):空中触发后小重力持续这么久,然后还原原重力")]
+    [Tooltip("缓落时长(秒):空中触发后小重力持续这么久,然后清掉倍率请求")]
     [SerializeField] private float hoverDuration = 0.35f;
 
-    [Tooltip("缓落期间的重力倍率(1 = 不变;0.3 = 明显飘落感)")]
+    [Tooltip("缓落期间的重力倍率(1 = 基准,0.3 = 明显飘落感;多效果同时存在时取最小值)")]
     [SerializeField] private float hoverGravityScale = 0.3f;
 
     // ============================================================
@@ -58,11 +60,10 @@ public class PlayerMapDash : MonoBehaviour
     private Camera _cam;
 
     // ============================================================
-    // 缓落状态(单例协程 + 原始重力只记一次)
+    // 缓落状态(单例协程;重力由 PlayerController 倍率入口统一管,本类不记原始值)
     // ============================================================
 
     private Coroutine _hoverRoutine;              // 当前缓落协程(重入时先停旧的再起新的)
-    private float _savedGravity = -1f;            // <0 = 未记录;缓落结束/兜底还原后复位为 -1
 
     // ============================================================
     // 公开 API
@@ -188,11 +189,12 @@ public class PlayerMapDash : MonoBehaviour
     }
 
     // ============================================================
-    // 空中缓落(自实现一份,与 PlayerBackstabState 那份互不干扰)
+    // 空中缓落(只向 PlayerController 报倍率;与 PlayerBackstabState / PlayerAirAttackState 各报各的来源,
+    // 互不覆盖 —— 最终取最小值,谁先结束都不影响另一个)
     // ============================================================
 
-    /// <summary>起缓落:原始重力**只记第一次**(第二次重入若再记,会把 0.3 当成原始值记下来 → 恢复后重力永久变小);
-    /// 单例协程,重入先停旧协程,防多个协程各自写重力互相覆盖。</summary>
+    /// <summary>起缓落:向重力倍率入口报一个 MapDashHover 请求(倍率 = hoverGravityScale);
+    /// 单例协程,重入先停旧协程(同来源重设 = 覆盖,不会累积)。本方法不再读写 rb.gravityScale。</summary>
     private void BeginHover()
     {
         Rigidbody2D rb = _pc != null ? _pc.GetRigidbody() : null;
@@ -201,8 +203,7 @@ public class PlayerMapDash : MonoBehaviour
         if (hoverDuration <= 0f)
             return;
 
-        if (_savedGravity < 0f)
-            _savedGravity = rb.gravityScale;
+        _pc.SetGravityMultiplier(GravityMultiplierSource.MapDashHover, hoverGravityScale);
 
         if (_hoverRoutine != null)
             StopCoroutine(_hoverRoutine);
@@ -210,13 +211,11 @@ public class PlayerMapDash : MonoBehaviour
         _hoverRoutine = StartCoroutine(HoverRoutine(rb));
     }
 
-    /// <summary>缓落协程:切小重力 → 等 hoverDuration → 还原原重力并复位记录值。
-    /// 用 unscaledDeltaTime:即使处于命中顿帧(timeScale=0)也能按时收尾,不会把重力留在小值上。</summary>
+    /// <summary>缓落协程:只计时,不再自己设/还原重力(rb 参数保留仅为与调用点签名一致,协程内不碰刚体)。
+    /// 计时结束清掉本来源的倍率请求 → 无其它请求时自动回基准。
+    /// 用 unscaledDeltaTime:即使处于命中顿帧(timeScale=0)也能按时收尾,不会把倍率请求留着。</summary>
     private IEnumerator HoverRoutine(Rigidbody2D rb)
     {
-        float restore = _savedGravity >= 0f ? _savedGravity : 1f;   // 兜底:记录缺失时按 Unity 默认重力还原
-        rb.gravityScale = hoverGravityScale;
-
         float t = 0f;
         while (t < hoverDuration)
         {
@@ -224,14 +223,12 @@ public class PlayerMapDash : MonoBehaviour
             yield return null;
         }
 
-        if (rb != null)
-            rb.gravityScale = restore;
-
         _hoverRoutine = null;
-        _savedGravity = -1f;
+        _pc?.ClearGravityMultiplier(GravityMultiplierSource.MapDashHover);
     }
 
-    /// <summary>恢复原始重力并停掉缓落协程(OnDisable 兜底路径)。幂等:没有记录值(没缓落过/已收尾)时什么都不做。</summary>
+    /// <summary>清掉本来源的倍率请求并停掉缓落协程(OnDisable 兜底路径)。
+    /// 幂等:没请求过时 Clear 不存在的来源 = 无操作;重入/被掐断的协程也不会留下请求。</summary>
     private void RestoreHoverGravity()
     {
         if (_hoverRoutine != null)
@@ -240,12 +237,6 @@ public class PlayerMapDash : MonoBehaviour
             _hoverRoutine = null;
         }
 
-        if (_savedGravity >= 0f)
-        {
-            Rigidbody2D rb = _pc != null ? _pc.GetRigidbody() : null;
-            if (rb != null)
-                rb.gravityScale = _savedGravity;
-            _savedGravity = -1f;
-        }
+        _pc?.ClearGravityMultiplier(GravityMultiplierSource.MapDashHover);
     }
 }

@@ -70,9 +70,8 @@ public class PlayerBackstabState : EntityState
     // ── 背刺持续特效锚点(AttackVFXAnchor 统一入口;未挂 = null → 跳过,不影响背刺)──
     private AttackVFXAnchor _vfx;
 
-    // ── 空中背刺缓落:单例协程 + 原始重力只记一次(连音多刀并发会互相污染,见 BeginHover)──
+    // ── 空中背刺缓落:单例协程;重力由 PlayerController 倍率入口统一管(本类不记原始值)──
     private Coroutine _hoverRoutine;
-    private float _savedGravity = -1f;   // <0 = 未记录(状态内只记一次,恢复后复位)
 
     // ── 连音:替身 / 分配器(懒缓存,OnEnter 未找到就再找一次,不在 Update 里查)──
     private BackstabClone _clone;                 // clone 替身(P6):每一刀的动画由它演,本体不播
@@ -225,43 +224,40 @@ public class PlayerBackstabState : EntityState
             pc.JumpComp.ResetAirAttackOnly();
         if (hoverDuration > 0f)
         {
-            BeginHover(pc, hoverDuration);   // 单例协程 + 原始重力只记一次(连音多刀不再互相污染)
+            BeginHover(pc, hoverDuration);   // 单例协程 + 只报倍率请求(连音多刀不再互相污染)
         }
     }
 
-    /// <summary>玩家背刺后缓落:小重力缓慢下落(不清速度,避免定身后突然坠落),停 hoverDuration 秒后恢复原重力。
-    /// 不跟随 enemy——背刺=终结技,enemy 由击退自然飞出落地,玩家原地缓落,不每帧贴 enemy(贴随会造成左右闪/瞬移跳变)</summary>
+    /// <summary>玩家背刺后缓落:小重力缓慢下落(不清速度,避免定身后突然坠落),停 duration 秒后清请求。
+    /// 不跟随 enemy——背刺=终结技,enemy 由击退自然飞出落地,玩家原地缓落,不每帧贴 enemy(贴随会造成左右闪/瞬移跳变)。
+    /// 重力只报倍率(BackstabHover = 0.3):不再自己捕获/还原绝对重力值 —— 连音多刀各捕一次会把 0.3
+    /// 当成原值记下来,恢复后重力永久停在 0.3(跳很高)。</summary>
     private void BeginHover(PlayerController pc, float duration)
     {
         var rb = pc.GetRigidbody();
         if (rb == null) return;
-        // 原始重力只记第一次:连音多刀各记一次的话,后一刀会把 0.3 当成原始值记下来,
-        // 恢复后重力永久停在 0.3 → 玩家像失去重力一样跳很高(2026-09-10 实测 bug)
-        if (_savedGravity < 0f) _savedGravity = rb.gravityScale;
-        if (_hoverRoutine != null) pc.StopCoroutine(_hoverRoutine);   // 重入:先停旧协程,防多个协程各自恢复互相覆盖
+        pc.SetGravityMultiplier(GravityMultiplierSource.BackstabHover, 0.3f);
+        if (_hoverRoutine != null) pc.StopCoroutine(_hoverRoutine);   // 重入:先停旧协程,防多个协程各自清请求
         _hoverRoutine = pc.StartCoroutine(HoverRoutine(pc, duration));
     }
 
+    /// <summary>缓落协程:只计时,不在协程内碰刚体(重力由 PlayerController 倍率入口统一管);
+    /// 计时结束清掉本来源的请求 → 无其它请求时自动回基准。
+    /// 用 unscaledDeltaTime:顿帧(timeScale=0)下也能按时收尾,不会把倍率请求留着。</summary>
     private System.Collections.IEnumerator HoverRoutine(PlayerController pc, float duration)
     {
-        var rb = pc.GetRigidbody();
-        float restore = _savedGravity >= 0f ? _savedGravity : 1f;
-        if (rb != null)
-            rb.gravityScale = Mathf.Min(restore, 0.3f);   // 缓落:小重力(参考空中攻击悬停),不清速度
         float t = 0f;
         while (t < duration)
         {
             t += Time.unscaledDeltaTime;
             yield return null;
         }
-        if (rb != null)
-            rb.gravityScale = restore;
+        if (pc != null) pc.ClearGravityMultiplier(GravityMultiplierSource.BackstabHover);
         _hoverRoutine = null;
-        _savedGravity = -1f;
     }
 
-    /// <summary>恢复原始重力(状态退出/被打断/死亡全路径兜底):停掉缓落协程并把重力写回记录值,
-    /// 防"重力消失"永久残留。幂等:没有记录值(未缓落过)时什么都不做。</summary>
+    /// <summary>清掉本来源的倍率请求并停掉缓落协程(状态退出/被打断/死亡全路径兜底),
+    /// 防「重力消失」永久残留。幂等:没请求过时 Clear 不存在的来源 = 无操作。</summary>
     private void RestoreHoverGravity()
     {
         var pc = owner as PlayerController;
@@ -270,12 +266,7 @@ public class PlayerBackstabState : EntityState
             if (pc != null) pc.StopCoroutine(_hoverRoutine);
             _hoverRoutine = null;
         }
-        if (_savedGravity >= 0f)
-        {
-            var rb = pc != null ? pc.GetRigidbody() : null;
-            if (rb != null) rb.gravityScale = _savedGravity;
-            _savedGravity = -1f;
-        }
+        if (pc != null) pc.ClearGravityMultiplier(GravityMultiplierSource.BackstabHover);
     }
 
     /// <summary>背刺动画结束(动画事件 OnBackstabEnd → PlayerCombat → 本状态;clone 替身同链路转发):
@@ -311,7 +302,7 @@ public class PlayerBackstabState : EntityState
         _endEventSeq = 0;
         _stabCount.Clear();
         _chainFirstPoint = float.NaN;
-        RestoreHoverGravity();   // 被打断/死亡:缓落协程可能没跑完,统一恢复原始重力(防重力永久变小)
+        RestoreHoverGravity();   // 被打断/死亡:缓落协程可能没跑完,统一清掉倍率请求(防重力永久变小)
     }
 
     /// <summary>退出背刺:贴地回 Idle/Move(带朝向输入),空中回 FallState(对齐 PlayerAirAttackState 落态)。

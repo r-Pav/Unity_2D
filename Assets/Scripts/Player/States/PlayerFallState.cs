@@ -32,6 +32,10 @@ public class PlayerFallState : EntityState
         if (owner.IsGrounded)
         {
             jump.ResetJumps();
+            // 落地帧:本帧按下的动作键不会被执行(下面立刻切状态并 return,而攻击/冲刺/格挡等
+            // 检测都排在这之后;GetKeyDown/GetMouseButtonDown 只在按下那一帧为真 → 不记就永久丢)。
+            // 先记进输入意图缓冲,下一帧由 Idle/Move 的消费点执行(2026-09-12 修「跳跃后按攻击偶尔打不出来」)
+            pc.BufferCurrentActionInputs();
             stateMachine.ChangeState(Mathf.Abs(h) > 0.1f ? pc.MoveState : pc.IdleState);
             return;
         }

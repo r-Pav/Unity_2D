@@ -1,4 +1,33 @@
+using System.Collections.Generic;
 using UnityEngine;
+
+/// <summary>
+/// 重力倍率来源:各缓落/悬停效果只「报倍率」(默认 1),最终 rb.gravityScale = 基准 × min(活跃倍率)。
+/// 放在 PlayerController.cs 文件内(类外),与项目里 ISlideClose 同款惯例 —— 不新增 .cs 文件。
+/// </summary>
+public enum GravityMultiplierSource
+{
+    AirAttackHover,   // 空中攻击连段悬停
+    BackstabHover,    // 背刺缓落
+    MapDashHover,     // 地图元素冲刺缓落
+}
+
+/// <summary>
+/// 可被缓存的输入意图(锁定状态期间记录,解锁后按优先级消费一个)。
+/// 跳跃**不在此列**:它已有成熟机制(PlayerJump.jumpBufferWindow + OnLockedUpdate,含「攻击中按空格打断攻击」语义),
+/// 纳入统一层会双轨记录 → 解锁后跳两次(规格 §二/§七 明令禁止)。
+/// 放在 PlayerController.cs 文件内(类外),与 GravityMultiplierSource 同款惯例 —— 不新增 .cs 文件。
+/// </summary>
+public enum InputIntent
+{
+    Dash,          // Shift:冲刺
+    Attack,        // 鼠标左键:攻击(地面/空中)
+    Skill0,        // Q:技能槽 0
+    Skill1,        // E:技能槽 1
+    Skill2,        // R:技能槽 2
+    Block,         // 鼠标右键:格挡
+    GroundPound,   // S:下坠攻击
+}
 
 /// <summary>
 /// 玩家控制器（主组件）— 移动 + 统一 FSM(PlayerFsm)
@@ -62,6 +91,29 @@ public class PlayerController : PlayerCharacterBase
     [Header("地图元素冲刺(S5)")]
     [Tooltip("元素查询的视口外扩余量(0 = 必须完全在屏幕内)")]
     [SerializeField] private float mapDashViewportMargin = 0f;
+
+    // ============================================================
+    // 统一输入意图缓冲 —— 锁定状态(攻击/冲刺/受击/技能释放/下坠/背刺/瞄准)期间按下的动作意图
+    // 不再直接丢弃:每个动作一条独立通道(互不覆盖;同动作连按 = 覆盖式刷新时间戳,不排队),
+    // 解锁后按 IntentPriority 只消费一个,其余按各自窗口保留到过期。
+    // 跳跃不纳入(见 InputIntent 注释):PlayerJump.OnLockedUpdate 自己管,避免双轨 → 解锁后跳两次。
+    // ============================================================
+
+    [Header("输入意图缓冲")]
+    [Tooltip("锁定状态期间按下的动作意图保留多久(秒);解锁后窗口内按优先级消费一个")]
+    [SerializeField] private float inputBufferWindow = 0.2f;
+
+    /// <summary>意图通道剩余窗口(秒),索引 = (int)InputIntent;&gt; 0 = 该意图还在窗口内,0 = 无意图。
+    /// 用固定数组而非 Dictionary:.NET Framework / Mono 的 Dictionary 索引器赋值会递增 version
+    /// → 在 foreach 里递减会抛 InvalidOperationException(2026-09-12 实测);数组零分配、无枚举风险。</summary>
+    private readonly float[] _intentTimers = new float[(int)InputIntent.GroundPound + 1];
+
+    /// <summary>消费优先级(只消费一个;集中一处便于调序):冲刺 &gt; 攻击 &gt; 技能 Q/E/R &gt; 格挡 &gt; 下坠</summary>
+    private static readonly InputIntent[] IntentPriority =
+    {
+        InputIntent.Dash, InputIntent.Attack, InputIntent.Skill0, InputIntent.Skill1,
+        InputIntent.Skill2, InputIntent.Block, InputIntent.GroundPound,
+    };
 
     // ============================================================
 // 子模块引用
@@ -153,6 +205,54 @@ public class PlayerController : PlayerCharacterBase
     }
 
     // ============================================================
+    // 重力倍率入口 —— 全项目唯一写 rb.gravityScale 的地方
+    // 各效果(空中攻击悬停 / 背刺缓落 / 元素冲刺缓落)只报「倍率」,默认 1;
+    // 最终 rb.gravityScale = 启动基准 × min(活跃倍率)。
+    // 旧做法是各效果「进来记当前值 → 出去写回记录值」,互相污染(捕到别人留下的 0.3 当原值)
+    // → 重力永久停在 0.3(表现为「跳很高」),本入口从根上消除这条链。
+    // ============================================================
+
+    /// <summary>启动时从玩家 Rigidbody2D 读一次的重力基准(非 1 也按倍率缩放;要整体调重力改刚体值即可)</summary>
+    private float _baseGravityScale = 1f;
+
+    /// <summary>当前活跃的重力倍率请求(键 = 来源;值 = 乘数)。空 = 无请求 = 回基准</summary>
+    private readonly Dictionary<GravityMultiplierSource, float> _gravityMultipliers
+        = new Dictionary<GravityMultiplierSource, float>();
+
+    /// <summary>设置某来源的重力倍率(乘数:1 = 基准,0.3 = 明显变轻)。多来源同时存在时取最小值(最飘的生效);
+    /// 同来源重入 = 覆盖(不累积)。负值按 0 处理(防反重力)。</summary>
+    public void SetGravityMultiplier(GravityMultiplierSource source, float multiplier)
+    {
+        _gravityMultipliers[source] = Mathf.Max(0f, multiplier);
+        ApplyGravityMultiplier();
+    }
+
+    /// <summary>清除某来源的重力倍率(该来源效果结束调用)。清除不存在的来源 = 无操作(幂等,不碰别的来源)。</summary>
+    public void ClearGravityMultiplier(GravityMultiplierSource source)
+    {
+        if (_gravityMultipliers.Remove(source))
+            ApplyGravityMultiplier();
+    }
+
+    /// <summary>清空全部倍率并回到基准重力(进管道等强制归位用):顺带清掉空中攻击/缓落可能残留的请求。</summary>
+    public void ResetGravityMultipliers()
+    {
+        _gravityMultipliers.Clear();
+        ApplyGravityMultiplier();   // 无请求时也写一次基准,防外部改过刚体值
+    }
+
+    /// <summary>唯一写 rb.gravityScale 的地方:基准 × 活跃倍率最小值(无请求 = 1)。</summary>
+    private void ApplyGravityMultiplier()
+    {
+        float mult = 1f;
+        foreach (var kv in _gravityMultipliers)
+            if (kv.Value < mult) mult = kv.Value;
+
+        if (rb != null)
+            rb.gravityScale = _baseGravityScale * mult;
+    }
+
+    // ============================================================
     // 状态转发属性 — 动画聚合 / 敌人 AI 查询统一走这里
     // ============================================================
 
@@ -215,6 +315,9 @@ public class PlayerController : PlayerCharacterBase
     {
         _instance = this;   // 先接管：本类 Awake 内 AddComponent 出的组件可能立刻访问 Instance
         base.Awake();
+        // 重力倍率基准:必须在 base.Awake() 之后(rb 在 CharacterBase.Awake 里赋值)。
+        // 全项目读写口径 = 基准 × 倍率(倍率默认 1)→ 以后整体调重力只改 Rigidbody2D 上这个值,代码不动。
+        _baseGravityScale = rb != null ? rb.gravityScale : 1f;
         combat = GetComponent<PlayerCombat>();
         groundPound = GetComponent<PlayerGroundPound>();
         skillManager = GetComponent<SkillManager>();
@@ -320,6 +423,8 @@ public class PlayerController : PlayerCharacterBase
             // 攻击/受击锁定期间:仍要处理跳跃输入(打断攻击/缓冲补跳),
             // 否则 PlayerJump 永远不被调用 → 攻击中按空格无效(吞键)
             jump?.OnLockedUpdate(this);
+            // 统一输入意图缓冲:锁定期间按下的动作键(除空格)在这里记录,解锁后按优先级消费一个
+            RecordLockedIntents();
             // P2:锁定状态下 FSM 仍需驱动 — AttackState.OnUpdate 处理连击输入/预输入缓冲,
             // GroundPoundState.OnUpdate 处理落地检测;P3a:受击状态(Hurt/AirHurt)已迁入 FSM,
             // 必须驱动 FSM 才能让 HurtState 超时退出 / AirHurtState 落地检测(原 !IsHurt 排除已删除)
@@ -338,6 +443,16 @@ public class PlayerController : PlayerCharacterBase
         // 贴墙入口检测:条件满足则挂入 PlayerFsm 的 WallClingState 接管
         // (DashState.LocksInput=true → IsActionLocked 提前 return,冲刺中不会进入本分支)
         DetectWallCling();
+
+        // 统一输入意图缓冲:解锁后按优先级消费一个(条件不满足的跳过,保留到窗口过期)。
+        // 位置在 DetectWallCling 之后、FSM.Update 之前:
+        //   ① 规格要求「UpdateFacing 之后、PlayerFsm.Update() 之前」;
+        //   ② 放在贴墙判定之后,避免消费出来的 Dash/Attack 状态被同帧 DetectWallCling 立刻顶成 WallClingState
+        //      (DetectWallCling 只认状态类型不认 LocksInput),也让 ConsumeInputIntents 的
+        //      「贴墙状态不消费」守卫真正生效(贴墙自己处理输入:空格蹬墙跳、W 爬);
+        //   ③ 消费点仍早于 FSM.Update → 与状态类自己的 GetKeyDown 不会同帧双触发(消费成功后状态已切换,
+        //      本帧 FSM.Update 驱动的是新状态)。
+        ConsumeInputIntents();
 
         // 统一状态机驱动(Idle/Move/Jump/Fall/WallCling 的 OnUpdate 处理输入与切换)
         PlayerFsm.Update();
@@ -393,6 +508,10 @@ public class PlayerController : PlayerCharacterBase
         // 技能数值层(CD/充能/法力回复):放锁定判定前,攻击等 LocksInput 状态期间照常走。
         // 卡帧(timeScale=0)也不停:SkillManager 内用 unscaledDeltaTime,只冻视觉不冻数值。
         skillManager?.UpdateTimers();
+
+        // 统一输入意图缓冲:窗口递减 + 过期清理。必须放锁定判定之前(本方法由 OnUpdate 顶部调用),
+        // 否则锁定期间窗口不递减 → 解锁后补发一个早已过期的意图。
+        TickIntentTimers();
     }
 
     /// <summary>贴墙入口检测：空中 + 碰墙 + 不在上升 + 非贴墙中 → 切换至 WallClingState</summary>
@@ -411,6 +530,146 @@ public class PlayerController : PlayerCharacterBase
     private void UpdateSubModules()
     {
         skillManager?.CheckHotkeys();
+    }
+
+    // ============================================================
+    // 统一输入意图缓冲 —— 记录 / 递减 / 消费(规格 §五 P1~P4)
+    // 按下按键:
+    //   ├─ 当前状态允许(非锁定) → 状态类当场执行(现状不变:GetKeyDown 只在按下那一帧为真)
+    //   └─ 当前锁定 → RecordLockedIntents() 记录该通道(覆盖式刷新窗口)
+    // 解锁后每帧: TickIntentTimers() 递减 → ConsumeInputIntents() 按优先级找第一个可执行的
+    //   → 执行 + 清该通道(只一个);条件不满足的保留,窗口过期自动丢
+    // ============================================================
+
+    /// <summary>锁定期间记录动作意图(覆盖式刷新时间戳)。跳跃不在此处(PlayerJump.OnLockedUpdate 自己管);
+    /// 死亡/瞄准状态与跳跃的排除口径一致,不记录(这两个状态期间按键无意义)</summary>
+    private void RecordLockedIntents()
+    {
+        if (PlayerFsm == null) return;
+        var cur = PlayerFsm.CurrentState;
+        if (cur is PlayerDeadState || cur is PlayerAimingState) return;
+
+        BufferCurrentActionInputs();
+    }
+
+    /// <summary>
+    /// 把本帧按下的动作键记进意图缓冲(**不做状态排除**,供调用方自行决定时机)。两条调用路径:
+    /// ① 锁定分支(经 RecordLockedIntents,带死亡/瞄准排除);
+    /// ② 非锁定状态的「先切状态再 return」分支 —— FallState/JumpState 的落地帧:本帧按下的键
+    ///    不会被任何状态类执行(检测排在切状态 return 之后),而 GetKeyDown/GetMouseButtonDown
+    ///    只在按下那一帧为真 → 不记就永久丢(2026-09-12 修「跳跃后按攻击偶尔打不出来」)。
+    /// 记下的意图由下一帧非锁定分支的 ConsumeInputIntents 按优先级消费。
+    /// </summary>
+    public void BufferCurrentActionInputs()
+    {
+        if (Input.GetKeyDown(KeyCode.LeftShift)) RecordIntent(InputIntent.Dash);
+        if (Input.GetMouseButtonDown(0)) RecordIntent(InputIntent.Attack);
+        if (Input.GetMouseButtonDown(1)) RecordIntent(InputIntent.Block);
+        if (Input.GetKeyDown(KeyCode.S)) RecordIntent(InputIntent.GroundPound);
+        // Q/E/R 与 SkillManager.CheckHotkeys 的热键表(Q=0/E=1/R=2)一一对应
+        if (Input.GetKeyDown(KeyCode.Q)) RecordIntent(InputIntent.Skill0);
+        if (Input.GetKeyDown(KeyCode.E)) RecordIntent(InputIntent.Skill1);
+        if (Input.GetKeyDown(KeyCode.R)) RecordIntent(InputIntent.Skill2);
+    }
+
+    /// <summary>记录一条意图通道:覆盖式刷新时间戳(同动作连按不排队;下限 0.01s 防窗口值被配成 0 导致刚记就过期)</summary>
+    private void RecordIntent(InputIntent intent) => _intentTimers[(int)intent] = Mathf.Max(0.01f, inputBufferWindow);
+
+    /// <summary>窗口递减与过期清理(每帧;由 UpdateCooldowns 尾部调用 → 一定在锁定判定之前,锁定期间窗口照常走)。
+    /// 用 unscaledDeltaTime(卡帧期间照常过期)。固定数组 + for 循环:零分配、无枚举器失效风险。</summary>
+    private void TickIntentTimers()
+    {
+        for (int i = 0; i < _intentTimers.Length; i++)
+        {
+            if (_intentTimers[i] <= 0f) continue;   // 无意图:跳过(常态,零开销)
+            float v = _intentTimers[i] - Time.unscaledDeltaTime;
+            _intentTimers[i] = v > 0f ? v : 0f;     // 过期即归零
+        }
+    }
+
+    /// <summary>按优先级消费一个未过期意图:找到第一个「条件满足可执行」的执行掉并清该通道,只消费一个;
+    /// 条件不满足的跳过(不消费、保留窗口);死亡/瞄准/贴墙状态不消费(贴墙自己处理输入:空格蹬墙跳、W 爬)</summary>
+    private void ConsumeInputIntents()
+    {
+        if (PlayerFsm == null) return;
+        var cur = PlayerFsm.CurrentState;
+        if (cur is PlayerDeadState || cur is PlayerAimingState || cur is WallClingState) return;
+
+        for (int i = 0; i < IntentPriority.Length; i++)
+        {
+            var intent = IntentPriority[i];
+            if (_intentTimers[(int)intent] <= 0f) continue;   // 该通道无意图/已过期
+            if (TryExecuteIntent(intent))
+            {
+                _intentTimers[(int)intent] = 0f;   // 只消费一个:其余通道保留到各自窗口过期
+                return;
+            }
+        }
+    }
+
+    /// <summary>执行一个意图:条件逐条照抄现有状态类的入口判定(每个 case 注释里注明对应行),不发明新规则。
+    /// 返回 false = 条件不满足(不消费,窗口继续计时);true = 已执行,调用方清该通道</summary>
+    private bool TryExecuteIntent(InputIntent intent)
+    {
+        switch (intent)
+        {
+            case InputIntent.Dash:
+                // 照抄 Idle:31 / Move:31 / Jump:47 / Fall:40 / Block:42(Shift + 冲刺冷却就绪 → DashState)
+                if (dash == null || !dash.CooldownReady) return false;
+                PlayerFsm.ChangeState(DashState);
+                return true;
+
+            case InputIntent.Attack:
+                // 照抄 Idle:58 / Move:58 / Jump:68 / Fall:72(左键 + 攻击冷却就绪)
+                if (combat == null || !combat.AttackCooldownReady) return false;
+                // 背刺追击优先(Idle:60 / Move:60 / Jump:70 / Fall:74):命中则该次攻击已被追击消费
+                if (TryBackstabChaseAttack()) return true;
+                // 地面 → 地面攻击;空中 → 空中攻击(一滞空一次限制照抄 Jump:72 / Fall:76 的 !AirAttackUsed)
+                if (grounded)
+                {
+                    PlayerFsm.ChangeState(AttackState);
+                    return true;
+                }
+                if (JumpComp != null && !JumpComp.AirAttackUsed)
+                {
+                    PlayerFsm.ChangeState(AirAttackState);
+                    return true;
+                }
+                return false;   // 空中攻击已用完 → 不消费,窗口留到期(不突破「一滞空一次」设计)
+
+            case InputIntent.Skill0:
+                return TryExecuteSkill(0);
+            case InputIntent.Skill1:
+                return TryExecuteSkill(1);
+            case InputIntent.Skill2:
+                return TryExecuteSkill(2);
+
+            case InputIntent.Block:
+                // 照抄 Idle:67 / Move:67(右键 → 格挡):那两个状态只在 grounded 运行 → 空中不消费(语义等价)
+                if (!grounded) return false;
+                PlayerFsm.ChangeState(BlockState);
+                return true;
+
+            case InputIntent.GroundPound:
+                // 照抄 Jump:80 / Fall:84(!grounded + TryStartPound 返回 true → GroundPoundState);
+                // 高度不够/CD 中(TryStartPound 返回 false)→ 不消费
+                if (grounded || groundPound == null) return false;
+                if (!groundPound.TryStartPound(this)) return false;
+                PlayerFsm.ChangeState(GroundPoundState);
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>技能意图:SkillManager.CheckHotkeys(Q/E/R)在锁定态根本不被调用 → 解锁后由本层补发。
+    /// 冷却/充能/类型/槽位空判定全在 TryActivate 内部(本任务不改 SkillManager,只用它 public 入口);
+    /// 静默失败(未装配/CD 中/充能空)也按「已消费」处理 —— 否则窗口内每帧重试,CD 一好会突然放出一个
+    /// 玩家早已忘记的技能(规格 §七 风险 4)</summary>
+    private bool TryExecuteSkill(int index)
+    {
+        if (skillManager == null) return false;
+        skillManager.TryActivate(index);
+        return true;
     }
 
     // ============================================================

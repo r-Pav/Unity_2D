@@ -115,7 +115,24 @@ public class PlayerDashState : EntityState
                 stateMachine.ChangeState(Mathf.Abs(h) > 0.1f ? pc.MoveState : pc.IdleState);
             }
             else
+            {
+                // [2026-09-12] 空中冲刺收速(修「空中冲刺比地面快很多」):
+                // 冲刺速度 = 距离 ÷ 时长(当前 3/0.2 = 15 m/s),远高于空中水平上限 airMaxSpeed(6)。
+                // 地面冲刺结束时会被 OnFixedUpdate 的 Move(h) 每帧直接赋值收住(x = 输入×移速或 0),
+                // 空中没有这道收速,余速只能靠空中加速以 airAcceleration(20/s)慢慢逼近 6
+                // → 15 降到 6 要 0.45s、不按方向键要 1s 才归零,还全程没有地面摩擦,
+                // 于是空中冲刺比地面多滑好几米(体感「空中力度大得多」)。
+                // 收尾把超出空中上限的余速直接削掉,与地面冲刺结束后的收速口径对齐。
+                // airMaxSpeed 仍由 PlayerController 配置;想更干脆(空中冲刺一结束就不滑)把它改成 0 即可。
+                Rigidbody2D rb = owner.Rb;
+                if (rb != null)
+                {
+                    float cap = pc.AirMaxSpeed;
+                    rb.velocity = new Vector2(Mathf.Clamp(rb.velocity.x, -cap, cap), rb.velocity.y);
+                }
+
                 stateMachine.ChangeState(pc.FallState);
+            }
         }
     }
 

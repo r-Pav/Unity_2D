@@ -14,8 +14,6 @@ public class PlayerAirAttackState : PlayerComboState
 {
     private readonly PlayerJump jump;
 
-    private float _airAttackOriginalGravity = 1f;   // 空中攻击前的重力(连段结束/退出时恢复)
-    private bool _airAttackGravityRestored = true;  // 重力是否已恢复(防重复恢复)
     private float _hoverTimer;                      // 滞空计时:落地退出需先滞空最小时间(防低空攻击瞬间退出)
     private WeaponThrow _weaponThrow;               // 武器配置缓存(空中闪击间距/推敌距离读取;延迟解析,未挂时为 null 走兜底)
 
@@ -58,14 +56,13 @@ public class PlayerAirAttackState : PlayerComboState
             pc.UpdateFacing(combat.AttackDir);
 
         // 悬停:水平速度减半 + 垂直速度保留 30%(不硬切 0,保留惯性,过渡自然)
-        // + 重力小值缓沉(0.15,不归零,视觉更活;连段结束才恢复原重力,期间不下坠)
+        // + 悬停重力倍率(0.3,不归零,视觉更活):向 PlayerController 重力倍率入口报请求,
+        //   不直接写重力值;连段结束 RestoreGravity() 清请求 → 无其它请求时自动回基准
         Rigidbody2D rb = pc.GetRigidbody();
         if (rb != null)
         {
             rb.velocity = new Vector2(rb.velocity.x * 0.5f, rb.velocity.y * 0.3f);
-            _airAttackOriginalGravity = rb.gravityScale;
-            rb.gravityScale = Mathf.Min(_airAttackOriginalGravity, 0.3f);
-            _airAttackGravityRestored = false;
+            pc.SetGravityMultiplier(GravityMultiplierSource.AirAttackHover, 0.3f);
         }
         _hoverTimer = 0f;
 
@@ -302,16 +299,11 @@ public class PlayerAirAttackState : PlayerComboState
         }
     }
 
-    /// <summary>恢复重力(带防重标志):连段结束/打断/受击/超时统一入口</summary>
+    /// <summary>清除空中攻击的悬停重力倍率请求(连段结束/打断/受击/超时统一入口)。
+    /// 幂等性由「Clear 不存在的来源 = 无操作」天然保证,原来的防重标志字段已删。</summary>
     private void RestoreGravity()
     {
-        if (_airAttackGravityRestored) return;
         var pc = (PlayerController)owner;
-        Rigidbody2D rb = pc != null ? pc.GetRigidbody() : null;
-        if (rb != null)
-        {
-            rb.gravityScale = _airAttackOriginalGravity;
-            _airAttackGravityRestored = true;
-        }
+        pc?.ClearGravityMultiplier(GravityMultiplierSource.AirAttackHover);
     }
 }
