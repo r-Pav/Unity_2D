@@ -29,8 +29,13 @@ public class PlayerTeleport : MonoBehaviour
     [Tooltip("传送落地无敌帧时长（秒）— 防传送进 enemy 身体瞬间受伤")]
     [SerializeField] private float invincibleDuration = 0.5f;
 
-    /// <summary>传送到指定落点（自动贴墙钳制 + 清速度 + 无敌帧 + 特效事件占位）</summary>
-    public void TeleportTo(Vector2 destination)
+    /// <summary>
+    /// 传送到指定落点(清速度 + 无敌帧 + 特效事件占位)。
+    /// clampToWall 默认 true = 贴墙钳制(技能/背刺/冲刺等区内瞬移用);
+    /// 跨区传送(石碑系统)传 false —— 两区物理不连通,射线会打到「还没隐藏的旧区」地形上,
+    /// 把落点截回旧区(旧区随后隐藏 → 玩家站虚空掉落)。锚点是编辑器摆的安全位,不需要钳制。
+    /// </summary>
+    public void TeleportTo(Vector2 destination, bool clampToWall = true)
     {
         PlayerController pc = GetComponent<PlayerController>();
         if (pc == null) return;
@@ -38,7 +43,7 @@ public class PlayerTeleport : MonoBehaviour
         if (rb == null) return;
 
         Vector2 from = rb.position;
-        Vector2 to = ResolveLandingPoint(from, destination);
+        Vector2 to = clampToWall ? ResolveLandingPoint(from, destination) : destination;
 
         rb.position = to;
         rb.velocity = Vector2.zero;

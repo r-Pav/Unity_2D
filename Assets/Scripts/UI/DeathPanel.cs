@@ -145,6 +145,7 @@ public class DeathPanel : MonoBehaviour, IPanel
     private void SpawnAreaButton(string areaId, bool isCurrent)
     {
         GameObject row = Instantiate(areaTeleportButtonPrefab, areaTeleportContent);
+        row.SetActive(true); // 模板物体是 inactive,克隆体需手动激活(抄 SkillConfigUI/CraftMatListDialog)
         _generatedAreaButtons.Add(row);
 
         // 行文本：找按钮子物体上的 TMP 文本

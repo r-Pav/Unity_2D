@@ -264,7 +264,30 @@ public class WaypointSystem : MonoBehaviour
         }
 
         IsTeleporting = true;
+
+        // 立刻关掉发起页(传送页 / 复活页):黑场期间 UI 上只留幕布(2026-09-12 saika 定)。
+        // 面板没挂 UIPanelMotion → 硬切立即隐藏;挂了则播 0.2s 关闭动画,与黑场淡出并行。
+        // 副作用要知道:关面板会撤销 PauseGame(timeScale 恢复 1,世界运行约 0.5s),
+        // 且关闭回调里 _ApplyInteractionState 会把 InputEnabled 恢复 true → 这里紧接自己锁一次,
+        // 再由 Update 在 IsTeleporting 期间每帧重申(只锁一次会被面板关闭回调覆盖)。
+        PanelManager.Instance?.CloseTopPanel();
+        PlayerController pcLock = PlayerController.Instance;
+        if (pcLock != null) pcLock.InputEnabled = false;
+
         StartCoroutine(TeleportFlow(targetAreaId, ignoreCombat, bk));
+    }
+
+    /// <summary>
+    /// 传送流程期间每帧重申锁输入(IsTeleporting=false 时零开销):
+    /// PanelManager 关面板的动画回调里 _ApplyInteractionState 会按「栈已空」把 InputEnabled 恢复 true,
+    /// 只在流程开始时锁一次会被覆盖 → 玩家在黑场淡出/淡入期间仍能动。
+    /// 与 AreaChannelTrigger「接管循环内每帧重申锁」同一教训(2026-08-12 管道移动 bug)。
+    /// </summary>
+    private void Update()
+    {
+        if (!IsTeleporting) return;
+        PlayerController pc = PlayerController.Instance;
+        if (pc != null) pc.InputEnabled = false;
     }
 
     /// <summary>
@@ -345,25 +368,29 @@ public class WaypointSystem : MonoBehaviour
                     return;
                 }
 
-                // 传送:复用 PlayerTeleport(墙钳制+清速度+无敌帧);组件缺失时运行时挂载(与技能执行器习惯一致)
+                // ★ 唤醒目标区必须早于瞬移(2026-09-12 实测修复「传回去直接掉落」):
+                //   目标区此前被 HideArea(SetActive(false)) → 地形 collider 不存在、物理里没有地面,
+                //   玩家瞬移过去后脚下无地面 → 直接掉落。先 ShowArea 让地形就位,再动玩家。
+                ZoneManager zm = ZoneManager.Instance;
+                GameObject targetRoot = zm != null ? zm.GetAreaRoot(targetAreaId) : null;
+                if (targetRoot != null) zm.ShowArea(targetRoot);
+
+                // 传送:复用 PlayerTeleport(清速度+无敌帧+传送事件);组件缺失时运行时挂载(与技能执行器习惯一致)
                 PlayerTeleport teleport = pc.GetComponent<PlayerTeleport>();
                 if (teleport == null) teleport = pc.gameObject.AddComponent<PlayerTeleport>();
 
-                teleport.TeleportTo(anchor.transform.position);   // 参数 = 石碑世界坐标
+                // 落点不做贴墙钳制(clampToWall: false):此刻旧区还活着,钳制射线会打在旧区地形上
+                // 把落点截回旧区(旧区随隐藏 → 玩家站虚空掉落);锚点是编辑器摆好的安全位,直接落即可
+                teleport.TeleportTo(anchor.transform.position, clampToWall: false);   // 参数 = 石碑世界坐标
 
                 // 相机瞬移:按实际位移 delta 修正(VCam 不滑行不扫虚空,抄 ChannelTeleportTrigger)
-                // delta 用 rb 实测:TeleportTo 内含墙钳制,最终落点可能略偏移锚点,实测位移最准
                 Vector2 rbAfter = rb != null ? rb.position : (Vector2)pc.transform.position;
                 Vector3 delta = rbAfter - rbBefore;
                 FindObjectOfType<CinemachineVirtualCamera>()?.OnTargetObjectWarped(pc.transform, delta);
 
-                // 区显隐:Show 目标区;Hide 旧当前区(仅当不同区——同区传送不 Hide 自己脚下)
-                ZoneManager zm = ZoneManager.Instance;
+                // 区显隐收尾:玩家已落到目标区 → 现在才隐藏旧当前区(仅当不同区;同区传送不 Hide 自己脚下)
                 if (zm != null)
                 {
-                    GameObject targetRoot = zm.GetAreaRoot(targetAreaId);
-                    if (targetRoot != null) zm.ShowArea(targetRoot);
-
                     if (!string.IsNullOrEmpty(oldAreaId) && oldAreaId != targetAreaId)
                     {
                         GameObject oldRoot = zm.GetAreaRoot(oldAreaId);
@@ -374,8 +401,8 @@ public class WaypointSystem : MonoBehaviour
                     zm.NotifyAreaEntered(targetAreaId);
                 }
 
-                // 传送页发起 → 流程内关面板(PanelManager 恢复 LockInput/Pause,onDone 再兜底输入)
-                PanelManager.Instance?.CloseTopPanel();
+                // 发起页已在 RequestTeleport 开头关闭(黑场期间 UI 只留幕布),此处不再调 CloseTopPanel
+                // ——栈已空时它虽然安全返回,但此刻栈里若有别的面板会被误关。
             },
             onDone: () =>
             {

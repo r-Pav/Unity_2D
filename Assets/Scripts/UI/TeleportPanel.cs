@@ -35,17 +35,31 @@ public class TeleportPanel : MonoBehaviour, IPanel
     [Tooltip("当前 Area 标签(标题旁,显示所在区显示名;可空/可不接)")]
     [SerializeField] private TMP_Text currentAreaLabel;
 
+    [Tooltip("关闭按钮(Btn_Back;可空,不拖就只能按 ESC 关)")]
+    [SerializeField] private Button closeButton;
+
     /// <summary>动态创建的 Area 行按钮缓存(OnEnable 重建前 / OnDisable 销毁用,防残留)</summary>
     private readonly List<GameObject> _generatedButtons = new List<GameObject>();
 
     private void OnEnable()
     {
+        // 绑定/解绑成对(抄 DeathPanel 模式);禁止 Awake 绑定(面板初始 inactive,Awake 不执行)
+        if (closeButton != null)
+            closeButton.onClick.AddListener(OnCloseClicked);
         RefreshList();
     }
 
     private void OnDisable()
     {
+        if (closeButton != null)
+            closeButton.onClick.RemoveListener(OnCloseClicked);
         DestroyGeneratedButtons();
+    }
+
+    /// <summary>关闭按钮(Btn_Back)→ 关闭栈顶面板;无 PanelManager 的场景(主菜单等)静默跳过</summary>
+    private void OnCloseClicked()
+    {
+        PanelManager.Instance?.CloseTopPanel();
     }
 
     // ============================================================
@@ -99,6 +113,7 @@ public class TeleportPanel : MonoBehaviour, IPanel
     private void SpawnAreaButton(string areaId)
     {
         GameObject row = Instantiate(areaButtonPrefab, areaListContent);
+        row.SetActive(true); // 模板物体是 inactive,克隆体需手动激活(抄 SkillConfigUI/CraftMatListDialog)
         _generatedButtons.Add(row);
 
         // 行文本:找按钮子物体上的 TMP 文本
