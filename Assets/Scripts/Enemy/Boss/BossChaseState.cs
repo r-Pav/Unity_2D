@@ -24,6 +24,13 @@ public class BossChaseState : EntityState
         var boss = (FirstBoss)owner;
         if (boss.IsDead) return;
 
+        // 重击期间:站桩(位置/朝向由 BossHeavyAttack 冻结),不请求攻击
+        if (boss.IsHeavyActive)
+        {
+            boss.moveInput = 0f;
+            return;
+        }
+
         // 技能执行中:站桩等技能结束(技能动画独立播放,不切 FSM 状态)
         if (boss.IsAttacking)
         {

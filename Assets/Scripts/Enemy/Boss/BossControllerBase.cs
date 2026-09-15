@@ -455,6 +455,20 @@ public abstract class BossControllerBase : EnemyControllerBase
     /// <summary>重击施放中(霸体:不掉硬直/击退,不中断;照常掉血)</summary>
     public bool IsHeavyActive => heavyAttack != null && heavyAttack.IsActive;
 
+    /// <summary>本次重击是否已过伤害结算帧(P3 玩家侧判定有效期:已出伤后不再接受卡点判定)</summary>
+    public bool HeavyDamageSettled => heavyAttack != null && heavyAttack.DamageSettled;
+
+    /// <summary>
+    /// 玩家侧卡点判定成功 → 把抵消通知转发给重击组件(本次重击不出伤,Boss 照常掉血)。
+    /// 重击组件为空时安全返回(没挂重击 = 没有重击可抵消)。
+    /// 与 TakeDamageFrom / OnHitBy 里的 heavyAttack.NotifyHit() 是同一条通路的对外入口:
+    /// 玩家侧不该直连 BossHeavyAttack(它在敌人内部),统一从 Boss 控制器转发。
+    /// </summary>
+    public void NotifyHeavyHit()
+    {
+        if (heavyAttack != null) heavyAttack.NotifyHit();
+    }
+
     /// <summary>攻击编排组件</summary>
     public BossAttackDirector AttackDirector => attackDirector;
 

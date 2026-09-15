@@ -840,19 +840,36 @@ public class PlayerController : PlayerCharacterBase
 
     /// <summary>窗口内 F:强制打断进背刺状态(死亡/受击硬直除外)。连音路径放开"背刺执行中重入"(P7 产物)。
     /// 背刺最高优先级:打断攻击连段前清掉其排队/缓冲输入,防旧点击在背刺后污染追击窗口(2026-09-03 saika)</summary>
-    private void TryEnterBackstab(bool chainMode)
+    /// <summary>
+    /// 进入背刺(chainMode:true = 连音路径,false = 自动重音/单点路径)。
+    /// 2026-09-15:访问级别由 private 提升为 public —— Boss 重击音判定链(PlayerBeatJudge)在判定成功后直接调本方法打一段背刺,
+    /// 不再由玩家侧自实现瞬移与吸附。调用方传 false(非连音);内部会消费自动重音窗口(Boss 曲无自动重音,该消费是空操作)。
+    /// </summary>
+    public void TryEnterBackstab(bool chainMode)
     {
-        if (PlayerFsm == null || BackstabState == null) return;
+        if (PlayerFsm == null || BackstabState == null)
+        {
+            Debug.Log("[HeavyDbg] 背刺入口被拦:FSM 或背刺状态为空");
+            return;
+        }
         var cur = PlayerFsm.CurrentState;
         if (cur is PlayerDeadState
             || cur is PlayerHurtState
-            || cur is PlayerAirHurtState) return;
+            || cur is PlayerAirHurtState)
+        {
+            Debug.Log($"[HeavyDbg] 背刺入口被拦:玩家当前是 {cur.GetType().Name}(死亡/受击不背刺,按 F 无反应就是这个原因)");
+            return;
+        }
 
         // ── 已在背刺状态中(P8 核心:放开重入,原实现直接 return → 连音第二拍被吞)──
         if (cur is PlayerBackstabState backstabState)
         {
             // 非连音路径(自动重音)保持原语义:背刺执行中按 F 不重入(该窗口进状态时已消费)
-            if (!chainMode) return;
+            if (!chainMode)
+            {
+                Debug.Log("[HeavyDbg] 背刺入口被拦:玩家已在背刺状态中(非连音不重入),按 F 无反应就是这个原因");
+                return;
+            }
 
             // 连音路径:同一状态实例就地推进下一刀,不 ChangeState(FSM 对同实例直接 return,切不动也不重播动画)。
             //   返回 true = 这一刀已执行(状态内 ExecuteStrike 已按点 ConsumePoint);

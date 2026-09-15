@@ -230,6 +230,8 @@ public class FirstBoss : BossControllerBase
     {
         if (!isActivated) return false;
         if (isDead) return false;
+        // 重击期间拦截:不普攻、不放技能(重击本身不查 CanAttack,不受此影响)
+        if (IsHeavyActive) return false;
         if (skillSlots != null && skillSlots.IsExecuting) return false;
         if (PlayerTarget == null) return false;
         // 普攻间隔不在此拦(技能不受间隔约束,普攻间隔在 BossAttackDirector.TryAttack 普攻分支拦)

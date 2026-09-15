@@ -8,10 +8,12 @@ using UnityEngine;
 public class BossAnimationRelay : MonoBehaviour
 {
     private FirstBoss _boss;
+    private BossHeavyAttack _heavy;
 
     void Awake()
     {
         _boss = GetComponentInParent<FirstBoss>();
+        _heavy = GetComponentInParent<BossHeavyAttack>();
     }
 
     /// <summary>Attack 动画结束帧事件 — 转发给 BossAttackState.OnAnimEnd(回追击)。</summary>
@@ -35,6 +37,28 @@ public class BossAnimationRelay : MonoBehaviour
         if (_boss == null) return;
         var slots = _boss.GetComponent<BossSkillSlots>();
         slots?.OnSkillAnimEnd();
+    }
+
+    /// <summary>
+    /// 重击攻击动画(Heavy-Attack)结束帧事件 — 转发给 BossHeavyAttack(收尾:解锁朝向/恢复重力/复位参数)。
+    /// 挂在 Heavy-Attack 片段最后一帧;重击已收尾或非重击期的迟到事件由 BossHeavyAttack 自行忽略。
+    /// </summary>
+    public void OnBossHeavyEnd()
+    {
+        if (_heavy == null) _heavy = GetComponentInParent<BossHeavyAttack>();   // 懒兜底:Awake 次序/晚挂
+        if (_heavy == null) return;
+        _heavy.NotifyHeavyAnimEnd();
+    }
+
+    /// <summary>
+    /// 重击出伤帧事件(v2):Heavy-Attack 动画的出伤帧调这里 → 转发 BossHeavyAttack.OnHeavyHitFrame。
+    /// 出伤严格由动画事件驱动,代码不做定时伤害;事件没挂 = 不出伤。
+    /// </summary>
+    public void OnBossHeavyHitFrame()
+    {
+        if (_boss == null) return;
+        var heavy = _boss.GetComponent<BossHeavyAttack>();
+        if (heavy != null) heavy.OnHeavyHitFrame();
     }
 
     // 后续接入伤害/技能时在这里加独立事件(如 OnBossAttackActiveStart/End → BossSkillSlots),

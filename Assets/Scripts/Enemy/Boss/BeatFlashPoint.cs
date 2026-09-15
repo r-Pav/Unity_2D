@@ -35,6 +35,32 @@ public class BeatFlashPoint : MonoBehaviour
     private bool _initiallyActive = true;          // 初始 GameObject 激活态(闪完恢复;支持整个物体 inactive 的隐藏方式)
     private GameObject _aimInstance;               // 标识 prefab 实例(首次 Flash 生成,复用显隐;随本物体销毁自动销毁)
 
+    /// <summary>
+    /// 金色收缩环从起点缩到判定外环的用时(秒,来自实例/模板上的 BackstabAimIndicator)。
+    /// Boss 侧用它算出圈时刻(标点 - 该值):环一出现就开始缩,全程可见、没有静默段;
+    /// 模板参数(shrinkSpeed / ringStartRadius)改了这里自动跟随,不用改代码。
+    /// 拿不到组件(未拖 aimPrefab 等)时退回 0.4 秒。
+    /// </summary>
+    public float AimLeadSeconds
+    {
+        get
+        {
+            BackstabAimIndicator ctrl = null;
+            if (_aimInstance != null) ctrl = _aimInstance.GetComponentInChildren<BackstabAimIndicator>(true);
+            if (ctrl == null && aimPrefab != null) ctrl = aimPrefab.GetComponentInChildren<BackstabAimIndicator>(true);
+            return ctrl != null ? Mathf.Max(0.05f, ctrl.LeadSeconds) : 0.4f;
+        }
+    }
+
+    /// <summary>[临时调试] 打出调用来源(上层调用者 类型.方法),用于定位"圈被谁驱动/被谁收掉"</summary>
+    private static string CallerName()
+    {
+        var st = new System.Diagnostics.StackTrace();
+        if (st.FrameCount < 2) return "?";
+        var m = st.GetFrame(1).GetMethod();
+        return m.DeclaringType != null ? m.DeclaringType.Name + "." + m.Name : m.Name;
+    }
+
     private void Awake()
     {
         _initiallyActive = gameObject.activeSelf;
@@ -71,12 +97,25 @@ public class BeatFlashPoint : MonoBehaviour
         Flash();
     }
 
+    /// <summary>
+    /// 退掉本挂点的自动窗口订阅(幂等)。被外部按精确时序驱动(如 Boss 重击出圈)时必须先调:
+    /// autoSubscribe 型挂点会在每次窗口打开时自己 Flash 一次,与外部这次叠加 → 环被第二次 Show 重启,
+    /// 表现就是"圈缩一点就消失、然后重新完整缩一遍"(2026-09-15 实测根因)。
+    /// </summary>
+    public void DisableAutoSubscribe()
+    {
+        var mgr = MusicPointManager.Instance;
+        if (mgr != null && _subscribed) mgr.OnWindowEnter -= OnWindowEnter;
+        _subscribed = false;
+    }
+
     /// <summary>手动触发(EnemyBeatIndicator 在自动重音窗口前调用;不依赖自动订阅)。
     /// 物体初始 inactive 也能闪:先激活让协程能跑,闪完恢复初始激活态。
     /// 拖了 aimPrefab = 启动标识实例(隐藏自身 SpriteRenderer 防双视觉);没拖 = 原 SpriteRenderer 闪烁。
     /// secondsToWindowStart = 触发时距窗口起点的真实剩余秒数;windowSeconds = 判定窗口时长(内环适配用)。</summary>
     public void Flash(float secondsToWindowStart = 1f, float windowSeconds = 0.3f)
     {
+        Debug.Log($"[圈日志] Flash 来源={CallerName()} 挂点={name} 距点={secondsToWindowStart:0.###} 窗口={windowSeconds:0.###} 自动订阅={autoSubscribe}");
         if (aimPrefab != null)
         {
             // ── 模式①:挂点 + prefab 槽(背刺标识)──
@@ -101,6 +140,7 @@ public class BeatFlashPoint : MonoBehaviour
     /// 没拖 aimPrefab(闪烁模式/Boss)= 退化为单点 Flash(取首个剩余秒数),行为与现状一致。</summary>
     public void ShowChain(float[] secondsToPoints, float windowSeconds)
     {
+        Debug.Log($"[圈日志] ShowChain 来源={CallerName()} 挂点={name} 点数={(secondsToPoints != null ? secondsToPoints.Length : 0)} 窗口={windowSeconds:0.###}");
         if (aimPrefab == null)
         {
             // ── 无标识 prefab(模式②/未配):退化为单点闪烁,取首个剩余秒数
@@ -172,6 +212,7 @@ public class BeatFlashPoint : MonoBehaviour
     /// 拖了 aimPrefab = 收起标识实例并恢复挂点初始态。</summary>
     public void Hide()
     {
+        Debug.Log($"[圈日志] Hide 来源={CallerName()} 挂点={name} 自动订阅={autoSubscribe}");
         if (aimPrefab != null)
         {
             // ── 模式①:挂点 + prefab 槽(背刺标识)──

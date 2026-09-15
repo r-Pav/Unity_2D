@@ -28,8 +28,11 @@ public class PlayerHealth : MonoBehaviour, ICombatant
     // ============================================================
 
     [Header("生命")]
-    [Tooltip("已移至 PlayerAttrConfigSO.initialHealth 统一配置；此处仅作运行时显示")]
-    [SerializeField] private float baseMaxHealth = 5f;
+    // [2026-09-15 saika] 数值已由 PlayerAttrConfigSO.initialHealth 统一配置(启动时读取覆盖),此字段不再序列化、面板不再显示。
+    // 保留同名运行时字段给 MaxHealth 计算用,下面两行旧序列化声明注释留档。
+    // [Tooltip("已移至 PlayerAttrConfigSO.initialHealth 统一配置；此处仅作运行时显示")]
+    // [SerializeField] private float baseMaxHealth = 5f;
+    private float baseMaxHealth;   // 运行时:PlayerHealth 启动时从 AttrConfig.initialHealth 赋值
 
     [Tooltip("受击硬直时长（秒），到期自动退出 Hit 动画")]
     [SerializeField] private float hurtDuration = 0.3f;

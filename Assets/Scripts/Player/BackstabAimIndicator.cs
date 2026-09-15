@@ -56,8 +56,9 @@ public class BackstabAimIndicator : MonoBehaviour
     private readonly List<ParticleSystem> _pool = new List<ParticleSystem>();          // 本轮可用环(rings 过滤空引用,全空退回 ring)
     private readonly List<Coroutine> _poolRoutines = new List<Coroutine>();            // 与 _pool 同下标的在跑协程(每槽至多 1 个)
 
-    /// <summary>派生:环从起点缩到判定外环的用时 = 出现提前量(秒)</summary>
-    private float LeadSeconds => Mathf.Max(0f, (ringStartRadius - outerRadius) / shrinkSpeed);
+    /// <summary>派生:环从起点缩到判定外环的用时 = 出现提前量(秒)。
+    /// 公开只读:Boss 侧出圈时刻 = 标点 - 该值(环一出现就开始缩,没有静默段);改模板参数后自动跟随。</summary>
+    public float LeadSeconds => Mathf.Max(0f, (ringStartRadius - outerRadius) / Mathf.Max(0.01f, shrinkSpeed));
 
     /// <summary>单点(兼容旧调用方,行为与 P4 前一致):等价 ShowChain(new[]{ secondsToWindowStart }, windowSeconds)。</summary>
     public void Show(float secondsToWindowStart, float windowSeconds)
