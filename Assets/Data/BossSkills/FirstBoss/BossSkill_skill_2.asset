@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: BossSkill_skill_2
   m_EditorClassIdentifier: 
   skillName: Orb
-  animState: Magic2
+  animState: IsMagic2
   skillPrefab: {fileID: 1981057436288070008, guid: f917077e4b783a64190b86ed76c35038, type: 3}
   damage: 20
   knockback: {x: 4, y: 0}

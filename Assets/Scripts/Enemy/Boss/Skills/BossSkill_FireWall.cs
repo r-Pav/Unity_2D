@@ -47,7 +47,7 @@ public class BossSkill_FireWall : BossSkillExecutor
     {
         var boss = ctx.boss;
         if (boss == null) yield break;
-        PlaySkillAnim(ctx.animator);
+        SetSkillAnimOn(ctx.animator);
 
         // 兼容空中战位:执行期间关重力,技能结束恢复(中断由 OnDestroy 兜底)
         _savedBossRb = boss.GetComponent<Rigidbody2D>();

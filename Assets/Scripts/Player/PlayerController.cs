@@ -847,17 +847,13 @@ public class PlayerController : PlayerCharacterBase
     /// </summary>
     public void TryEnterBackstab(bool chainMode)
     {
-        if (PlayerFsm == null || BackstabState == null)
-        {
-            Debug.Log("[HeavyDbg] 背刺入口被拦:FSM 或背刺状态为空");
-            return;
-        }
+        if (PlayerFsm == null || BackstabState == null) return;   // FSM/背刺状态为空(原 [HeavyDbg] 拦截提示已清 2026-09-16)
         var cur = PlayerFsm.CurrentState;
         if (cur is PlayerDeadState
             || cur is PlayerHurtState
             || cur is PlayerAirHurtState)
         {
-            Debug.Log($"[HeavyDbg] 背刺入口被拦:玩家当前是 {cur.GetType().Name}(死亡/受击不背刺,按 F 无反应就是这个原因)");
+            // [2026-09-16 清理临时调试] Debug.Log($"[HeavyDbg] 背刺入口被拦:玩家当前是 {cur.GetType().Name}(死亡/受击不背刺,按 F 无反应就是这个原因)");
             return;
         }
 
@@ -865,11 +861,7 @@ public class PlayerController : PlayerCharacterBase
         if (cur is PlayerBackstabState backstabState)
         {
             // 非连音路径(自动重音)保持原语义:背刺执行中按 F 不重入(该窗口进状态时已消费)
-            if (!chainMode)
-            {
-                Debug.Log("[HeavyDbg] 背刺入口被拦:玩家已在背刺状态中(非连音不重入),按 F 无反应就是这个原因");
-                return;
-            }
+            if (!chainMode) return;   // 非连音不重入(原 [HeavyDbg] 拦截提示已清 2026-09-16)
 
             // 连音路径:同一状态实例就地推进下一刀,不 ChangeState(FSM 对同实例直接 return,切不动也不重播动画)。
             //   返回 true = 这一刀已执行(状态内 ExecuteStrike 已按点 ConsumePoint);

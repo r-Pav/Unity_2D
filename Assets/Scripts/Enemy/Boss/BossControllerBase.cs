@@ -134,6 +134,16 @@ public abstract class BossControllerBase : EnemyControllerBase
     // 运行时状态
     // ============================================================
 
+    /// <summary>重击总开关动画参数名(与 BossHeavyAttack 同口径:蓄力起播帧置真,收尾置假)</summary>
+    private const string AnimParamIsHeavy = "IsHeavy";
+
+    /// <summary>技能动画开关参数名(技能 data 的 animState 填这两个名字;技能起止由 BossSkillSlots 置位/复位)</summary>
+    private const string AnimParamIsMagic = "IsMagic";
+    private const string AnimParamIsMagic2 = "IsMagic2";
+
+    /// <summary>纳入动画 busy 聚合的参数:任一为真 → 压掉 IsIdle/IsMove → 当前 Idle 才退得出去、Entry 才重判</summary>
+    private static readonly string[] BusyAnimParams = { AnimParamIsHeavy, AnimParamIsMagic, AnimParamIsMagic2 };
+
     /// <summary>当前阶段（0 = P1, 1 = P2, ...）</summary>
     protected int currentPhase;
 
@@ -189,6 +199,26 @@ public abstract class BossControllerBase : EnemyControllerBase
         base.OnUpdate();
         if (meleeIntervalTimer > 0f)
             meleeIntervalTimer -= Time.deltaTime;
+    }
+
+    /// <summary>
+    /// 动画参数聚合覆写 — 重击的蓄力/攻击段、技能施法段(IsHeavy / IsMagic / IsMagic2 为真)纳入 busy。
+    /// Boss 站桩期间(moveInput=0)基类每帧会把 IsIdle 置真,而 Idle 状态的出口条件正是「非 IsIdle」,
+    /// 于是 Idle 永不退出 → Entry 不重判 → 动画器切不进 Charge / Magic(重击与技能同一个坑)。
+    /// 判据用动画参数本身(重击:蓄力起播帧置真;技能:技能开始时置真),准备期不压,避免 Idle 反复退出重进。
+    /// </summary>
+    protected override void UpdateAnimation()
+    {
+        base.UpdateAnimation();
+        if (_animator == null) return;
+
+        for (int i = 0; i < BusyAnimParams.Length; i++)
+        {
+            if (!_animator.GetBool(BusyAnimParams[i])) continue;
+            _animator.SetBool(AnimParams.IsIdle, false);
+            _animator.SetBool(AnimParams.IsMove, false);
+            break;
+        }
     }
 
     protected override void OnEnable()
@@ -266,6 +296,13 @@ public abstract class BossControllerBase : EnemyControllerBase
         // 委托基类处理：扣血 + 受伤反馈 + 硬直 + 死亡检测 + VFX
         base.TakeDamage(amount, attackType);
 
+        // 技能霸体:施法期间不中断技能、不进受击状态(照常掉血)
+        if (IsSkillCasting)
+        {
+            EventBus.Trigger(new BossHpChangedEvent(this, currentHealth, maxHealth));
+            return;
+        }
+
         HandleHitCommon(false, Vector2.zero);
     }
 
@@ -282,6 +319,14 @@ public abstract class BossControllerBase : EnemyControllerBase
         if (IsHeavyActive)
         {
             heavyAttack.NotifyHit();
+            base.TakeDamage(amount, attackType);
+            EventBus.Trigger(new BossHpChangedEvent(this, currentHealth, maxHealth));
+            return;
+        }
+
+        // 技能霸体:施法期间不中断技能、不进受击状态、不被击退(照常掉血)
+        if (IsSkillCasting)
+        {
             base.TakeDamage(amount, attackType);
             EventBus.Trigger(new BossHpChangedEvent(this, currentHealth, maxHealth));
             return;
@@ -304,9 +349,9 @@ public abstract class BossControllerBase : EnemyControllerBase
     }
 
     /// <summary>
-    /// 受击统一处理（状态机入口）：中断技能 + 血量事件 + 回追击 + 阶段检测。
+    /// 受击统一处理（状态机入口）：中断技能 + 血量事件 + 进受击状态 + 阶段检测。
     /// TakeDamage / TakeDamageFrom / OnHitBy 共用，状态切换只经 fsm.ChangeState(状态机 API)。
-    /// 受击清攻击冷却 → ChaseState.OnUpdate 的 CanAttack 立即可用 → 状态机自动切 Attack 反击(不额外写攻击代码)。
+    /// 受击进 BossHurtState 播受击动画(子类未配受击状态时回退追击)。
     /// </summary>
     private void HandleHitCommon(bool faceSource, Vector2 sourcePosition)
     {
@@ -321,7 +366,7 @@ public abstract class BossControllerBase : EnemyControllerBase
             moveInput = dir;
         }
 
-        fsm.ChangeState(CreateChaseState());
+        fsm.ChangeState(CreateHurtState() ?? CreateChaseState());
     }
 
     // ============================================================
@@ -333,13 +378,22 @@ public abstract class BossControllerBase : EnemyControllerBase
     /// <summary>可受击：非死亡 + 已激活 + 非阶段切换无敌</summary>
     public override bool CanBeDamaged => !isDead && isActivated && !isPhaseTransitioning;
 
-    /// <summary>受击状态推送：中断技能 + 血量事件 + 回追击 + 阶段检测（统一走 HandleHitCommon）。</summary>
+    /// <summary>受击状态推送：中断技能 + 血量事件 + 进受击状态 + 阶段检测（统一走 HandleHitCommon）。</summary>
     public override void OnHitBy(DamageInfo info)
     {
         if (!isActivated) return;
         if (isPhaseTransitioning) return;
 
-        // 重击霸体:不掉硬直不中断,标记抵消(该次重击不造成伤害),照常掉血(Resolve 已扣)
+        // 背刺成功(终结技命中):先中断重击(解除霸体/解锁朝向/恢复重力),再进受击状态。
+        // 不中断的话动画器停在 Charge / Heavy-Attack(它们的出口条件不看 IsHurt),Hurt 动画切不进去
+        if (info.isBackstabFinisher)
+        {
+            heavyAttack?.InterruptHeavy();
+            HandleHitCommon(true, info.sourcePosition);
+            return;
+        }
+
+        // 重击霸体期间被普通攻击命中:不掉硬直不中断,只标记抵消(该次重击不造成伤害),照常掉血(Resolve 已扣)
         if (IsHeavyActive)
         {
             heavyAttack.NotifyHit();
@@ -347,14 +401,22 @@ public abstract class BossControllerBase : EnemyControllerBase
             return;
         }
 
-        // Boss 不吃硬直(不进入 EnemyStunState),统一回追击;击退抵抗已在 ApplyKnockback 处理
+        // 技能霸体:施法期间不中断技能、不进受击状态(照常掉血;Resolve 已扣)
+        if (IsSkillCasting)
+        {
+            EventBus.Trigger(new BossHpChangedEvent(this, currentHealth, maxHealth));
+            return;
+        }
+
+        // 普通受击:进受击状态(击退抵抗已在 ApplyKnockback 处理)
         HandleHitCommon(true, info.sourcePosition);
     }
 
     /// <summary>施加击退（带抵抗系数）：resistance=1 时完全不吃击退；重击霸体中完全免疫</summary>
     public override void ApplyKnockback(Knockback knockback)
     {
-        if (IsHeavyActive) return;   // 重击霸体:免疫击退
+        if (IsHeavyActive) return;    // 重击霸体:免疫击退
+        if (IsSkillCasting) return;   // 技能霸体:施法期间不被击退(位置不被拉走)
         if (rb == null || knockback.force <= 0f) return;
         float knockMultiplier = 1f - knockbackResistance;
         if (knockMultiplier <= 0.001f) return;
@@ -455,6 +517,9 @@ public abstract class BossControllerBase : EnemyControllerBase
     /// <summary>重击施放中(霸体:不掉硬直/击退,不中断;照常掉血)</summary>
     public bool IsHeavyActive => heavyAttack != null && heavyAttack.IsActive;
 
+    /// <summary>技能施法中(技能霸体:不中断技能、不进受击状态、不被击退;照常掉血)</summary>
+    public bool IsSkillCasting => skillSlots != null && skillSlots.IsExecuting;
+
     /// <summary>本次重击是否已过伤害结算帧(P3 玩家侧判定有效期:已出伤后不再接受卡点判定)</summary>
     public bool HeavyDamageSettled => heavyAttack != null && heavyAttack.DamageSettled;
 
@@ -480,6 +545,9 @@ public abstract class BossControllerBase : EnemyControllerBase
 
     /// <summary>创建普攻状态(子类覆写:FirstBoss → BossAttackState;默认 null = 无普攻动画)</summary>
     public virtual IState CreateAttackState() => null;
+
+    /// <summary>创建受击状态(子类覆写:FirstBoss → BossHurtState;默认 null = 无受击动画,回退直接追击)</summary>
+    public virtual IState CreateHurtState() => null;
 
     // ============================================================
     // 技能系统接口

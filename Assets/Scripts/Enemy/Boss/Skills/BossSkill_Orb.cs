@@ -47,7 +47,7 @@ public class BossSkill_Orb : BossSkillExecutor
     {
         var mgr = MusicPointManager.Instance;
         if (mgr == null || ctx.player == null || ctx.boss == null) yield break;
-        PlaySkillAnim(ctx.animator);
+        SetSkillAnimOn(ctx.animator);
 
         // 组:预约时由 BossAttackDirector 指定(不消耗轮换计数);手动测试/未预约 = 自行轮换
         string group = !string.IsNullOrEmpty(ctx.reservedOrbGroup) ? ctx.reservedOrbGroup : GetOrbGroup();

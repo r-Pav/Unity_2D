@@ -61,6 +61,17 @@ public class BossAnimationRelay : MonoBehaviour
         if (heavy != null) heavy.OnHeavyHitFrame();
     }
 
+    /// <summary>
+    /// Hurt 动画末帧事件 — 转发给 BossHurtState(回追击)。
+    /// 挂在 Hurt.anim 末帧(Anim 子物体上,与 Animator 同物体);非受击期的迟到事件由状态自身忽略。
+    /// </summary>
+    public void OnBossHurtEnd()
+    {
+        if (_boss == null) return;
+        if (_boss.Fsm.CurrentState is BossHurtState hurt)
+            hurt.OnHurtAnimEnd();
+    }
+
     // 后续接入伤害/技能时在这里加独立事件(如 OnBossAttackActiveStart/End → BossSkillSlots),
     // 与普通 enemy 的 AnimationRelay 保持隔离。
 }

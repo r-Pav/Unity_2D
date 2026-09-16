@@ -16,7 +16,7 @@ public class BossSkillContext
 /// <summary>
 /// Boss 技能执行器(抽象)— 挂技能 prefab 根上,由 BossSkillSlots 实例化并注入 data 后执行。
 /// 子类实现 ExecuteSkill 具体逻辑(移动/生成/判定),通用能力由基类提供:
-/// - PlaySkillAnim:按 data.animState 播放动画
+/// - SetSkillAnimOn:按 data.animState 的 Bool 参数名打开技能动画开关(状态由动画器 Entry 路由)
 /// - WaitAnimRound:等动画播完一圈(技能动画无事件时用 normalizedTime 兜底)
 /// - 命中帧 OnHitFrame / 结束帧 OnAnimEnd 由 BossAnimationRelay 转发(BossSkillSlots 路由到当前执行器)
 /// </summary>
@@ -34,11 +34,14 @@ public abstract class BossSkillExecutor : MonoBehaviour
     /// <summary>动画结束帧回调(子类覆写,默认无操作;协程可自行 yield 等动画播完)</summary>
     public virtual void OnAnimEnd() { }
 
-    /// <summary>按 data.animState 播放技能动画(状态名直接 Play,不走 Entry 路由)</summary>
-    protected void PlaySkillAnim(Animator animator)
+    /// <summary>
+    /// 打开技能动画开关 — 按 data.animState 的 Bool 参数名置真,动画器 Entry 路由进对应技能状态。
+    /// 不用 animator.Play 直切(项目约定:状态一律走参数路由);复位由 BossSkillSlots 在技能结束/中断时统一做。
+    /// </summary>
+    protected void SetSkillAnimOn(Animator animator)
     {
         if (animator != null && Data != null && !string.IsNullOrEmpty(Data.animState))
-            animator.Play(Data.animState);
+            animator.SetBool(Data.animState, true);
     }
 
     /// <summary>

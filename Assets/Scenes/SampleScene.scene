@@ -24220,7 +24220,7 @@ Transform:
   m_GameObject: {fileID: 519420028}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -45.701546, y: -35.784836, z: -9.878557}
+  m_LocalPosition: {x: 54.678455, y: -20.934834, z: -9.878557}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -79480,7 +79480,7 @@ Transform:
   m_GameObject: {fileID: 1404874482}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: -45.701546, y: -35.784836, z: -9.878557}
+  m_LocalPosition: {x: 54.678455, y: -20.934834, z: -9.878557}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -80294,7 +80294,7 @@ Transform:
   m_GameObject: {fileID: 1427529632}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -66.05, y: -32.83, z: 0}
+  m_LocalPosition: {x: 34.33, y: -17.98, z: 0}
   m_LocalScale: {x: 1.1, y: 1.1, z: 1.1}
   m_ConstrainProportionsScale: 1
   m_Children:
@@ -80361,12 +80361,12 @@ MonoBehaviour:
   meleeDamage: 1
   meleeAttackCooldown: 0.15
   meleeHitStopDuration: 0.09
-  enemyLocalHitStopDuration: 0
+  enemyLocalHitStopDuration: 0.1
   bossLocalHitStopDuration: 0
   enemyHitShakeDuration: 0.2
   enemyHitShakeMagnitude: 0.1
-  bossHitShakeDuration: 0
-  bossHitShakeMagnitude: 0
+  bossHitShakeDuration: 0.2
+  bossHitShakeMagnitude: 0.1
   parryMaxWindow: 0.2
   blockDamageReduction: 0.5
   projectileLayer:
@@ -96887,7 +96887,7 @@ SpriteRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_Sprite: {fileID: 10917, guid: 0000000000000000f000000000000000, type: 0}
-  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_Color: {r: 1, g: 1, b: 1, a: 0}
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 0
@@ -106697,7 +106697,7 @@ Transform:
   m_GameObject: {fileID: 1957212736}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: -45.76555, y: -32.898994, z: -9.878557}
+  m_LocalPosition: {x: 54.614456, y: -18.048992, z: -9.878557}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -116295,7 +116295,7 @@ MonoBehaviour:
   maxHealth: 100
   hitColor: {r: 0.8867924, g: 0.8867924, b: 0.8867924, a: 1}
   hitFlashDuration: 0.1
-  enemyHitPause: 0
+  enemyHitPause: 0.1
   chargeColor: {r: 1, g: 0.3, b: 0, a: 1}
   chargeFlashBaseFreq: 4
   chargeFlashAccel: 6

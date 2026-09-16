@@ -4,15 +4,16 @@ using UnityEditor.Animations;
 using UnityEngine;
 
 /// <summary>
-/// BossSkillData 自定义 Inspector — animState(动画状态)用 Boss Animator Controller 的状态名下拉选择。
+/// BossSkillData 自定义 Inspector — animState(动画开关)用 Boss Animator Controller 的 Bool 参数下拉选择。
 /// 技能编辑器(Tools → 技能编辑器 → Boss 页签)右侧用默认 Inspector 绘制时会自动走这里。
-/// 用法:选中技能 data 资产,拖入 Boss 的 Animator Controller,从下拉选动画状态(一个动画可被多个技能复用)。
+/// 用法:选中技能 data 资产,拖入 Boss 的 Animator Controller,从下拉选 Bool 参数(如 IsMagic;一个开关可被多个技能复用)。
+/// 技能开始时该参数置真、结束/中断时置假,动画器 Entry 路由按参数决定进哪个技能状态。
 /// </summary>
 [CustomEditor(typeof(BossSkillData))]
 public class BossSkillDataEditor : Editor
 {
     private AnimatorController _controller;
-    private string[] _stateNames = new string[0];
+    private string[] _paramNames = new string[0];
 
     public override void OnInspectorGUI()
     {
@@ -24,28 +25,28 @@ public class BossSkillDataEditor : Editor
 
         if (_controller != null)
         {
-            if (_stateNames.Length == 0)
-                _stateNames = CollectStateNames(_controller);
+            if (_paramNames.Length == 0)
+                _paramNames = CollectBoolParamNames(_controller);
 
-            if (_stateNames.Length > 0)
+            if (_paramNames.Length > 0)
             {
-                int idx = System.Array.IndexOf(_stateNames, data.animState);
-                int sel = EditorGUILayout.Popup("动画状态(AnimState)", idx < 0 ? 0 : idx, _stateNames);
-                if (data.animState != _stateNames[sel])
+                int idx = System.Array.IndexOf(_paramNames, data.animState);
+                int sel = EditorGUILayout.Popup("动画开关(Bool 参数)", idx < 0 ? 0 : idx, _paramNames);
+                if (data.animState != _paramNames[sel])
                 {
-                    data.animState = _stateNames[sel];
+                    data.animState = _paramNames[sel];
                     EditorUtility.SetDirty(data);
                 }
             }
             else
             {
-                EditorGUILayout.HelpBox("控制器中没有状态,请手动填写状态名", MessageType.Warning);
-                data.animState = EditorGUILayout.TextField("动画状态(AnimState)", data.animState);
+                EditorGUILayout.HelpBox("控制器里没有 Bool 参数,请先建参数,再手动填写参数名", MessageType.Warning);
+                data.animState = EditorGUILayout.TextField("动画开关(Bool 参数)", data.animState);
             }
         }
         else
         {
-            data.animState = EditorGUILayout.TextField("动画状态(AnimState)", data.animState);
+            data.animState = EditorGUILayout.TextField("动画开关(Bool 参数)", data.animState);
         }
 
         EditorGUILayout.Space(4);
@@ -62,30 +63,16 @@ public class BossSkillDataEditor : Editor
         serializedObject.ApplyModifiedProperties();
     }
 
-    /// <summary>收集控制器所有层/子状态机的状态名(扁平列表)</summary>
-    private string[] CollectStateNames(AnimatorController controller)
+    /// <summary>收集控制器所有层的 Bool 参数名(技能动画开关)</summary>
+    private string[] CollectBoolParamNames(AnimatorController controller)
     {
         var list = new List<string>();
         if (controller == null) return list.ToArray();
-        foreach (var layer in controller.layers)
+        foreach (var p in controller.parameters)
         {
-            CollectFromStateMachine(layer.stateMachine, list);
+            if (p.type == AnimatorControllerParameterType.Bool && !string.IsNullOrEmpty(p.name))
+                list.Add(p.name);
         }
         return list.ToArray();
-    }
-
-    private void CollectFromStateMachine(AnimatorStateMachine sm, List<string> list)
-    {
-        if (sm == null) return;
-        foreach (var child in sm.states)
-        {
-            if (child.state != null && !string.IsNullOrEmpty(child.state.name))
-                list.Add(child.state.name);
-        }
-        foreach (var child in sm.stateMachines)
-        {
-            if (child.stateMachine != null)
-                CollectFromStateMachine(child.stateMachine, list);
-        }
     }
 }

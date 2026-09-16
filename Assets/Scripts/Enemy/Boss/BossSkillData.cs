@@ -3,7 +3,7 @@ using UnityEngine;
 /// <summary>
 /// Boss 技能数据(归一化 ScriptableObject)— 只存通用状态。
 /// 范围/特效/挂点全部在技能 prefab 子 obj 上(子 GameObject 即数据源),data 只提供参数。
-/// 执行逻辑 = skillPrefab 上的 BossSkillExecutor(执行器),data.animState 决定播放哪个动画。
+/// 执行逻辑 = skillPrefab 上的 BossSkillExecutor(执行器),data.animState 是动画 Bool 参数名(施法期间点亮对应动画开关)。
 /// 旧 BossAttackSO(按类型分发 + 专属字段)已废弃,新技能全部走本类型 + prefab。
 /// </summary>
 [CreateAssetMenu(fileName = "BossSkill_", menuName = "Game/BossSkillData", order = 100)]
@@ -13,7 +13,7 @@ public class BossSkillData : ScriptableObject
     [Tooltip("技能显示名(如\"双火墙\")")]
     public string skillName = "New Skill";
 
-    [Tooltip("动画状态名(对应 Boss Animator Controller 中的状态,如 Skill1/Skill2/Skill3)。一个动画可被多个技能复用")]
+    [Tooltip("动画 Bool 参数名(对应 Boss Animator 的 Bool 参数,如 IsMagic);技能开始时置真、结束/中断时置假,状态由动画器 Entry 路由决定。一个开关可被多个技能复用")]
     public string animState;
 
     [Tooltip("技能预制体(实例化挂 Boss 下,根上挂 BossSkillExecutor 执行器;范围/特效/挂点用子 obj 配)")]

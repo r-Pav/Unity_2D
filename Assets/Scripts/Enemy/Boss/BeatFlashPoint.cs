@@ -115,7 +115,7 @@ public class BeatFlashPoint : MonoBehaviour
     /// secondsToWindowStart = 触发时距窗口起点的真实剩余秒数;windowSeconds = 判定窗口时长(内环适配用)。</summary>
     public void Flash(float secondsToWindowStart = 1f, float windowSeconds = 0.3f)
     {
-        Debug.Log($"[圈日志] Flash 来源={CallerName()} 挂点={name} 距点={secondsToWindowStart:0.###} 窗口={windowSeconds:0.###} 自动订阅={autoSubscribe}");
+        // [2026-09-16 清理临时调试] Debug.Log($"[圈日志] Flash 来源={CallerName()} 挂点={name} 距点={secondsToWindowStart:0.###} 窗口={windowSeconds:0.###} 自动订阅={autoSubscribe}");
         if (aimPrefab != null)
         {
             // ── 模式①:挂点 + prefab 槽(背刺标识)──
@@ -140,7 +140,7 @@ public class BeatFlashPoint : MonoBehaviour
     /// 没拖 aimPrefab(闪烁模式/Boss)= 退化为单点 Flash(取首个剩余秒数),行为与现状一致。</summary>
     public void ShowChain(float[] secondsToPoints, float windowSeconds)
     {
-        Debug.Log($"[圈日志] ShowChain 来源={CallerName()} 挂点={name} 点数={(secondsToPoints != null ? secondsToPoints.Length : 0)} 窗口={windowSeconds:0.###}");
+        // [2026-09-16 清理临时调试] Debug.Log($"[圈日志] ShowChain 来源={CallerName()} 挂点={name} 点数={(secondsToPoints != null ? secondsToPoints.Length : 0)} 窗口={windowSeconds:0.###}");
         if (aimPrefab == null)
         {
             // ── 无标识 prefab(模式②/未配):退化为单点闪烁,取首个剩余秒数
@@ -212,7 +212,7 @@ public class BeatFlashPoint : MonoBehaviour
     /// 拖了 aimPrefab = 收起标识实例并恢复挂点初始态。</summary>
     public void Hide()
     {
-        Debug.Log($"[圈日志] Hide 来源={CallerName()} 挂点={name} 自动订阅={autoSubscribe}");
+        // [2026-09-16 清理临时调试] Debug.Log($"[圈日志] Hide 来源={CallerName()} 挂点={name} 自动订阅={autoSubscribe}");
         if (aimPrefab != null)
         {
             // ── 模式①:挂点 + prefab 槽(背刺标识)──

@@ -67,6 +67,7 @@ public class FirstBoss : BossControllerBase
     public override IState CreateChaseState() => new BossChaseState(this, Fsm, Animator);
     public override IState CreateFallbackState() => new BossIdleState(this, Fsm, Animator);
     public override IState CreateAttackState() => new BossAttackState(this, Fsm, Animator);
+    public override IState CreateHurtState() => new BossHurtState(this, Fsm, Animator);
 
     // ============================================================
     // 生命周期

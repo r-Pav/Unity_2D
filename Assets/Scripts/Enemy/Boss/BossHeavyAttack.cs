@@ -189,6 +189,19 @@ public class BossHeavyAttack : MonoBehaviour
     }
 
     /// <summary>
+    /// 被玩家背刺成功(终结技命中)时强制中断本次重击:标记抵消 + 走统一收尾
+    /// (解除霸体/解锁朝向/恢复重力/复位 IsHeavy 与 IsHeavyAttack/收圈),好让 Boss 接着进受击状态。
+    /// 不中断的话动画器停在 Charge / Heavy-Attack 里(它们的出口条件只看 IsHeavyAttack / IsHeavy),
+    /// 置了 IsHurt 也切不进 Hurt 动画。由 BossControllerBase.OnHitBy 的背刺分支调用。
+    /// </summary>
+    public void InterruptHeavy()
+    {
+        if (!_heavyActive && !_gravityFrozen) return;   // 不在重击中:空操作
+        _cancelled = true;      // 双保险:即使出伤窗口还没走完也不再造成伤害
+        FinalizeHeavy();
+    }
+
+    /// <summary>
     /// [v2] 重击出伤帧(纯动画事件入口):由 Heavy-Attack 动画的出伤事件帧调用
     /// (BossAnimationRelay.OnBossHeavyHitFrame 转发)。代码不做定时出伤,事件没挂就是不出伤。
     /// 逻辑:非重击期忽略;已出伤忽略(防重复);被抵消则不出伤;否则读重击框(heavyRangeIndicator)
@@ -204,14 +217,10 @@ public class BossHeavyAttack : MonoBehaviour
         //   否则会出现"环缩到一半被收掉"(出伤事件帧早于环到内圈时看得最明显)。
         //   收尾出口 FinalizeHeavy 里还有一次幂等收起兜底。
 
-        if (_cancelled)
-        {
-            Debug.Log($"{LogTag} 出伤帧:已被玩家卡点抵消,本次不出伤");
-            return;
-        }
+        if (_cancelled) return;   // 已被玩家卡点抵消,本次不出伤
         bool hit = IsPlayerInHeavyRange();
         if (hit) PerformHeavyHit();
-        Debug.Log($"{LogTag} 出伤帧:是否命中={hit}");
+        // [2026-09-16 清理临时调试] Debug.Log($"{LogTag} 出伤帧:是否命中={hit}");
     }
 
     /// <summary>缓存玩家引用(Start 一次;玩家重建/延迟生成时由 ExecuteHeavy 兜底重取)</summary>
@@ -290,11 +299,10 @@ public class BossHeavyAttack : MonoBehaviour
         _hitDone = false;         // [v2] 新一轮重击的出伤事件重新待触发
         ResolveChargeTiming();   // 蓄力动画时长反推(只做一次,结果缓存)
 
-        // 进重击:IsHeavy = true(重击全程)。
-        // IsHeavyAttack 先持成 true —— 编辑器里「任意状态 → Charge」的条件是 IsHeavy && !IsHeavyAttack,
-        // 不持住的话闪现这一刻就直接进蓄力态了(比「x - 蓄力时长」早)。
-        SetAnimBool(AnimParamIsHeavy, true);
-        SetAnimBool(AnimParamIsHeavyAttack, true);
+        // 进重击(闪现时刻):两个动画参数都不置,动画器保持待机(准备期)。
+        // 蓄力段起播由代码在「标点 x - 蓄力动画时长」那一帧控制(EnterChargeStage 里才置 IsHeavy=true)。
+        // [2026-09-16 修正] 旧写法在这里同时置 IsHeavy=true + IsHeavyAttack=true,等价于当场宣告攻击段:
+        //   只要动画器回一次 Entry 就直插 Heavy-Attack,蓄力段被整段跳过(实测现象:重击闪一下回 Idle)。
 
         // [2026-09-07 AttackVFXAnchor 重构暂停] 攻击持续 VFX:重击全程播 slot_heavy
         //if (_vfx == null) _vfx = GetComponentInChildren<AttackVFXAnchor>(true);
@@ -377,7 +385,7 @@ public class BossHeavyAttack : MonoBehaviour
 
         if (_boss == null || _boss.IsDead)
         {
-            Debug.Log($"{LogTag} Boss 死亡/销毁,本次重击中断");
+            // [2026-09-16 清理临时调试] Debug.Log($"{LogTag} Boss 死亡/销毁,本次重击中断");
             FinalizeHeavy();
             yield break;
         }
@@ -511,7 +519,7 @@ public class BossHeavyAttack : MonoBehaviour
         var mgr = MusicPointManager.Instance;
         float window = mgr != null ? mgr.WindowSeconds : 0.3f;   // 管理器丢失时用默认窗口兜底
         backstabRingPoint.Flash(Mathf.Max(0f, secondsToPoint), window);
-        Debug.Log($"{LogTag} 出圈 TrackTime={(mgr != null ? mgr.TrackTime : -1f):0.###} 点={(mgr != null ? mgr.TrackTime + secondsToPoint : -1f):0.###}");
+        // [2026-09-16 清理临时调试] Debug.Log($"{LogTag} 出圈 TrackTime={(mgr != null ? mgr.TrackTime : -1f):0.###} 点={(mgr != null ? mgr.TrackTime + secondsToPoint : -1f):0.###}");
     }
 
     /// <summary>收起背刺圈(P3:出伤帧与收尾出口两处都调,谁先到谁收;幂等,没出过圈时是空操作)</summary>
@@ -541,6 +549,9 @@ public class BossHeavyAttack : MonoBehaviour
     private void EnterChargeStage(float beatTime, float trackTime)
     {
         _chargeStarted = true;
+        // [2026-09-16] IsHeavy 在起播帧才置真(编辑器 Entry → Charge 的条件),蓄力段从这一帧开始;
+        //   准备期不置 → Entry 无匹配 → 动画器保持待机,蓄力不会提前到闪现那一刻。
+        SetAnimBool(AnimParamIsHeavy, true);
         SetAnimBool(AnimParamIsHeavyAttack, false);
         SpawnChargeVFX();
   // [日志精简] Debug.Log($"{LogTag} 蓄力起播 TrackTime={trackTime:0.###}(标点 x={beatTime:0.###} - 蓄力时长 {_chargeAnimDuration:0.###})");

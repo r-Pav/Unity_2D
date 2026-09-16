@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: BossSkill_skill_1
   m_EditorClassIdentifier: 
   skillName: firewall
-  animState: Idle
+  animState: IsMagic
   skillPrefab: {fileID: 5758069185856370727, guid: fb7ed8ee3c09a7b4a883af961851e9de, type: 3}
   damage: 20
   knockback: {x: 4, y: 0}

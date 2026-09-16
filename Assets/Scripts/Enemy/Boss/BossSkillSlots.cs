@@ -156,6 +156,16 @@ public class BossSkillSlots : MonoBehaviour
         currentCoroutine = StartCoroutine(ExecuteRoutine(so, index, reservedOrbGroup));
     }
 
+    /// <summary>技能动画开关置位(参数名 = data.animState;名字为空时安全跳过)</summary>
+    private void SetSkillAnimBool(string paramName, bool value)
+    {
+        if (string.IsNullOrEmpty(paramName)) return;
+        if (animator == null)
+            animator = owner != null ? owner.GetComponentInChildren<Animator>() : GetComponentInChildren<Animator>();
+        if (animator != null)
+            animator.SetBool(paramName, value);
+    }
+
     /// <summary>强制中断当前技能(受击/死亡时调用)</summary>
     public void Interrupt()
     {
@@ -185,6 +195,7 @@ public class BossSkillSlots : MonoBehaviour
                 if (allSkills[i] == so) { interruptedIndex = i; break; }
             }
         }
+        SetSkillAnimBool(so != null ? so.animState : null, false);   // 技能动画开关复位(参数名 = data.animState)
         currentSkill = null;
         OnSkillInterrupted?.Invoke(interruptedIndex);
     }
@@ -239,9 +250,8 @@ public class BossSkillSlots : MonoBehaviour
         }
         else
         {
-            // 无执行器:只播动画,计时兜底(占位技能)
-            if (animator != null && !string.IsNullOrEmpty(so.animState))
-                animator.Play(so.animState);
+            // 无执行器:只开动画开关,计时兜底(占位技能)
+            SetSkillAnimBool(so.animState, true);
             yield return new WaitForSeconds(1f);
         }
 
@@ -249,6 +259,10 @@ public class BossSkillSlots : MonoBehaviour
             Destroy(currentInstance);
         currentInstance = null;
         currentExecutor = null;
+
+        // 技能动画开关复位(参数名 = data.animState):置假后动画器走 Exit 回 Entry,落回待机/追击
+        SetSkillAnimBool(so.animState, false);
+
         currentSkill = null;
         currentCoroutine = null;
 
