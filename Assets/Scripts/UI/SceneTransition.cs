@@ -37,6 +37,9 @@ public class SceneTransition : MonoBehaviour
     private const string GameSceneName = "SampleScene";
     private const string TitleSceneName = "TitleScene";
 
+    /// <summary>常驻幕布自带 Canvas 的排序值，压在所有 UI 之上</summary>
+    private const int PersistSortingOrder = 30000;
+
     /// <summary>是否正在过渡（防重入：过渡中忽略新的 ToGame/ToTitle）</summary>
     private bool _isTransitioning;
 
@@ -50,11 +53,36 @@ public class SceneTransition : MonoBehaviour
             return;
         }
         _instance = this;
-        DontDestroyOnLoad(gameObject);
+
+        MakePersistable();
 
         // 初始状态：全透明不遮挡游戏；射线检测关闭（过渡流程开始时打开，结束后关闭）
         if (canvasGroup != null) canvasGroup.alpha = 0f;
         if (blackImage != null) blackImage.raycastTarget = false;
+    }
+
+    /// <summary>
+    /// 让本组件真正能跨场景常驻。
+    /// DontDestroyOnLoad 只对根对象生效，而本对象通常挂在场景 Canvas 下（非根），直接调用会报
+    /// "DontDestroyOnLoad only works for root GameObjects"，幕布跨场景直接丢失；
+    /// 提为根之后又脱离了原 Canvas（UI 不在 Canvas 下不渲染），所以必须自带一个 Canvas + GraphicRaycaster，
+    /// 否则黑幕画不出来、也挡不住输入。
+    /// 场景里若已按这个结构预摆好（根对象 + Canvas），这里直接复用，不重复添加。
+    /// </summary>
+    private void MakePersistable()
+    {
+        if (transform.parent != null)
+            transform.SetParent(null, true);   // worldPositionStays = true：视觉位置与尺寸不变
+
+        if (GetComponent<Canvas>() == null)
+        {
+            var canvas = gameObject.AddComponent<Canvas>();
+            canvas.overrideSorting = true;
+            canvas.sortingOrder = PersistSortingOrder;   // 常驻幕布压在所有 UI 之上
+            gameObject.AddComponent<GraphicRaycaster>(); // 黑幕靠 raycastTarget 阻断输入，需要它才能被射线命中
+        }
+
+        DontDestroyOnLoad(gameObject);
     }
 
     /// <summary>自清单例引用：Instance 不再需要 Find 兜底(销毁后静态字段不留脏引用；重复实例自毁时 _instance != this 不会误清)</summary>

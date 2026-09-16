@@ -2,7 +2,7 @@ using UnityEditor;
 using UnityEngine;
 
 /// <summary>
-/// 粒子特效模板生成器(Tools/粒子特效)。
+/// 粒子特效模板生成器(Tools/粒子特效,菜单按 通用/Player/Enemy/Boss 分二级)。
 /// 一键在 Assets/Prefab/VFX 下生成带 Trails 拖尾的粒子 prefab(飞行光点 + 渐隐拖尾),
 /// 生成后用 Particle System 窗口微调视觉。纯编辑器工具,不进游戏、不碰场景。
 /// </summary>
@@ -10,7 +10,7 @@ public static class ParticleFXGenerator
 {
     private const string OutputDir = "Assets/Prefab/VFX";
 
-    [MenuItem("Tools/粒子特效/Trail 拖尾模板")]
+    [MenuItem("Tools/粒子特效/通用/Trail 拖尾模板")]
     public static void CreateTrailTemplate()
     {
         string path = OutputDir + "/ParticleTrail_Template.prefab";
@@ -50,7 +50,7 @@ public static class ParticleFXGenerator
         }
     }
 
-    [MenuItem("Tools/粒子特效/单体条状拖尾")]
+    [MenuItem("Tools/粒子特效/通用/单体条状拖尾")]
     public static void CreateSingleTrailTemplate()
     {
         string path = OutputDir + "/Particle_SingleTrail_Template.prefab";
@@ -139,7 +139,7 @@ public static class ParticleFXGenerator
         trails.dieWithParticles = true;
     }
 
-    [MenuItem("Tools/粒子特效/背刺爆发(短促)")]
+    [MenuItem("Tools/粒子特效/Player/背刺爆发(短促)")]
     public static void CreateBackstabBurst()
     {
         string path = OutputDir + "/BackstabBurst_Template.prefab";
@@ -272,7 +272,7 @@ public static class ParticleFXGenerator
             new Keyframe(0f, 1f), new Keyframe(1f, 0.3f)));
     }
 
-    [MenuItem("Tools/粒子特效/随机轨迹拖尾点")]
+    [MenuItem("Tools/粒子特效/通用/随机轨迹拖尾点")]
     public static void CreateWanderTrailTemplate()
     {
         string path = OutputDir + "/Particle_WanderTrail_Template.prefab";
@@ -367,7 +367,7 @@ public static class ParticleFXGenerator
         trails.dieWithParticles = true;
     }
 
-    [MenuItem("Tools/粒子特效/能量球环绕(中心拖尾)")]
+    [MenuItem("Tools/粒子特效/通用/能量球环绕(中心拖尾)")]
     public static void CreateOrbCluster()
     {
         string path = OutputDir + "/OrbCluster_Template.prefab";
@@ -486,7 +486,7 @@ public static class ParticleFXGenerator
         return grad;
     }
 
-    [MenuItem("Tools/粒子特效/敌人死亡爆炸")]
+    [MenuItem("Tools/粒子特效/Enemy/敌人死亡爆炸")]
     public static void CreateEnemyDeathBurst()
     {
         string path = OutputDir + "/EnemyDeathBurst_Template.prefab";
@@ -693,7 +693,7 @@ public static class ParticleFXGenerator
         return ps;
     }
 
-    [MenuItem("Tools/粒子特效/背刺标识(圆圈+收缩环)")]
+    [MenuItem("Tools/粒子特效/Player/背刺标识(圆圈+收缩环)")]
     public static void CreateBackstabAimTemplate()
     {
         string path = OutputDir + "/BackstabAim_Template.prefab";
@@ -721,6 +721,159 @@ public static class ParticleFXGenerator
         {
             Debug.LogError("[ParticleFXGenerator] prefab 保存失败:" + path);
         }
+    }
+
+    [MenuItem("Tools/粒子特效/Boss/火焰墙(单位段 2x5)")]
+    public static void CreateFireWallSegment()
+    {
+        string path = OutputDir + "/FireWall_Segment_Template.prefab";
+
+        if (!AssetDatabase.IsValidFolder(OutputDir))
+        {
+            Debug.LogError("[ParticleFXGenerator] 输出目录不存在:" + OutputDir);
+            return;
+        }
+        // 不 DeleteAsset:已存在时覆盖保存(保 guid,墙 prefab / 场景已拖的槽位引用不断)
+
+        GameObject root = new GameObject("FireWall_Segment_Template");
+        ConfigureFireWallSegment(root);
+
+        GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, path);
+        Object.DestroyImmediate(root);
+
+        if (prefab != null)
+        {
+            EditorGUIUtility.PingObject(prefab);
+            Selection.activeObject = prefab;
+            Debug.Log("[ParticleFXGenerator] 已生成:" + path, prefab);
+        }
+        else
+        {
+            Debug.LogError("[ParticleFXGenerator] prefab 保存失败:" + path);
+        }
+    }
+
+    // 单位段尺寸:宽 2 × 高 5(比最初版 4×10 缩一半)。整面墙 = 竖向摆 N 份(N = 墙高 / 5)、横向平铺;
+    // 不要用 transform.localScale 拉伸段(粒子会跟着变形)。段小 + 高发射率 = 连续喷流,接缝靠 Haze 糊住。
+    private const float FireWallWidth = 2f;
+    private const float FireWallHeight = 5f;
+
+    /// <summary>
+    /// 火焰墙单位段(2 宽 × 5 高):四层粒子不断发射,叠成"火焰喷流墙"。不用任何线条贴图。
+    /// Core 亮心(细密小光点持续上窜)+ Flame 外焰(大而慢的橙红柔光)+ Haze 雾光(大柔光糊接缝)
+    /// + Embers 余烬(sparkle 火花上行飘)。材质全用 Epic Toon FX 现成的,不新建材质。
+    /// 配色分层:亮心白热 → 外焰金黄橙 → 雾光暗红 → 余烬亮黄;每层都是多色阶渐变(白 → 金 → 橙 → 橙红 → 暗红)。
+    /// 整面墙用法:竖向摆 N 份单位段(例:34.6 高摆 7 份),横向平铺加宽。
+    /// </summary>
+    private static void ConfigureFireWallSegment(GameObject root)
+    {
+        // Core 亮心:细密、寿命短、上窜快,喷流的主骨架
+        CreateFireLayer(root.transform, "Core", "Assets/Epic Toon FX/Materials/Glows/glow.mat",
+            rate: 140f, lifeMin: 0.5f, lifeMax: 0.8f, speedMin: 2f, speedMax: 3.5f,
+            sizeMin: 0.2f, sizeMax: 0.4f, gravity: -0.5f,
+            tint: new Color(1f, 0.97f, 0.85f), headColor: new Color(1f, 1f, 0.9f),
+            sizeCurve: new AnimationCurve(new Keyframe(0f, 0.6f), new Keyframe(0.25f, 1f), new Keyframe(1f, 0.25f)),
+            noiseStrength: 0.5f, noiseFreq: 1.5f, maxParticles: 300);
+
+        // Flame 外焰:更大更慢的橙红柔光,tint 的 alpha 压住防过曝
+        CreateFireLayer(root.transform, "Flame", "Assets/Epic Toon FX/Materials/Clouds/cloud_2x2_soft.mat",
+            rate: 70f, lifeMin: 0.9f, lifeMax: 1.4f, speedMin: 1.2f, speedMax: 2.2f,
+            sizeMin: 0.8f, sizeMax: 1.4f, gravity: -0.3f,
+            tint: new Color(1f, 0.8f, 0.45f, 0.85f), headColor: new Color(1f, 0.92f, 0.6f),
+            sizeCurve: new AnimationCurve(new Keyframe(0f, 0.7f), new Keyframe(0.4f, 1f), new Keyframe(1f, 0.3f)),
+            noiseStrength: 0.8f, noiseFreq: 0.9f, maxParticles: 200);
+
+        // Haze 雾光:大柔光低透明度,把段与段的接缝糊住,让整面墙连成一片
+        CreateFireLayer(root.transform, "Haze", "Assets/Epic Toon FX/Materials/Glows/glow.mat",
+            rate: 20f, lifeMin: 1.4f, lifeMax: 2f, speedMin: 0.5f, speedMax: 1f,
+            sizeMin: 1.4f, sizeMax: 2f, gravity: -0.1f,
+            tint: new Color(1f, 0.5f, 0.2f, 0.22f), headColor: new Color(1f, 0.72f, 0.35f),
+            sizeCurve: new AnimationCurve(new Keyframe(0f, 0.85f), new Keyframe(1f, 1.15f)),
+            noiseStrength: 0.6f, noiseFreq: 0.6f, maxParticles: 60);
+
+        // Embers 余烬:少量火花上行飘(带 Noise 摇摆),越飞越淡
+        CreateFireLayer(root.transform, "Embers", "Assets/Epic Toon FX/Materials/Sparkle/sparkle_ADD.mat",
+            rate: 24f, lifeMin: 1.2f, lifeMax: 2f, speedMin: 3f, speedMax: 5f,
+            sizeMin: 0.05f, sizeMax: 0.1f, gravity: -1f,
+            tint: new Color(1f, 0.9f, 0.55f), headColor: new Color(1f, 0.98f, 0.8f),
+            sizeCurve: new AnimationCurve(new Keyframe(0f, 1f), new Keyframe(1f, 0.2f)),
+            noiseStrength: 1.2f, noiseFreq: 1.2f, maxParticles: 80);
+    }
+
+    /// <summary>
+    /// 一层火焰粒子:铺满单位段整面的盒发射口(2 × 5 × 0.1),沿本地 +Y 上窜(负重力越往上越快),
+    /// 寿命内走多色阶火色渐变并收/散,叠 Noise 做跳动。四层只在参数上不同,结构完全一致。
+    /// </summary>
+    private static ParticleSystem CreateFireLayer(Transform parent, string name, string materialPath,
+        float rate, float lifeMin, float lifeMax, float speedMin, float speedMax,
+        float sizeMin, float sizeMax, float gravity, Color tint, Color headColor,
+        AnimationCurve sizeCurve, float noiseStrength, float noiseFreq, int maxParticles)
+    {
+        ParticleSystem ps = CreateChildParticle(parent, name, materialPath);
+        ParticleSystem.MainModule main = ps.main;
+        main.duration = 2f;
+        main.loop = true;
+        main.playOnAwake = true;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(lifeMin, lifeMax);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(speedMin, speedMax);
+        main.startSize = new ParticleSystem.MinMaxCurve(sizeMin, sizeMax);
+        main.startColor = tint;
+        main.simulationSpace = ParticleSystemSimulationSpace.Local;   // Local:墙移动时整片火跟着走,不留在原地
+        main.gravityModifier = gravity;
+        main.maxParticles = maxParticles;
+
+        ParticleSystem.EmissionModule emission = ps.emission;
+        emission.rateOverTime = new ParticleSystem.MinMaxCurve(rate);
+
+        // 盒发射口:local +Y 是上窜方向(Box 默认朝 +Z,绕 X 转 -90° 把发射方向抬到 +Y)
+        ParticleSystem.ShapeModule shape = ps.shape;
+        shape.enabled = true;
+        shape.shapeType = ParticleSystemShapeType.Box;
+        shape.scale = new Vector3(FireWallWidth, FireWallHeight, 0.1f);
+        shape.rotation = new Vector3(-90f, 0f, 0f);
+
+        ParticleSystem.ColorOverLifetimeModule color = ps.colorOverLifetime;
+        color.enabled = true;
+        color.color = new ParticleSystem.MinMaxGradient(MakeFireGradient(headColor));
+
+        ParticleSystem.SizeOverLifetimeModule size = ps.sizeOverLifetime;
+        size.enabled = true;
+        size.size = new ParticleSystem.MinMaxCurve(1f, sizeCurve);
+
+        ParticleSystem.NoiseModule noise = ps.noise;
+        noise.enabled = true;
+        noise.strength = new ParticleSystem.MinMaxCurve(noiseStrength);
+        noise.frequency = noiseFreq;
+        noise.scrollSpeed = 0.6f;
+        noise.damping = true;
+        return ps;
+    }
+
+    /// <summary>
+    /// 火焰多色阶渐变:头(0)亮色 → 0.25 金 → 0.5 橙 → 0.75 橙红 → 尾(1)暗红,alpha 随之淡出。
+    /// 四层火焰共用,各层只换 headColor 拿不同色阶(整体透明度由 startColor 的 alpha 控制)。
+    /// </summary>
+    private static Gradient MakeFireGradient(Color headColor)
+    {
+        Gradient g = new Gradient();
+        g.SetKeys(
+            new[]
+            {
+                new GradientColorKey(headColor, 0f),
+                new GradientColorKey(new Color(1f, 0.85f, 0.45f), 0.25f),
+                new GradientColorKey(new Color(1f, 0.6f, 0.2f), 0.5f),
+                new GradientColorKey(new Color(0.9f, 0.32f, 0.08f), 0.75f),
+                new GradientColorKey(new Color(0.55f, 0.12f, 0.04f), 1f)
+            },
+            new[]
+            {
+                new GradientAlphaKey(1f, 0f),
+                new GradientAlphaKey(0.95f, 0.35f),
+                new GradientAlphaKey(0.75f, 0.65f),
+                new GradientAlphaKey(0.35f, 0.85f),
+                new GradientAlphaKey(0f, 1f)
+            });
+        return g;
     }
 
     /// <summary>在父级下建一个子粒子物体并挂上指定材质。</summary>

@@ -16,24 +16,21 @@ MonoBehaviour:
   loopPoint: 65.13
   points:
   - 0
+  barIntervalSeconds: 0
   introClip: {fileID: 8300000, guid: 90c374dfef7129e49a626b3523af376d, type: 3}
   introSwitchTime: 111.06
   introPoints: []
   pointGroups:
-  - groupName: BossHeavySound
-    points:
-    - 10
-  - groupName: PlayerCombo
-    points:
-    - 11
-    - 11.5
-    - 12
-    - 12.5
-    - 13
-    - 13.5
   - groupName: BossHeavy
     points:
-    - 20
+    - 8
+    - 13
+    - 18
+    - 23
+    - 27
+    - 31
   - groupName: BossOrb1
     points:
     - 90
+  - groupName: PlayerCombo
+    points: []

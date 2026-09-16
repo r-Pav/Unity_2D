@@ -25,7 +25,7 @@ MonoBehaviour:
   agi_dodgePerP: 0.01
   agi_cdReducePer10: 0.05
   atkSpeedBase: 100
-  initialHealth: 50
+  initialHealth: 1000
   initialMana: 10
   attrPointsPerLv: 3
   initialPoints: 5

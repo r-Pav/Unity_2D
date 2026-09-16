@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "cn.tuanjie.codely.bridge": "1.0.66",
+    "com.coffee.ui-particle": "https://github.com/mob-sakai/ParticleEffectForUGUI.git#4.13.0",
     "com.unity.addressables": "1.23.1",
     "com.unity.cinemachine": "2.10.7",
     "com.unity.collab-proxy": "2.12.4",

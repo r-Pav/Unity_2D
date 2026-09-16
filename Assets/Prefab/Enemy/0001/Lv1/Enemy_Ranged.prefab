@@ -81,7 +81,7 @@ SpriteRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
+  - {fileID: 2100000, guid: 0405e7d2fa5b7ec428625ed0a2da441d, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -390,6 +390,7 @@ MonoBehaviour:
   hitVFXPrefab: {fileID: 5392022945574161087, guid: e8f48248225df154585da36eafed2bf4, type: 3}
   directionalHitVFXPrefab: {fileID: 0}
   deathVFXPrefab: {fileID: 0}
+  backstabHitVFX: {fileID: 0}
   hitVFXVariants: []
   attackWidth: 3
   attackHeight: 3
@@ -416,6 +417,7 @@ MonoBehaviour:
     m_Bits: 0
   channelCheckForward: 10
   channelRayHeightOffset: 0.5
+  patrolBoundaryDistance: 0.8
   combatSightHeight: 3
   facingDeadZone: 0.3
   moveInput: 0
@@ -1063,6 +1065,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5737f6d7d82132744b78395ce13d20ce, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  aimPrefab: {fileID: 0}
   flashSprite: {fileID: 4230973666395393128}
   flashColor: {r: 1, g: 0.92, b: 0.4, a: 1}
   flashDuration: 0.25
