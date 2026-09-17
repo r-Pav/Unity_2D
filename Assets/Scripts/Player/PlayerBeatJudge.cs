@@ -5,7 +5,9 @@ using UnityEngine;
 /// 判定:BossHeavy 标点窗口内按 攻击键(左键)或 F 键 → 判定成功。
 ///   · 判定组 = BossHeavy(即重击点本身;2026-09-15 前用 BossHeavySound,两点错位导致抵消永不生效);
 ///   · 判定成功:先给本次重击打抵消标记(经 BossControllerBase.NotifyHeavyHit → BossHeavyAttack.NotifyHit)保证重击不出伤,
-///     再走一次背刺(PlayerController.TryEnterBackstab → PlayerBackstabState),落点解析/贴墙钳制/无敌帧/单次伤害全在背刺状态里;
+///     再把 Boss 作为**显式目标**走一次背刺(PlayerController.TryEnterBackstab(false, enemy) → PlayerBackstabState),
+///     落点解析/贴墙钳制/无敌帧/单次伤害全在背刺状态里(2026-09-17 背刺目标锁定:不再由背刺状态自己重搜目标,
+///     修「抵消给 Boss、刀砍小怪」);
 ///   · 判定有效期截止到出伤那一帧:Boss 侧 HeavyDamageSettled 为 true 时本次判定不生效(不闪、不算成功);
 ///   · 判定失败:无惩罚,正常走流程。
 /// [2026-09-15 改造] 原「判定成功 → 进入自动连打 + 每帧吸附 Boss 身后」已移除:
@@ -110,7 +112,9 @@ public class PlayerBeatJudge : MonoBehaviour
         var enemy = ResolveBoss();
         if (enemy != null && enemy.HeavyDamageSettled) return;   // 本次重击已出伤,判定不再生效
         if (enemy != null) enemy.NotifyHeavyHit();
-        if (_pc != null) _pc.TryEnterBackstab(false);
+        // [2026-09-17 背刺目标锁定] 把 Boss 作为**显式目标**传进背刺:判定成功就打这只 Boss,
+        // 背刺状态不再自己重搜目标(修「抵消给 Boss、刀砍小怪」)。
+        if (_pc != null) _pc.TryEnterBackstab(false, enemy);
     }
 
     /// <summary>音乐窗口事件:进入判定窗口(判定提示由 Boss 挂点的背刺圈承担,这里不再显示旧标识)</summary>

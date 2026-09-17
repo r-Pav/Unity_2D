@@ -18,7 +18,11 @@ using UnityEngine;
 /// 结束(动画事件 OnBackstabEnd / 超时兜底 2.5s):回 Idle/Move。
 ///
 /// ── 连音背刺(P7,规格 P6 状态层;动画/目标分配来自 P3/P6 产物)──
-/// 目标来源:BackstabChainPlanner.GetTargetForPoint(组内点序号);拿不到分配(未准备/目标已销毁)→ 兜底 FindNearestTarget。
+/// 目标来源(2026-09-17 背刺目标锁定,四级顺序,详见 ResolveStrikeTarget):
+///   ① 显式目标(Boss 重击判定链经 PlayerController.TryEnterBackstab 传入)→ ② 连音组内该点分配到的敌人
+///   (BackstabChainPlanner.GetTargetForPoint)→ ③ 圈上锁定目标(EnemyBeatIndicator.CurrentTarget,还活着且在视口内)
+///   → ④ 视口内最近敌人(planner.FindNearestInViewport);都没有 → 原地空挥(不播特效、只走动画)。
+///   分配器为空(场景未接线)时才退回旧 FindNearestTarget;连音分配规则一字未改。
 /// 逐点推进:判定入口(PlayerController,下一任务)在同一连音组的后续点判定通过时调 TryExecuteNextPoint(),
 ///   本状态不离开、不 ChangeState,就地再执行一刀(落点解析/隔墙/换位逻辑原样复用,判定条件一字未改):
 ///     瞬移 → BackstabClone.PlayAt(玩家落点, 朝向)演这一刀的动画(本体隐藏/本体事件冻结由 clone 侧处理,禁止 anim.Play 直切)
@@ -63,6 +67,15 @@ public class PlayerBackstabState : EntityState
 
     private EnemyControllerBase _target;   // 最近一刀的目标(追击窗口/退出路径引用只读;命中结算一律用刀记录里的目标)
     private float _stateTimer;             // 距上一次执行刀的时长(每刀重置;超时兜底)
+
+    // ── 背刺目标锁定(2026-09-17)──
+    /// <summary>一刀级显式目标(Boss 重击判定链经 PlayerController.TryEnterBackstab 写入);
+    /// OnEnter 消费后立刻置 null —— 不留到下一刀 / 下一个窗口(防跨刀残留)</summary>
+    private EnemyControllerBase _explicitTarget;
+
+    /// <summary>圈(提示)侧目标来源(EnemyBeatIndicator 上「出圈那一刻锁定」的敌人);
+    /// 懒缓存:OnEnter 未缓存时 owner.GetComponent 取一次,取不到即 null(③级判空跳过,不报错)</summary>
+    private EnemyBeatIndicator _beatIndicator;
 
     // ── 背刺残影(待办1,DashGhostTrail 复用)──
     private DashGhostTrail _ghostTrail;   // 懒缓存:OnEnter GetComponentInChildren 找(未挂组件=null → 判空跳过,不影响背刺本体)
@@ -131,6 +144,11 @@ public class PlayerBackstabState : EntityState
         _stabCount.Clear();
         _chainFirstPoint = float.NaN;
 
+        // 显式目标(2026-09-17 背刺目标锁定,Boss 重击判定链):入口 ChangeState 前写入,
+        // 这里读出来立刻置空 —— 一刀级,绝不残留到下一刀 / 下一个窗口。
+        EnemyControllerBase explicitTarget = _explicitTarget;
+        _explicitTarget = null;
+
         // 懒缓存残影/特效/替身组件(GetComponentInChildren 含 inactive;未挂组件 = null → 判空跳过)
         if (_ghostTrail == null)
             _ghostTrail = owner.GetComponentInChildren<DashGhostTrail>(true);
@@ -141,10 +159,13 @@ public class PlayerBackstabState : EntityState
         // 目标分配器:只在进入状态这一帧找(层级 → MusicPointManager 同物体 → 一次 FindObjectOfType),不在 Update 里查
         if (_planner == null)
             _planner = ResolvePlanner();
+        // 圈侧目标来源(P5):同样只在进入状态这一帧取一次(挂玩家根;未挂 = null → ③级跳过)
+        if (_beatIndicator == null)
+            _beatIndicator = owner.GetComponent<EnemyBeatIndicator>();
 
         var mgr = MusicPointManager.Instance;
         int pointIndex = ResolveStrikePointIndex(mgr);      // -1 = 非连音路径(自动重音/无连音组)
-        ExecuteStrike(ResolveStrikeTarget(pointIndex, mgr), pointIndex, mgr);
+        ExecuteStrike(ResolveStrikeTarget(explicitTarget, pointIndex, mgr), pointIndex, mgr);
     }
 
     /// <summary>
@@ -161,8 +182,17 @@ public class PlayerBackstabState : EntityState
         if (!IsCurrentChainGroup(mgr)) return false;         // 已切到别的连音组:本状态即将退出,交给入口重进
         int pointIndex = ResolveStrikePointIndex(mgr);
         if (pointIndex < 0) return false;                    // 组内已全部执行 / 无活跃未消费点
-        ExecuteStrike(ResolveStrikeTarget(pointIndex, mgr), pointIndex, mgr);
+        ExecuteStrike(ResolveStrikeTarget(null, pointIndex, mgr), pointIndex, mgr);   // 后续刀无显式目标(带 null 走锁定/视口链)
         return true;
+    }
+
+    /// <summary>
+    /// [背刺目标锁定 2026-09-17] 写入一刀级显式目标(Boss 重击判定链):PlayerController.TryEnterBackstab 在
+    /// ChangeState(BackstabState) 之前调用,背刺状态 OnEnter 读出来即置空。null = 不指定(走锁定/视口/连音解析)。
+    /// </summary>
+    public void SetExplicitTarget(EnemyControllerBase target)
+    {
+        _explicitTarget = target;
     }
 
     public override void OnUpdate()
@@ -434,20 +464,22 @@ public class PlayerBackstabState : EntityState
                 // 也不能用 enemy.Facing——靠墙时落点改到 enemy 正面,enemy.Facing 朝玩家,用它玩家会背朝 enemy)
                 pc.UpdateFacing(target.transform.position.x >= playerDest.x ? 1f : -1f);
             }
+
+            // 背刺持续特效:进背刺动作播背刺槽(统一入口;退出 OnExit Stop)。
+            // 槽子物体位置 saika 编辑器摆(attack_VFX 下 slot_backstab,相对玩家);空槽/未挂锚点 = 判空跳过不崩。
+            // [2026-09-17 背刺目标锁定] 只有 validBackstab(真的打出去了)才播;空挥(无目标 / 隔墙不可达)不播特效。
+            _vfx?.PlayBackstab();
         }
         else
         {
             // 无目标 / 落点被墙挡(隔墙):原地闪现(复用 TeleportTo 自身位置 = 无敌帧+事件,无位移);朝向跟随当前输入
-            SpawnGhost();   // 闪现残像(原地,表示闪身动作)
+            // [2026-09-17 背刺目标锁定] 空挥不生成残影(SpawnGhost 已删)、不播特效(PlayBackstab 已移进 validBackstab 分支),
+            //   只走动画(本体降级路径 / clone 替身照旧);TeleportTo(自身位置)保持不动。
             if (teleport != null)
                 teleport.TeleportTo((Vector2)pc.transform.position);
             float h = Input.GetAxisRaw("Horizontal");
             if (Mathf.Abs(h) > 0.1f) pc.UpdateFacing(h);
         }
-
-        // 背刺持续特效:进背刺动作播背刺槽(统一入口;有目标瞬刺/无目标原地空挥都播;退出 OnExit Stop)。
-        // 槽子物体位置 saika 编辑器摆(attack_VFX 下 slot_backstab,相对玩家);空槽/未挂锚点 = 判空跳过不崩。
-        _vfx?.PlayBackstab();
 
         // 动画交给 clone 替身:每一刀都在玩家落点完整播一遍 Backstab(本体隐藏 + 本体事件冻结在 clone 侧处理)。
         // 位置用"落点"而不是 pc.transform.position:TeleportTo 走 rb.position,同帧 transform 可能还是瞬移前旧值。
@@ -512,16 +544,36 @@ public class PlayerBackstabState : EntityState
         return -1;
     }
 
-    /// <summary>本刀目标:连音组内该点分配到的敌人(P3 分配器单一数据源);拿不到分配(未准备/目标已销毁/屏内无候选)
-    /// → 兜底回退到原"最近敌人"搜索,保证状态不挥空、不卡死</summary>
-    private EnemyControllerBase ResolveStrikeTarget(int pointIndex, MusicPointManager mgr)
+    /// <summary>
+    /// 本刀目标(2026-09-17 背刺目标锁定,四级顺序,每级都要 !IsDead):
+    ///   ① explicitTarget:Boss 重击判定链传入的显式目标(不做视口校验 —— 判定成功就打它);
+    ///   ② pointIndex >= 0(连音路径)→ _planner.GetTargetForPoint(pointIndex)(P3 分配器单一数据源,口径一字不改);
+    ///   ③ _beatIndicator.CurrentTarget(圈上锁定目标)且 _planner.IsInViewport(它) —— 圈在 A 身上就打到 A,
+    ///      哪怕玩家此刻离另一个敌人更近(不再在按 F 那一帧重搜"最近敌人");
+    ///   ④ _planner.FindNearestInViewport():锁定目标已死 / 出了视口 → 回退"视口内最近敌人";
+    ///   兜底:_planner 为空(场景未接线)时退回原 FindNearestTarget();仍为 null → 空挥(原地、不播特效)。
+    /// </summary>
+    private EnemyControllerBase ResolveStrikeTarget(EnemyControllerBase explicitTarget, int pointIndex, MusicPointManager mgr)
     {
+        // ① 显式目标(Boss 重击判定链):判定成功就是它,不看视口
+        if (explicitTarget != null && !explicitTarget.IsDead) return explicitTarget;
+
+        // ② 连音路径:组内该点分配到的敌人(未准备 / 目标已销毁时不在此级返回,继续往下回退)
         if (pointIndex >= 0 && mgr != null)
         {
             var planned = _planner != null ? _planner.GetTargetForPoint(pointIndex) : null;
             if (planned != null && !planned.IsDead) return planned;
         }
-        return FindNearestTarget();
+
+        if (_planner == null) return FindNearestTarget();   // 场景未接线:退回旧口径(6 米搜索,已停用,仅兜底)
+
+        // ③ 圈上锁定目标(出圈那一刻选定):活着且在视口内 → 照打它(视口口径与圈/连音分配同一套)
+        var locked = _beatIndicator != null ? _beatIndicator.CurrentTarget : null;
+        if (locked != null && !locked.IsDead && _planner.IsInViewport(locked.transform.position))
+            return locked;
+
+        // ④ 锁定目标失效(死亡 / 出视口 / 本窗口没出圈)→ 视口内最近敌人;视口内一个都没有 → null(空挥)
+        return _planner.FindNearestInViewport();
     }
 
     /// <summary>
@@ -618,8 +670,10 @@ public class PlayerBackstabState : EntityState
             target.transform.position.y);
     }
 
-    /// <summary>隔墙检测墙层(Ground=3 + Wall=11,与 PlayerTeleport.wallMask / EnemyControllerBase 钳制层一致)</summary>
-    private const int WallBlockMask = (1 << 3) | (1 << 11);
+    /// <summary>隔墙检测墙层 = Ground(3) + Wall(11) + Channel(16,管道),与 PlayerTeleport.wallMask / EnemyControllerBase 钳制层一致。
+    /// [背刺目标锁定 2026-09-17] 加 1 &lt;&lt; 16:管道是 Channel 层 trigger,而 Physics2D 的 Queries Hit Triggers 为开启状态,
+    /// 射线能命中 → 隔着管道背刺同样不瞬移(与隔墙同分支:原地空挥、不播特效)。</summary>
+    private const int WallBlockMask = (1 << 3) | (1 << 11) | (1 << 16);
 
     /// <summary>
     /// 隔墙检测:玩家当前位置 → 落点 的路径上是否有实心墙/地形(Ground/Wall 层)挡住。
@@ -650,13 +704,17 @@ public class PlayerBackstabState : EntityState
             _ghostTrail.SpawnOnce();
     }
 
-    /// <summary>选最近非死亡敌人(Boss 也可,普通场景无 Boss;空中敌人同样可作目标,允许空中背刺)。
-    /// 连音路径拿不到分配时的兜底(规格 §P6:防无分配时状态卡死)。
-    /// [S5] 访问级别 private → public:PlayerController 的元素冲刺分流要问「附近有没有可背刺敌人」,
-    ///   必须复用这一套搜索(半径 searchRadius / 存活判定 IsDead / 层级掩码 combat.EnemyLayer),
-    ///   不另写一份产生口径漂移。行为、参数、返回值一律未变,且是纯查询(无副作用,状态未激活也可调)。</summary>
+    /// <summary>
+    /// 「最近敌人」查询 —— 兜底用。签名与访问级别保持不变(PlayerController 侧引用不破)。
+    /// [2026-09-17 背刺目标锁定] 6 米 searchRadius 口径**已停用**:有分配器(_planner)时改为
+    /// 「相机视口内最近存活敌人」(含 Boss)= _planner.FindNearestInViewport(),与圈/连音分配/元素冲刺同一套口径;
+    /// 只有场景未接线(_planner == null)时才退回下面的原半径搜索(OverlapCircleAll + combat.EnemyLayer + searchRadius)
+    /// 做纯兜底。纯查询、无副作用,状态未激活也可调。
+    /// </summary>
     public EnemyControllerBase FindNearestTarget()
     {
+        if (_planner != null) return _planner.FindNearestInViewport();   // 视口口径优先(6 米口径已停用)
+
         LayerMask mask = combat != null ? combat.EnemyLayer : ~0;
         Vector2 origin = owner.transform.position;
         Collider2D[] cols = Physics2D.OverlapCircleAll(origin, searchRadius, mask);

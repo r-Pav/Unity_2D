@@ -21,6 +21,10 @@ using UnityEngine;
 ///   组内不重排(快照结果按点索引稳定缓存),组结束/切曲由调用方 ClearChain() 清空。
 ///
 /// 场景侧接线(saika):建议挂玩家根或 MusicPointManager 同物体,拖 worldCamera(Main Camera)、player(玩家根)、enemyLayer(Enemy)。
+///
+/// [背刺目标锁定 2026-09-17] 新增只读查询 FindNearestInViewport()(视口内最近存活敌人,含 Boss):
+/// 供「出圈选目标」(EnemyBeatIndicator.StartAimForBar)与「按 F 那一帧的目标解析/兜底」(PlayerBackstabState)共用;
+/// IsInViewport 相应改为 public。连音分配口径与 _candidates 快照一字未改(查询走独立的临时表)。
 /// </summary>
 public class BackstabChainPlanner : MonoBehaviour
 {
@@ -54,6 +58,14 @@ public class BackstabChainPlanner : MonoBehaviour
     /// <summary>快照时的候选表(距离升序)与并行的平方距离;复用 List 避免每次快照新分配</summary>
     private readonly List<EnemyControllerBase> _candidates = new List<EnemyControllerBase>(16);
     private readonly List<float> _candidateSqrDist = new List<float>(16);
+
+    /// <summary>
+    /// [背刺目标锁定 2026-09-17] 只读查询用临时表(FindNearestInViewport),与连音快照表 **分离**、互不污染:
+    /// 连音分配永远只读 _candidates / _candidateSqrDist(excludeBoss=true),查询走这两张(excludeBoss=false,含 Boss)。
+    /// 按需分配一次后复用,同样零每帧调用、零 GC。
+    /// </summary>
+    private readonly List<EnemyControllerBase> _queryTargets = new List<EnemyControllerBase>(16);
+    private readonly List<float> _querySqrDist = new List<float>(16);
 
     /// <summary>快照提前量(秒),供 P5 与 P2 的 leadSeconds 对齐(只读)</summary>
     public float SnapshotLeadSeconds => snapshotLeadSeconds;
@@ -103,7 +115,7 @@ public class BackstabChainPlanner : MonoBehaviour
         _targetCount = n;
         for (int i = 0; i < n; i++) _targets[i] = null;
 
-        GatherCandidates();                 // 整组只在这里扫一次
+        GatherCandidates(_candidates, _candidateSqrDist, true);   // 整组只在这里扫一次(口径不变:排除 Boss)
         if (_candidates.Count == 0) return; // 屏内无可用敌人 → 全 null(P6 自行兜底)
 
         // 点 0 取最近;点 N 先排除点 N-1 的目标,取剩下最近的;全被排除(单敌人)→ 回退到最近候选,允许重复。
@@ -122,7 +134,8 @@ public class BackstabChainPlanner : MonoBehaviour
         }
     }
 
-    /// <summary>组结束/切曲时清空分配(清空后 GetTargetForPoint / HasAssignment 一律返回 null / false)</summary>
+    /// <summary>组结束/切曲时清空分配(清空后 GetTargetForPoint / HasAssignment 一律返回 null / false)。
+    /// 只清连音用的 _candidates / _candidateSqrDist,不动只读查询的 _queryTargets / _querySqrDist(两者互不污染)。</summary>
     public void ClearChain()
     {
         if (_targets != null)
@@ -151,15 +164,17 @@ public class BackstabChainPlanner : MonoBehaviour
     // ============================================================
 
     /// <summary>
-    /// 采集本次快照的候选敌人:
+    /// 采集候选敌人到调用方传入的两张并行表(采集完按与玩家距离升序):
     /// 物理粗筛(视口外扩后的世界矩形 ∩ enemyLayer)+ 逐个体精确判定(WorldToViewportPoint ∈ [-margin, 1+margin])
-    /// + 非 IsDead + 非 IsBoss(规格 §P3:Boss 走自己的重击音/连打机制),最后按与玩家的欧氏距离升序。
+    /// + 非 IsDead + (excludeBoss 时)非 IsBoss。
+    /// 表由调用方传入且两者互不相同:连音快照传 (_candidates, _candidateSqrDist, true) —— 口径与改动前一字不改;
+    /// 只读查询传 (_queryTargets, _querySqrDist, false)(含 Boss)。两套表分离,连音分配规则不受查询影响。
     /// 距离比较全程用 sqrMagnitude,不开方(sqrt 只影响排序等价性,不影响顺序)。
     /// </summary>
-    private void GatherCandidates()
+    private void GatherCandidates(List<EnemyControllerBase> targets, List<float> sqrDists, bool excludeBoss)
     {
-        _candidates.Clear();
-        _candidateSqrDist.Clear();
+        targets.Clear();
+        sqrDists.Clear();
 
         if (worldCamera == null) return;
 
@@ -174,33 +189,46 @@ public class BackstabChainPlanner : MonoBehaviour
         {
             var e = cols[i].GetComponentInParent<EnemyControllerBase>();
             if (e == null || e.IsDead) continue;                    // 存活判定与 PlayerBackstabState.FindNearestTarget 同口径
-            if (e.IsBoss) continue;                                 // Boss 排除(规格 §P3 决策 8)
+            if (excludeBoss && e.IsBoss) continue;                   // 连音口径排除 Boss(规格 §P3 决策 8);只读查询含 Boss
             if (!IsInViewport(e.transform.position)) continue;       // 精确视口判定(外扩 viewportMargin)
-            if (_candidates.Contains(e)) continue;                   // 多碰撞体/多部位去重
+            if (targets.Contains(e)) continue;                       // 多碰撞体/多部位去重
 
-            _candidates.Add(e);
-            _candidateSqrDist.Add(((Vector2)e.transform.position - origin).sqrMagnitude);
+            targets.Add(e);
+            sqrDists.Add(((Vector2)e.transform.position - origin).sqrMagnitude);
         }
 
-        SortCandidatesBySqrDistance();
+        SortBySqrDistance(targets, sqrDists);
     }
 
-    /// <summary>插入排序:候选表通常 ≤ 10 个,不值得引入额外分配/闭包;两个并行 List 同步搬移</summary>
-    private void SortCandidatesBySqrDistance()
+    /// <summary>
+    /// [背刺目标锁定 2026-09-17] 只读查询:当前相机视口内最近的存活敌人(**含 Boss**)。
+    /// 口径 = 与连音目标分配/元素冲刺同一套(物理粗筛 TryGetViewportWorldRect + OverlapAreaAll(enemyLayer) + IsInViewport 精判);
+    /// 不用 WeaponThrow.BackstabSearchRadius 的 6 米口径,不写任何连音缓存(走独立的 _queryTargets/_querySqrDist 临时表)。
+    /// 视口内没有可背刺敌人 → 返回 null(调用方据此原地空挥)。
+    /// 调用时机:出圈选目标 / 按 F 那一帧的解析与兜底 —— 纯事件驱动,不做每帧轮询。
+    /// </summary>
+    public EnemyControllerBase FindNearestInViewport()
     {
-        for (int i = 1; i < _candidates.Count; i++)
+        GatherCandidates(_queryTargets, _querySqrDist, false);
+        return _queryTargets.Count > 0 ? _queryTargets[0] : null;   // 表已按与玩家距离升序
+    }
+
+    /// <summary>插入排序:候选表通常 ≤ 10 个,不值得引入额外分配/闭包;两个并行 List 同步搬移(表由调用方传入)</summary>
+    private void SortBySqrDistance(List<EnemyControllerBase> targets, List<float> sqrDists)
+    {
+        for (int i = 1; i < targets.Count; i++)
         {
-            EnemyControllerBase e = _candidates[i];
-            float d = _candidateSqrDist[i];
+            EnemyControllerBase e = targets[i];
+            float d = sqrDists[i];
             int j = i - 1;
-            while (j >= 0 && _candidateSqrDist[j] > d)
+            while (j >= 0 && sqrDists[j] > d)
             {
-                _candidates[j + 1] = _candidates[j];
-                _candidateSqrDist[j + 1] = _candidateSqrDist[j];
+                targets[j + 1] = targets[j];
+                sqrDists[j + 1] = sqrDists[j];
                 j--;
             }
-            _candidates[j + 1] = e;
-            _candidateSqrDist[j + 1] = d;
+            targets[j + 1] = e;
+            sqrDists[j + 1] = d;
         }
     }
 
@@ -225,8 +253,9 @@ public class BackstabChainPlanner : MonoBehaviour
         return maxX > minX && maxY > minY;
     }
 
-    /// <summary>世界坐标是否落在视口 [-viewportMargin, 1+viewportMargin] 内(x、y 都要在;相机背后直接排除)</summary>
-    private bool IsInViewport(Vector3 worldPos)
+    /// <summary>世界坐标是否落在视口 [-viewportMargin, 1+viewportMargin] 内(x、y 都要在;相机背后直接排除)。
+    /// [背刺目标锁定 2026-09-17] private → public:背刺状态要用它判「圈上锁定目标是否还在屏幕内」(只读,逻辑一字未改)。</summary>
+    public bool IsInViewport(Vector3 worldPos)
     {
         Vector3 v = worldCamera.WorldToViewportPoint(worldPos);
         if (v.z < 0f) return false;                                  // 相机背后

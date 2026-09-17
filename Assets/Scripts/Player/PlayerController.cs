@@ -715,7 +715,9 @@ public class PlayerController : PlayerCharacterBase
 
     /// <summary>每帧 F 键分发:连音组曲按"连音点窗口内"触发背刺,无连音组曲按"自动重音窗口内"触发;窗口外按 F 无效果。
     /// [S5] 窗口内的分流:先敌后元素 —— 有可背刺敌人 → 原背刺;没敌人 + 面朝有就绪元素 + 非攻击态(连音还要"只认首音")
-    ///   → 元素冲刺;都没有 → 走原背刺路径(状态内无目标兜底 = 普通空挥,不新增空挥逻辑)。</summary>
+    ///   → 元素冲刺;都没有 → 走原背刺路径(状态内无目标兜底 = 普通空挥,不新增空挥逻辑)。
+    /// [2026-09-17 背刺目标锁定] 分流第 ⑤ 条改为"战斗中不冲元素"(见 TryMapDashInsteadOfBackstab):
+    ///   背刺目标改由圈上锁定目标决定,元素冲刺不再用"附近有没有可背刺敌人"做判据。</summary>
     private void HandleBackstabInput()
     {
         if (!Input.GetKeyDown(KeyCode.F)) return;
@@ -763,18 +765,20 @@ public class PlayerController : PlayerCharacterBase
 
     /// <summary>
     /// [S5 地图元素冲刺] 判定本帧 F 是否改走「元素冲刺」:该走则执行并返回 true(调用方不再走背刺)。
-    /// 返回 false = 保持原背刺路径(有敌人 / 攻击中 / 受击死亡 / 连音非首音 / 没元素 / 没挂执行器)。
+    /// 返回 false = 保持原背刺路径(战斗中 / 攻击中 / 受击死亡 / 背刺执行中 / 连音非首音 / 没元素 / 没挂执行器)。
     ///
-    /// 判定顺序与依据(规格 §S5):
+    /// 判定顺序与依据:
     ///   ① 攻击状态(`PlayerComboState`/`PlayerAttackState`/`PlayerAirAttackState`)不冲元素 —— 攻击中的 F 仍由背刺
     ///      强制打断(原优先级与打断语义一字不改),元素不抢攻击中的 F;
     ///   ② 受击/死亡不冲(沿用 TryEnterBackstab 的状态守卫口径);
     ///   ③ 背刺执行中不冲:此时 F 的原有语义是"连音逐点推进 / 非连音无效果",属于禁止项里的背刺打断语义,
     ///      保守排除,避免元素冲刺在背刺动画中途把玩家瞬移走;
     ///   ④ 连音路径只认首音(见 IsChainFirstPointActive):组内后续点即使活跃也不触发元素;
-    ///   ⑤ 先敌后元素:「附近有没有可背刺敌人」复用背刺同一套搜索(BackstabState.FindNearestTarget,含搜索半径 /
-    ///      存活判定 / 层级掩码),有敌人 → 让给背刺(含打断攻击语义);不新写一份搜索,防口径漂移;
-    ///   ⑥ 无敌人 → 找「视口内 + 非 CD」的最近元素(MapDashPoint.TryFindNearest,相机用 S3 缓存的
+    ///   ⑤ 战斗中不冲元素(2026-09-17 背刺目标锁定):玩家处于战斗状态(AttackingStat.Instance.InCombat,
+    ///      即任意敌人对玩家有仇恨)时让位给背刺 —— 战斗里 F 的语义是背刺(圈上锁定目标照打,没有目标就原地空挥),
+    ///      不再把玩家瞬移去打地图元素。**不再用**"附近有没有可背刺敌人"做判据
+    ///      (那个 6 米搜索口径已停用,只剩场景未接线时的兜底作用);
+    ///   ⑥ 非战斗 → 找「视口内 + 非 CD」的最近元素(MapDashPoint.TryFindNearest,相机用 S3 缓存的
     ///      CachedCamera,按键路径里不查 Camera.main);**口径与背刺目标分配一致,不判朝向**;
     ///      找到就执行,没找到 → 让给背刺(原地闪现=普通空挥)。
     /// 窗口消费口径不变:元素冲刺不调用 ConsumeAutoBarWindow、不 ConsumePoint —— 窗口/点的消费仍只由背刺路径完成。
@@ -797,8 +801,10 @@ public class PlayerController : PlayerCharacterBase
         // ④ 连音只认首音:组内第一个点不在活跃窗口(或已被消费)时,元素冲刺让位给背刺
         if (chainMode && !IsChainFirstPointActive(mgr)) return false;
 
-        // ⑤ 先敌后元素:同一套背刺搜索,有可背刺敌人就不抢
-        if (BackstabState != null && BackstabState.FindNearestTarget() != null) return false;
+        // ⑤ [2026-09-17 背刺目标锁定] 战斗中不冲元素:玩家处于战斗状态(任意敌人对玩家有仇恨)时让位给背刺。
+        //    战斗里 F 的语义 = 背刺:圈上锁定目标照打,没有目标就原地空挥,不再把玩家瞬移去打地图元素。
+        //    判据来自 AttackingStat.Instance.InCombat(敌人 OnEnterCombatState 上报的 refCount),不自建一套战斗判定。
+        if (AttackingStat.Instance != null && AttackingStat.Instance.InCombat) return false;
 
         // ⑥ 找元素(视口/CD 都在 TryFindNearest 内部判;口径与背刺目标分配一致:**不判朝向**);
         //    没找到 → false,让背刺走空挥兜底
@@ -845,7 +851,10 @@ public class PlayerController : PlayerCharacterBase
     /// 2026-09-15:访问级别由 private 提升为 public —— Boss 重击音判定链(PlayerBeatJudge)在判定成功后直接调本方法打一段背刺,
     /// 不再由玩家侧自实现瞬移与吸附。调用方传 false(非连音);内部会消费自动重音窗口(Boss 曲无自动重音,该消费是空操作)。
     /// </summary>
-    public void TryEnterBackstab(bool chainMode)
+    /// <param name="chainMode">true = 连音路径;false = 自动重音 / 单点路径</param>
+    /// <param name="explicitTarget">[2026-09-17 背刺目标锁定] 一刀级显式目标(Boss 重击判定链把 ResolveBoss() 的返回值传进来);
+    /// null = 不指定,由背刺状态按「连音分配 → 圈上锁定目标 → 视口内最近 → 空挥」四级解析。只在本次"全新进入"生效。</param>
+    public void TryEnterBackstab(bool chainMode, EnemyControllerBase explicitTarget = null)
     {
         if (PlayerFsm == null || BackstabState == null) return;   // FSM/背刺状态为空(原 [HeavyDbg] 拦截提示已清 2026-09-16)
         var cur = PlayerFsm.CurrentState;
@@ -876,6 +885,9 @@ public class PlayerController : PlayerCharacterBase
         // 背刺最高优先级:当前若在连段中(地面/空中攻击),清掉待处理输入,打断前不留残留
         if (cur is PlayerComboState comboState)
             comboState.CancelPendingComboInput();
+        // [2026-09-17 背刺目标锁定] 显式目标必须**在 ChangeState 之前**写入:OnEnter 里读出来即消费并置空(一刀级)。
+        // 非显式调用(explicitTarget == null)= 显式清空,行为与改动前一字不差。
+        BackstabState.SetExplicitTarget(explicitTarget);
         PlayerFsm.ChangeState(BackstabState);
         // 消费:连音路径的按点消费由 PlayerBackstabState.OnEnter → ExecuteStrike 完成(同上,入口层不消费);
         // 自动重音路径消费当前窗口(本 bar 限一次背刺,防窗口内连按 F 连触发;空挥也消耗,miss 就过)。

@@ -12,8 +12,9 @@ using UnityEngine;
 ///    (同一个敌人的多个点合并成一份 secondsToPoints 一次传入;不同敌人各自一份实例/数组;
 ///     该点无分配 / 敌人没挂 BeatFlashPoint / 没配 aimPrefab = 空安全跳过,行为与现状一致);
 ///    组结束(窗口全过)或切曲:收掉已发的环 + ClearChain 清分配。
-/// ② 当前曲没有连音组 → 原自动重音路径(轮询 TimeToNextAutoBar,窗口前 leadSeconds 找最近非死亡普通敌人
-///    调 BeatFlashPoint.Flash;IsBoss 跳过),逐帧行为与改动前完全一致(原逻辑整段保留在 UpdateAutoBar)。
+/// ② 当前曲没有连音组 → 原自动重音路径(轮询 TimeToNextAutoBar,窗口前 leadSeconds 选目标调 BeatFlashPoint.Flash;
+///    选目标优先级 = 相机视口内最近存活敌人(含 Boss)→ 视口内没有才退回原半径/全场景最近普通敌人(IsBoss 跳过));
+///    除选目标口径外,逐帧行为与改动前完全一致(原逻辑整段保留在 UpdateAutoBar)。
 /// 窗口事件(OnWindowEnter/OnWindowPassed)保留作兜底(预告时机错过/中途进入时补启动)与清理(窗口正常结束 Hide),
 /// 只服务自动重音路径。
 /// 连音预告时间点(P5 规格 §3):组首点前 leadSeconds 那一刻打一次代码标记(OnChainPreview 事件 + LastChainPreviewTime
@@ -36,6 +37,13 @@ public class EnemyBeatIndicator : MonoBehaviour
 
     private EnemyControllerBase _current;
     private float _aimStartedForNext = float.NegativeInfinity;  // 已尝试启动的 bar 时刻(防同一 bar 重复启动/每帧重扫)
+
+    /// <summary>
+    /// [背刺目标锁定 2026-09-17] 圈上锁定的目标(只读):出圈那一刻选定的敌人就是这一刀的背刺目标。
+    /// 未出圈 / 窗口已过(OnWindowPassed 清空)/ 组件停用(OnDisable 清空)时为 null —— 调用方(PlayerBackstabState)
+    /// 拿到 null 即走回退链(视口内最近 → 空挥)。零新增字段,直接暴露现有 _current。
+    /// </summary>
+    public EnemyControllerBase CurrentTarget => _current;
 
     // ── 连音路径状态(P5)──
     private float _chainPreparedFirst = -1f;                        // 已准备过的连音组首点时刻(-1 = 无);同一组只准备一次,组内不重排
@@ -127,15 +135,21 @@ public class EnemyBeatIndicator : MonoBehaviour
         _current = null;
     }
 
-    /// <summary>对某 bar 时刻启动预告标识:找最近敌人调其 BeatFlashPoint.Flash(secondsToNext, window)。
+    /// <summary>对某 bar 时刻启动预告标识:选目标 → 调其 BeatFlashPoint.Flash(secondsToNext, window)。
     /// secondsToNext = 触发时距窗口起点的真实剩余秒数(组件据此保证环在窗口起点到外环)。
+    /// 选目标(2026-09-17 背刺目标锁定):优先「相机视口内最近的存活敌人」(BackstabChainPlanner.FindNearestInViewport,
+    ///   与连音分配/元素冲刺同一套口径,且**含 Boss** —— 圈在 Boss 身上按 F 就打 Boss);
+    ///   视口内一个都没有时才退回原 FindNearestEnemy()(半径搜索 / 全场景兜底,跳过 IsBoss,字段 searchRadius 保留不删)。
+    ///   锁定时机(窗口前 leadSeconds 那一帧)不变,选完不再复核 —— 按 F 那一帧背刺状态直接读 CurrentTarget。
     /// 每次都记 _aimStartedForNext(含空安全失败)→ 防 Update 在同一 bar 内每帧重复 FindObjectsOfType;
     /// 无敌人 / 敌人身上没挂 BeatFlashPoint = 空安全跳过,不显示不报错(槽位由 saika 场景侧配)。</summary>
     private void StartAimForBar(float barTime, float secondsToNext)
     {
         if (barTime < 0f) return;
         _aimStartedForNext = barTime;
-        _current = FindNearestEnemy();
+        var planner = ResolvePlanner();                       // 只读查询走已有引用,不新增查找
+        _current = planner != null ? planner.FindNearestInViewport() : null;
+        if (_current == null) _current = FindNearestEnemy();  // 视口内没有 → 原半径/全场景兜底(口径不变)
         if (_current == null) return;
         var mgr = MusicPointManager.Instance;
         float window = mgr != null ? mgr.WindowSeconds : 0.3f;   // 内环按当前曲窗口时长动态适配
