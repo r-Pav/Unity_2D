@@ -14,7 +14,7 @@ using UnityEngine;
 /// 窗口消费:标点路径按点消费(ConsumePoint/IsPointConsumed,一圈内一个点只消费一次);
 /// 自动重音路径仍按 bar 消费(ConsumeAutoBarWindow,语义与改前一致)。
 /// 最后一圈所有点处理完且无活跃窗口,等 loop 回绕后清空消费记录从头再排。
-/// 连音分组(P2):当前曲 PlayerBackstab 组标点按 chainGapThreshold 切成若干连音组(相邻间隔 &lt; 阈值归一组的),
+/// 连音分组:分组来自 MusicTrackData.chainGroups(手工标,每组独立成组)+ PlayerBackstab 组里没被连音收走的点(各成一组),
 /// 分组结果缓存(只在切曲/切圈/资产重载时重算),对外提供 CurrentChainPoints/PendingChainPointIndex 等只读查询。
 /// </summary>
 [DefaultExecutionOrder(-9999)]   // 早于所有默认顺序业务脚本(Awake/OnEnable 里读 Instance 的调用点)；
@@ -50,11 +50,6 @@ public class MusicPointManager : MonoBehaviour
     [Tooltip("预告提前量(秒):距下一点 ≤ 此值时激活预告")]
     [SerializeField] private float previewLead = 1f;
 
-    [Header("连音背刺(标点组 PlayerBackstab)")]
-    [Tooltip("连音分组阈值(秒):PlayerBackstab 组内相邻标点间隔 < 此值时归为同一个连音组;" +
-             "默认 0.5 = 背刺动画 Backstab.anim 时长")]
-    [SerializeField] private float chainGapThreshold = 0.5f;
-
     [Tooltip("缓入缓出时长(秒):管道/Boss 切换")]
     [SerializeField] private float crossFadeDuration = 1f;
 
@@ -73,6 +68,7 @@ public class MusicPointManager : MonoBehaviour
     private Coroutine _autoBarRoutine;   // 自动重音调度协程(barIntervalSeconds>0 的场景曲)
     private bool _inWindow;              // 当前是否在触发窗口内(= 标点活跃窗口 || 自动重音窗口)
     private bool _autoBarActive;         // 当前窗口是否由自动重音开启(IsAutoBarWindow 区分背刺窗口)
+    private float _autoBarPointTime = -1f;   // 自动重音路径当前/最近一次窗口的拍点时刻(卡点音效排程用;-1 = 还没开过窗)
     private bool _autoBarConsumed;       // 当前自动重音窗口是否已被消费(F 背刺用:每 bar 限一次,防窗口内连按 F 连触发)
     private bool _autoBarWindowOpen;     // 自动重音窗口当前是否开着(与标点活跃窗口各自独立计数,互不误关)
     private float _activePointTime;      // 最近进入窗口的点时刻(向后兼容;多窗口下 = 最后开窗的那个点)
@@ -116,6 +112,19 @@ public class MusicPointManager : MonoBehaviour
 
     /// <summary>当前主源音频时间(唯一时钟;P5 Boss 模式跟随当前主源)</summary>
     public float TrackTime => _activeSource != null ? _activeSource.time : 0f;
+
+    /// <summary>自动重音路径当前/最近一次窗口的拍点时刻(秒;-1 = 该曲没有自动重音或还没开过窗)。
+    /// 供卡点音效排程取"这一拍是几点"(非连音的背刺走这条路)。</summary>
+    public float AutoBarPointTime => _autoBarPointTime;
+
+    /// <summary>
+    /// 把音乐时间轴上的某时刻换算成 dspTime(音频线程时钟),供 AudioManager.PlaySfxScheduled 排程。
+    /// 用"当前 dspTime + 与当前音乐位置的差值",是相对换算,循环/交叠循环都不受影响;
+    /// 精度受 AudioSource.time 的 DSP 缓冲量化(约 20ms 级)。
+    /// 返回时刻已过 = 音立刻播,调用方不用特判。
+    /// </summary>
+    public double DspTimeForPoint(float pointTime)
+        => AudioSettings.dspTime + (pointTime - TrackTime);
 
     // ── 自动重音预告查询(供 EnemyBeatIndicator 轮询;公式与 AutoBarRoutine 的 next 对齐,纯只读)──
     // 注意:禁止为复用这些 getter 去重构 AutoBarRoutine 内部计算(AutoBarRoutine 在排程协程内自己算即可,改它有回归风险)。
@@ -242,13 +251,12 @@ public class MusicPointManager : MonoBehaviour
     /// <summary>当前曲的连音组数量(孤立点也算一组)</summary>
     public int ChainGroupCount => _chainGroupLen.Count;
 
-    /// <summary>连音分组阈值(秒):相邻标点间隔 < 此值归为同一连音组</summary>
-    public float ChainGapThreshold => chainGapThreshold;
-
     /// <summary>
     /// 重算连音分组缓存(切曲/切圈/资产重载时调用,不在 Update 里调用):
-    /// 取当前曲 PlayerBackstab 组标点 → 升序去重(容差 0.001,与排程点表去重口径一致)→
-    /// 相邻间隔 < chainGapThreshold 归为同一连音组;与前后都不相邻的孤立点自成一组(长度 1)。
+    /// ① 手工连音组(MusicTrackData.chainGroups):每项独立成一组,组内升序去重(容差 0.001,与排程点表口径一致);
+    /// ② PlayerBackstab 组里没被任何连音组收走的点:各自成一个长度 1 的组(单点行为不变);
+    /// ③ 组按首点时间排序后依次展开 → _chainPoints(全局升序)+ _chainGroupStart/_chainGroupLen。
+    /// 与手动标点同一时刻重合时按连音处理:该时刻只归连音组,不再额外生成单点组。
     /// </summary>
     private void RebuildChainGroups()
     {
@@ -258,30 +266,68 @@ public class MusicPointManager : MonoBehaviour
         _currentChainPoints = EmptyChainPoints;
         _currentChainGroup = -1;
 
-        var group = _currentTrack != null ? _currentTrack.GetGroup(PlayerBackstabGroupName) : null;
-        if (group != null && group.points != null && group.points.Length > 0)
+        if (_currentTrack == null)
         {
-            var sorted = new List<float>(group.points);
-            sorted.Sort();
-            for (int i = 0; i < sorted.Count; i++)
-            {
-                if (sorted[i] < 0f) continue;   // 负时刻无意义(该点不会开窗),直接丢掉
-                if (_chainPoints.Count > 0 && Mathf.Abs(sorted[i] - _chainPoints[_chainPoints.Count - 1]) < 0.001f)
-                    continue;                   // 去重
-                _chainPoints.Add(sorted[i]);
-            }
+            _chainGroupSummary = "0 组 []";
+            return;
+        }
 
-            // 相邻间隔 < 阈值归为一组;扫描到 i == Count 收尾(最后一组必闭合)
-            float gap = Mathf.Max(0f, chainGapThreshold);
-            int start = 0;
-            for (int i = 1; i <= _chainPoints.Count; i++)
+        // ── ① 手工连音组:一组一项,直接就是分组结果(不再按间隔切)──
+        var groups = new List<List<float>>();
+        if (_currentTrack.chainGroups != null)
+        {
+            foreach (var cg in _currentTrack.chainGroups)
             {
-                bool closeGroup = i >= _chainPoints.Count || (_chainPoints[i] - _chainPoints[i - 1]) >= gap;
-                if (!closeGroup) continue;
-                _chainGroupStart.Add(start);
-                _chainGroupLen.Add(i - start);
-                start = i;
+                if (cg == null || cg.points == null || cg.points.Length == 0) continue;
+                var sorted = new List<float>(cg.points);
+                sorted.Sort();
+                var pts = new List<float>(sorted.Count);
+                for (int i = 0; i < sorted.Count; i++)
+                {
+                    if (sorted[i] < 0f) continue;   // 负时刻无意义(该点不会开窗),直接丢掉
+                    if (pts.Count > 0 && Mathf.Abs(sorted[i] - pts[pts.Count - 1]) < 0.001f) continue;   // 去重
+                    pts.Add(sorted[i]);
+                }
+                if (pts.Count > 0) groups.Add(pts);
             }
+        }
+
+        // ── ② PlayerBackstab 组里剩下的点:各成一个长度 1 的组 ──
+        var single = _currentTrack.GetGroup(PlayerBackstabGroupName);
+        if (single != null && single.points != null)
+        {
+            var rest = new List<float>(single.points.Length);
+            foreach (float p in single.points)
+            {
+                if (p < 0f) continue;
+                bool inChain = false;                 // 与连音组同一时刻 → 归连音(重合优先连音)
+                foreach (var g in groups)
+                {
+                    foreach (float gp in g)
+                    {
+                        if (Mathf.Abs(gp - p) < 0.001f) { inChain = true; break; }
+                    }
+                    if (inChain) break;
+                }
+                if (inChain) continue;
+                bool dup = false;
+                foreach (float r in rest)
+                {
+                    if (Mathf.Abs(r - p) < 0.001f) { dup = true; break; }
+                }
+                if (!dup) rest.Add(p);
+            }
+            rest.Sort();
+            for (int i = 0; i < rest.Count; i++) groups.Add(new List<float> { rest[i] });
+        }
+
+        // ── ③ 按首点升序展开(要求各组时间不交错:_chainPoints 必须全局升序)──
+        groups.Sort((a, b) => a[0].CompareTo(b[0]));
+        foreach (var g in groups)
+        {
+            _chainGroupStart.Add(_chainPoints.Count);
+            _chainGroupLen.Add(g.Count);
+            _chainPoints.AddRange(g);
         }
 
         // 调试摘要:如 "2 组 [3,1]"(重算时拼一次,OnGUI 直接取)
@@ -299,7 +345,7 @@ public class MusicPointManager : MonoBehaviour
     /// <summary>强制重算连音分组(切曲/切圈已自动重算;运行时改过 MusicTrackData 的 PlayerBackstab 组后可手动调一次)</summary>
     public void RefreshChainGroups() => RebuildChainGroups();
 
-    /// <summary>编辑器侧:Inspector 改 chainGapThreshold 后立即重算,运行时也能当场看到分组变化</summary>
+    /// <summary>编辑器侧:运行时改过曲目资产(连音组/标点组)后立即重算,当场看到分组变化</summary>
     private void OnValidate()
     {
         if (Application.isPlaying) RebuildChainGroups();
@@ -692,12 +738,15 @@ public class MusicPointManager : MonoBehaviour
         _inWindow = _activePoints.Count > 0 || _autoBarWindowOpen;
     }
 
-    /// <summary>清空标点窗口状态(切曲/进过渡期时调用):活跃点表 + 消费记录 + 自动重音开窗标志一起复位</summary>
+    /// <summary>清空标点窗口状态(切曲/进过渡期时调用):活跃点表 + 消费记录 + 自动重音开窗标志一起复位。
+    /// 同时取消未播的卡点排程音(排程按旧曲时间基准算的,基准一变就该作废)。</summary>
     private void ResetScheduleWindowState()
     {
         _activePoints.Clear();
         _consumedPoints.Clear();
         _autoBarWindowOpen = false;
+        _autoBarPointTime = -1f;
+        AudioManager.Instance?.CancelScheduledSfx();
         RefreshWindowFlag();
     }
 
@@ -736,14 +785,26 @@ public class MusicPointManager : MonoBehaviour
     private IEnumerator ScheduleRoutine(float[] basePoints, bool mergeGroups)
     {
         List<float> points;
-        if (mergeGroups && _currentTrack != null && _currentTrack.pointGroups != null)
+        if (mergeGroups && _currentTrack != null)
         {
             var all = new List<float>();
             if (basePoints != null) all.AddRange(basePoints);
-            foreach (var g in _currentTrack.pointGroups)
+            if (_currentTrack.pointGroups != null)
             {
-                if (g != null && g.points != null) all.AddRange(g.points);
+                foreach (var g in _currentTrack.pointGroups)
+                {
+                    if (g != null && g.points != null) all.AddRange(g.points);
+                }
             }
+            // 手工连音组的点同样要开窗:它们也是背刺标点,只是踩中一刀后由状态自动打完(见 PlayerBackstabState)
+            if (_currentTrack.chainGroups != null)
+            {
+                foreach (var cg in _currentTrack.chainGroups)
+                {
+                    if (cg != null && cg.points != null) all.AddRange(cg.points);
+                }
+            }
+
             all.Sort();
             points = new List<float>();
             foreach (float p in all)
@@ -846,6 +907,7 @@ public class MusicPointManager : MonoBehaviour
             _autoBarWindowOpen = true;
             _autoBarActive = true;
             _autoBarConsumed = false;   // 新窗口重置消费标记(每 bar 可触发一次背刺)
+            _autoBarPointTime = next;   // 本拍时刻(卡点音效排程取它当目标点)
             RefreshWindowFlag();        // 标点窗口可能同时在开:_inWindow 两路共享,不要直接赋值覆盖
             OnWindowEnter?.Invoke(next);
 

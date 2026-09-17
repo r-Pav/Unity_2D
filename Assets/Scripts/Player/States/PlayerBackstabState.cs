@@ -114,6 +114,46 @@ public class PlayerBackstabState : EntityState
     /// <summary>本状态绑定的连音组身份(= 该组首点时刻;NaN = 未绑定连音组)</summary>
     private float _chainFirstPoint = float.NaN;
 
+    // ── 自动连打(节拍辅助 2026-09-17)──
+    /// <summary>是否正在自动连打:踩中连音组内一点后,组内后面的点由本状态按各自拍点自动执行,玩家不用再按(F 被入口拦掉)</summary>
+    private bool _autoChaining;
+    /// <summary>下一个要自动执行的组内点下标(-1 = 无);游标只往后走,已过去的点不补</summary>
+    private int _autoChainCursor = -1;
+
+    /// <summary>自动连打进行中(PlayerController 的 F 入口读它决定是否吞掉按键)</summary>
+    public bool AutoChaining => _autoChaining;
+
+    // ── 连打定格 + 随机落点(节拍辅助 2026-09-17)──
+    /// <summary>本组已打出第一刀的目标:它飞完即被钉住当后续刀的靶子(null = 本组还没定靶)</summary>
+    private EnemyControllerBase _comboTarget;
+    /// <summary>正在等它飞完(速度落到阈值以下就定格;超时兜底强制定格)</summary>
+    private bool _comboArming;
+    private float _comboArmTimer;
+    /// <summary>本刀命中结算后经过的时长(秒;-1 = 还没结算);用于跳过"击退未生效"的假静止帧</summary>
+    private float _comboHitAge = -1f;
+    /// <summary>本刀命中结算后它是否真的被上挑过(垂直速度超阈值);没飞起来的小击退由超时兜底</summary>
+    private bool _comboFlying;
+    // ── 连音阶梯(第一击起飞后按本组点数均分,每个拍点推进一阶)──
+    private Vector2 _ladderStart;   // 阶梯线起点 = 第一击起飞位置
+    private Vector2 _ladderEnd;     // 阶梯线终点 = 这次击飞的顶点
+    private int _ladderCount;       // 均分份数 = 本组点数
+    private int _ladderStep;        // 已站到的阶(0 = 还没建立)
+    private int _chainCount;        // 本组点数 = 阶梯均分份数
+
+    /// <summary>连打期间是否已给玩家挂"无重力"请求(退出时清,幂等)</summary>
+    private bool _playerGravityHeld;
+
+    /// <summary>等"飞完"的安全上限(秒):正常靠落地停稳判定;一直不停(卡管道/持续下落)到这里才强制定格。
+    /// 不用小值:击飞距离长的时候要让它真的飞完,不能被时间提前掐断(下一刀到来时另有强制定格兜底)</summary>
+    private const float ComboHoldArmTimeout = 3f;
+    /// <summary>命中结算后的宽限期(秒):地面击退走 AddForce(Impulse),要到下一个物理帧才把速度加上去,
+    /// 这期间看到的"速度 0 + 落地"是假象,不能当成"已经停稳"(否则会把还没生效的击退当场抹掉)</summary>
+    private const float ComboHoldHitGraceSeconds = 0.2f;
+    /// <summary>判定"被上挑起来"的垂直速度阈值(米/秒):超过它才算真的飞起来了,之后等由正转负 = 最高点</summary>
+    private const float ComboHoldRiseSpeed = 0.5f;
+    /// <summary>判定"飞完"的速度阈值(米/秒;纯水平击退的回退判定用)</summary>
+    private const float ComboHoldSettleSpeed = 0.6f;
+
     public override bool LocksInput => true;
 
     public PlayerBackstabState(CharacterBase owner, StateMachine stateMachine, Animator anim,
@@ -143,6 +183,15 @@ public class PlayerBackstabState : EntityState
         _endEventSeq = 0;
         _stabCount.Clear();
         _chainFirstPoint = float.NaN;
+        _autoChaining = false;
+        _autoChainCursor = -1;
+        _comboTarget = null;
+        _comboArming = false;
+        _comboArmTimer = 0f;
+        _comboFlying = false;
+        _comboHitAge = -1f;
+        _ladderStep = 0;     // 连音阶梯:每次进入状态重置(上一组被打断时也不残留)
+        _strikeSeq = 0;
 
         // 显式目标(2026-09-17 背刺目标锁定,Boss 重击判定链):入口 ChangeState 前写入,
         // 这里读出来立刻置空 —— 一刀级,绝不残留到下一刀 / 下一个窗口。
@@ -204,6 +253,9 @@ public class PlayerBackstabState : EntityState
             return;
         }
 
+        TickAutoChain();   // 自动连打(节拍辅助):组内后面的点按各自拍点自动执行,玩家不用再按
+        UpdateComboHold(); // 连打定格:第一刀之后等它飞完,然后钉住当后续刀的靶子
+
         // 退出判定:最后一刀动画已结束 且 组内已无未执行点(非连音路径恒满足)
         if (_strikes.Count == 0) return;                          // 未执行过刀(理论不出现):交给超时兜底
         if (!_strikes[_strikes.Count - 1].endReceived) return;    // 最后一刀还在演
@@ -230,6 +282,10 @@ public class PlayerBackstabState : EntityState
         EnemyControllerBase target = rec.target;
         if (target == null || target.IsDead) return;
         combat?.ExecuteBackstab(target, rec.damageMultiplier, knockback);
+        // 连打运动锁定(节拍辅助):第一击的击退已经施加完,立刻锁定 —— 之后的连音刀不许再改它的运动,
+        // 它只按这一击的轨迹飞(到最高点由 UpdateComboHold 停住)。后续刀命中时这行是幂等的。
+        // 必须放在 ExecuteBackstab 之后:先锁定的话这一击自己的击退也会被吞掉。
+        if (_comboArming && ReferenceEquals(target, _comboTarget)) target.BeginComboHold();
         // 重音成功:头顶 combo 计数 +1(BeatComboIndicator,不存在则跳过);
         // 在非空非死分支内执行,挥空/目标死亡不计数,天然满足"挥空无效"
         owner.GetComponentInChildren<BeatComboIndicator>(true)?.NotifyBeatHit();
@@ -332,6 +388,12 @@ public class PlayerBackstabState : EntityState
         _endEventSeq = 0;
         _stabCount.Clear();
         _chainFirstPoint = float.NaN;
+        _autoChaining = false;
+        _autoChainCursor = -1;
+        _comboTarget?.EndComboHold();   // 连打靶子解定格:恢复正常重力与状态推进(死亡路径 enemy 自己也会解)
+        _comboTarget = null;
+        _comboArming = false;
+        ReleasePlayerGravity();          // 连打结束:玩家恢复重力(空中悬停结束,正常落回)
         RestoreHoverGravity();   // 被打断/死亡:缓落协程可能没跑完,统一清掉倍率请求(防重力永久变小)
     }
 
@@ -348,8 +410,231 @@ public class PlayerBackstabState : EntityState
     }
 
     // ============================================================
-    // 一刀执行(第一刀 = OnEnter;同组后续刀 = TryExecuteNextPoint)
+    // 一刀执行(第一刀 = OnEnter;同组后续刀 = TryExecuteNextPoint / 自动连打)
     // ============================================================
+
+    /// <summary>
+    /// 自动连打推进(节拍辅助 2026-09-17):踩中连音组内一点后,组内后面的点按各自拍点由本状态自动执行 ——
+    /// 等于替玩家踩点,每一刀都是完整背刺(瞬移 / 伤害 / 特效 / 音效)。每帧最多推进一刀,拍点没到就等下一帧。
+    /// 已过去的点不补:游标只从"刚打过的这一刀的下一刀"往后走(玩家从组内第 2 点进组时,第 1 点不会被回头打)。
+    /// 组切走 / 组内打完 / 状态退出 → 停;退出兜底与手动路径共用(NoPendingChainPoint)。
+    /// </summary>
+    private void TickAutoChain()
+    {
+        if (!_autoChaining) return;
+
+        var mgr = MusicPointManager.Instance;
+        if (mgr == null || !mgr.HasChain || !IsCurrentChainGroup(mgr)) { _autoChaining = false; return; }
+
+        var pts = mgr.CurrentChainPoints;
+        if (_autoChainCursor < 0 || _autoChainCursor >= pts.Length) { _autoChaining = false; return; }
+
+        while (_autoChainCursor < pts.Length && mgr.IsPointConsumed(pts[_autoChainCursor]))
+            _autoChainCursor++;   // 游标点已被消费(时序抖动/异常):往后挪
+        if (_autoChainCursor >= pts.Length) { _autoChaining = false; return; }
+
+        if (mgr.TrackTime < pts[_autoChainCursor] - TimeEpsilon) return;   // 拍点还没到:等下一帧
+
+        int pointIndex = _autoChainCursor;
+        EnemyControllerBase nextTarget = ResolveStrikeTarget(null, pointIndex, mgr);
+        if (nextTarget == null)
+        {
+            // 连打没靶可打了(原目标已死且找不到下一个):结束连打并退出背刺状态,
+            // 不把剩下的点原地空挥完(2026-09-17 saika 定)
+            _autoChaining = false;
+            ExitBackstab();
+            return;
+        }
+        ExecuteStrike(nextTarget, pointIndex, mgr);
+    }
+
+    /// <summary>
+    /// 连打阶梯推进(节拍辅助 2026-09-17):第一刀打出后先让它真飞一小段,一起飞就建阶梯(见 BeginComboLadder),
+    /// 之后每个拍点由 ExecuteStrike → AdvanceLadder 把它放到下一阶,所以这里只负责"等到起飞"这一件事。
+    /// ① 先等这一刀的命中帧结算(伤害/击退真的施加了)。不等的话,第一刀刚瞬移完、敌人还站在原地不动,
+    ///    会被误判成"已飞完"当场钉住,紧接着命中帧的击退正好被吞掉(2026-09-17 复现"不会击飞了");
+    /// ② 命中后等它真的被上挑起来(垂直速度超过 ComboHoldRiseSpeed)→ 建阶梯并站到第 1 阶;
+    /// ③ 纯水平击退(一直没上升)→ 回退「落地停稳」判定;
+    /// ④ 命中帧迟迟不到 / 卡管道 / 一直下落 → ComboHoldArmTimeout 强制停住。
+    /// 只作用于这一只敌人。目标死亡/消失直接放弃(下一刀解析不到目标会结束连打退出)。
+    /// </summary>
+    private void UpdateComboHold()
+    {
+        if (!_comboArming) return;
+
+        if (_comboTarget == null || _comboTarget.IsDead)
+        {
+            _comboArming = false;
+            _comboTarget = null;
+            return;
+        }
+
+        _comboArmTimer += Time.deltaTime;
+
+        if (LastStrikeHitResolved())
+        {
+            _comboHitAge = _comboHitAge < 0f ? 0f : _comboHitAge + Time.deltaTime;   // 命中结算后计时
+
+            if (!_comboFlying)
+            {
+                // 击退速度真的生效了(不是地面 AddForce 生效前的假 0)→ 不等它飞,立刻建阶梯,
+                // 并把玩家一起传到第 1 阶侧面。第一击的击飞到此为止(下一条语句就把速度清掉了)。
+                if (_comboTarget.CurrentSpeed > ComboHoldRiseSpeed)
+                {
+                    _comboFlying = true;
+                    BeginComboLadder();
+                    SnapPlayerToLadderSide();
+                }
+            }
+
+            // 纯水平击退(一直没上升):回退「落地停稳」判定。
+            // 必须过了宽限期才判:地面击退是 AddForce,生效前那几帧速度还是 0,会被误判成"已停稳"
+            bool settled = _comboHitAge >= ComboHoldHitGraceSeconds
+                           && !_comboFlying
+                           && _comboTarget.IsGrounded
+                           && _comboTarget.CurrentSpeed < ComboHoldSettleSpeed;
+            if (settled)
+            {
+                _comboTarget.FreezeComboAtApex();
+                _comboArming = false;
+                return;
+            }
+        }
+
+        if (_comboArmTimer >= ComboHoldArmTimeout)
+        {
+            _comboTarget.FreezeComboAtApex();
+            _comboArming = false;
+        }
+    }
+
+    /// <summary>
+    /// 连音阶梯(节拍辅助 2026-09-17 saika 定):第一击照旧真飞一小段,起飞后按它当前速度算出这次击飞的顶点,
+    /// 从起飞位置到顶点连成直线,按本组点数均分(n 个点 = n 份);之后每个拍点把敌人直接放到下一等分点
+    /// (瞬移,不走物理),最后一刀正好落在顶点。这样连音间隔再短也没有"来不及飞到最顶"。
+    /// 玩家落点取敌人当前等分点的同水平侧面,两人始终在一条线上。
+    /// </summary>
+    private void BeginComboLadder()
+    {
+        if (_comboTarget == null || _comboTarget.IsDead)
+        {
+            return;
+        }
+
+        Vector2 v = _comboTarget.BodyVelocity;
+        float g = Mathf.Abs(Physics2D.gravity.y) * _comboTarget.BodyGravityScale;
+        Vector2 p0 = _comboTarget.BodyPosition;
+        float riseV = Mathf.Max(0f, v.y);
+
+        // 顶点 = 垂直速度归零处:上升 vy²/(2g),水平按同一时长推进
+        Vector2 apex = g > 0.01f
+            ? new Vector2(p0.x + v.x * (riseV / g), p0.y + riseV * riseV / (2f * g))
+            : new Vector2(p0.x + v.x, p0.y + riseV);
+
+        _ladderStart = p0;
+        _ladderEnd = apex;
+        _ladderCount = Mathf.Max(1, _chainCount);
+        _ladderStep = 0;
+        SetLadderStep(_strikeSeq > 0 ? _strikeSeq : 1);   // 建好就立刻站到"当前这一刀对应的阶"(命中晚于第二刀时直接跳到第 2 阶)
+    }
+
+    /// <summary>
+    /// 把玩家一起放到敌人当前阶的侧面(同水平线)。连打第一击命中后立刻调用,不等下一刀 ——
+    /// 所以第一击的击飞动作实际上只有出发那 1~2 帧,之后 enemy 与 player 就直接在第 1 阶并排站定了。
+    /// </summary>
+    private void SnapPlayerToLadderSide()
+    {
+        if (_comboTarget == null || teleport == null) return;
+        if (!TryResolveComboLanding(_comboTarget, out Vector2 dest)) return;   // 侧面被墙/管道堵 → 这次不传,等下一刀
+        var pcSide = (PlayerController)owner;
+        pcSide.UpdateFacing(_comboTarget.BodyPosition.x >= dest.x ? 1f : -1f);   // 面向敌人(与 ExecuteStrike 同口径)
+        teleport.TeleportTo(dest);
+    }
+
+    /// <summary>本组第几刀(第 1 刀 = 1);阶梯的阶数直接按它取,不靠递增计数</summary>
+    private int _strikeSeq;
+
+    /// <summary>推进/定位到指定阶(只准往上,不退阶);阶梯未建立时不做</summary>
+    private void SetLadderStep(int step)
+    {
+        if (_comboTarget == null || _ladderCount <= 0) return;
+        int s = Mathf.Clamp(step, 1, _ladderCount);
+        if (s <= _ladderStep) return;
+        _ladderStep = s;
+        ApplyLadderStep();
+    }
+
+    /// <summary>
+    /// 把敌人放到当前阶的位置。该阶被墙/管道挡住(IsPositionFree 假)→ 不推进,停在上一阶
+    /// (下一阶更高,可能就绕过去了);玩家落点照旧取它现在的位置,所以两人还是一条线。
+    /// </summary>
+    private void ApplyLadderStep()
+    {
+        if (_comboTarget == null || _ladderCount <= 0) return;
+        float t = Mathf.Clamp01(_ladderStep / (float)_ladderCount);
+        Vector2 p = Vector2.Lerp(_ladderStart, _ladderEnd, t);
+        if (!_comboTarget.IsPositionFree(p)) return;
+        _comboTarget.SnapComboTo(p);
+    }
+
+    /// <summary>本组最后一刀是否已结算伤害(命中帧已到);空挥(无目标)直接算已结算</summary>
+    private bool LastStrikeHitResolved()
+    {
+        if (_strikes.Count == 0) return false;
+        StrikeRecord rec = _strikes[_strikes.Count - 1];
+        return rec.hitResolved || rec.target == null;
+    }
+
+    /// <summary>
+    /// 连打期间给玩家挂"无重力"请求(倍率 0):后续刀的落点 = 目标当前高度旁边的同一水平线,
+    /// 目标被击飞到空中时玩家要跟着停在那儿,不能直接掉回地面。
+    /// 用重力倍率入口(不直写 gravityScale),与空中攻击悬停/背刺缓落共用"取最小"机制;退出时清。
+    /// </summary>
+    private void HoldPlayerGravity()
+    {
+        if (_playerGravityHeld) return;
+        var pc = owner as PlayerController;
+        if (pc == null) return;
+        _playerGravityHeld = true;
+        pc.SetGravityMultiplier(GravityMultiplierSource.BackstabCombo, 0f);
+    }
+
+    /// <summary>清掉连打的玩家无重力请求(状态退出全路径兜底,幂等)</summary>
+    private void ReleasePlayerGravity()
+    {
+        if (!_playerGravityHeld) return;
+        _playerGravityHeld = false;
+        (owner as PlayerController)?.ClearGravityMultiplier(GravityMultiplierSource.BackstabCombo);
+    }
+
+    /// <summary>
+    /// 连打后续刀的落点:落在目标同一水平线的另一侧(玩家在左就落右,在右就落左),连续几刀自然形成左右左交替;
+    /// 不上下偏移 —— 不会出现在目标头顶或脚底。选侧口径与背刺追击 / 空中闪击一致(玩家对侧)。
+    /// 该侧被墙/地形/管道堵(IsWallBlockedOnSide,带底已抬高不会误判地面)→ 翻到另一侧;
+    /// 两侧都堵、或玩家到落点的直线路径被挡 → false(调用方回退原「背后」公式)。
+    /// </summary>
+    private bool TryResolveComboLanding(EnemyControllerBase target, out Vector2 dest)
+    {
+        dest = default;
+        if (target == null) return false;
+
+        Vector2 center = target.transform.position;
+        float off = behindOffset;
+        int side = owner.transform.position.x >= center.x ? -1 : 1;   // 取玩家不在的那一侧
+        if (target.IsWallBlockedOnSide(side)) side = -side;
+        if (target.IsWallBlockedOnSide(side))
+        {
+            return false;           // 两侧都被墙/管道堵
+        }
+
+        Vector2 cand = new Vector2(center.x + side * off, center.y);  // 同一水平线,不上下偏
+        if (IsPathBlockedByWall(owner.transform.position, cand))
+        {
+            return false;
+        }
+        dest = cand;
+        return true;
+    }
 
     /// <summary>
     /// 执行一刀:落点解析(背后净空 / 换位挤出 + 隔墙检测,判定条件与改动前逐字一致)→ 瞬移 + 转向 →
@@ -372,19 +657,36 @@ public class PlayerBackstabState : EntityState
         var pc = (PlayerController)owner;
         bool validBackstab = target != null;   // 落点可达才算数;不可达(隔墙)→ 原地空挥
         Vector2 playerDest = (Vector2)pc.transform.position;   // 玩家最终落点(默认原位)
+
+        // 连打阶梯:按"这一刀是本组第几刀"直接定位到对应阶(第 3 刀 = 3/3 = 顶点)。
+        // 不能用"每刀推进一阶",因为第二刀的拍点可能早于第一刀的命中帧,那一刀执行时阶梯还没建立,
+        // 会把这一阶白白漏掉,后面就永远差一阶到不了顶点。
+        if (target != null && ReferenceEquals(_comboTarget, target))
+        {
+            _strikeSeq++;
+            SetLadderStep(_strikeSeq);
+        }
         bool canSwap = false;
+        bool landedByCombo = false;   // 本刀是否用了连打对侧落点(日志/分支用,块外可见)
         Vector2 enemyOld = Vector2.zero;   // canSwap:玩家落点 = enemy 原站位(enemy 站得住 = 安全点)
         Vector2 enemyNew = Vector2.zero;   // canSwap:enemy 被挪到的攻击框中心(ForceSetPosition 钳制后为准)
 
         if (target != null)
         {
+            // ── 连打第 2 刀起:落点 = 目标同一水平线的另一侧(玩家对侧,自然左右交替)──
+            //    第一刀 / 换目标后的第一刀仍走原「背后」公式(canSwap 换位只在背后路径有意义);
+            //    目标还在第一击的击飞轨迹上飞也照打 —— 落点按它那一刻的位置算,不打断它的飞行。
+            landedByCombo = ReferenceEquals(_comboTarget, target) && target.IsComboHeld
+                                 && TryResolveComboLanding(target, out playerDest);
+
             // 背刺方向永远按 enemy 朝向:玩家出现在 enemy 背后。
             // 落点侧 = enemy 背对方向(behindSide)。IsWallBlockedOnSide 判该侧 2.5m 半带内是否有堵
             // (实心墙/地面/管道 trigger;内部已排除 enemy 自身/其它 enemy/玩家,普通 trigger 不算)。
             int behindSide = -target.Facing;
             // 换位挤出需要玩家面前攻击框指示器提供 enemy 新站位;未配置(RangeIndicator 空,理论不出现)
             // 时退化走原射线兜底路径,不硬凑换位
-            canSwap = target.IsWallBlockedOnSide(behindSide)
+            // 连打对侧落点已定(landedByCombo)→ 跳过背后/换位这套:它只服务「背后落点」路径
+            canSwap = !landedByCombo && target.IsWallBlockedOnSide(behindSide)
                 && combat != null && combat.RangeIndicator != null;
 
             if (canSwap)
@@ -402,7 +704,7 @@ public class PlayerBackstabState : EntityState
                 // ForceSetPosition 会钳制到墙外侧(2026-09-07 背刺穿墙修复)。
                 enemyNew = (Vector2)combat.RangeIndicator.Center;
             }
-            else
+            else if (!landedByCombo)
             {
                 // ── 背后净空 → 原逻辑:落点 = 敌人背后(敌人背对方向)──
                 // x = enemy.x - Facing × offset;y 对齐目标中心(空中背刺允许)
@@ -423,6 +725,25 @@ public class PlayerBackstabState : EntityState
                 validBackstab = false;
             }
         }
+        // 连打定格(节拍辅助):这一刀的目标成为本组靶子(它飞完即被钉住,后续刀打它);
+        // 换目标(原目标已死/换人)先给旧目标解定格,新目标按「背后落点」重新开始,再等飞完。
+        // 只在"本组确实还有后续刀"时启用(连音组长度 > 1):单点组 / 非连音路径没有后续刀,
+        // 开了只会把普通背刺的击飞中途掐断(2026-09-17 复现"普通的背刺也不击飞了")。
+        if (validBackstab && target != null && !ReferenceEquals(_comboTarget, target)
+            && mgr != null && mgr.HasChain && mgr.CurrentChainPoints.Length > 1)
+        {
+            _comboTarget?.EndComboHold();
+            _comboTarget = target;
+            _comboArming = true;
+            _comboArmTimer = 0f;
+            _comboFlying = false;
+            _comboHitAge = -1f;
+            _ladderStep = 0;       // 换目标/新一组:阶梯重建
+            _strikeSeq = 1;        // 本组第 1 刀
+            _chainCount = mgr.CurrentChainPoints.Length;   // 阶梯均分份数 = 本组点数
+            HoldPlayerGravity();   // 连打:玩家要跟着目标的高度走(落点在目标旁边,不能掉回地面)
+        }
+
         _target = target;   // 隔墙/无目标已被置空 → 本刀记为空挥(命中帧判空跳过)
 
         // 本刀倍率与环序号:只用"真的打出去了的刀"计算(被墙挡的空挥不计入递减,也就不吞下一次的 0.x 档)
@@ -469,6 +790,15 @@ public class PlayerBackstabState : EntityState
             // 槽子物体位置 saika 编辑器摆(attack_VFX 下 slot_backstab,相对玩家);空槽/未挂锚点 = 判空跳过不崩。
             // [2026-09-17 背刺目标锁定] 只有 validBackstab(真的打出去了)才播;空挥(无目标 / 隔墙不可达)不播特效。
             _vfx?.PlayBackstab();
+
+            // 节拍辅助(2026-09-17):踩准的确认音排在标点(拍点)上播,不等动画命中帧,音与音乐同拍落下。
+            // 连音用本刀点时刻;非连音(自动重音路径)用当前 bar 拍点。只做非 Boss 目标(Boss 沿用命中帧立即播)。
+            // 空挥 / 隔墙不可达不走这里:与原有"空挥不响"口径一致(没打出去就没这一声)。
+            if (!target.IsBoss && combat != null)
+            {
+                float sfxPoint = pointTime >= 0f ? pointTime : (mgr != null ? mgr.AutoBarPointTime : -1f);
+                if (sfxPoint >= 0f) combat.PlayBackstabSfxScheduled(sfxPoint);
+            }
         }
         else
         {
@@ -498,6 +828,19 @@ public class PlayerBackstabState : EntityState
 
         // 按点消费:让 MusicPointManager 的消费记录与状态推进一致(同点重复调用幂等;没打出去的点不消费)
         if (pointTime >= 0f) mgr.ConsumePoint(pointTime);
+
+        // 自动连打游标(节拍辅助 2026-09-17):本刀之后组内还有未执行点 → 交给 TickAutoChain 按拍点自动打完;
+        // 非连音路径(自动重音 / 无连音组)不启用自动连打,行为与改前一致。
+        if (pointIndex >= 0 && mgr != null && mgr.HasChain && IsCurrentChainGroup(mgr))
+        {
+            _autoChainCursor = pointIndex + 1;
+            _autoChaining = _autoChainCursor < mgr.CurrentChainPoints.Length;
+        }
+        else
+        {
+            _autoChainCursor = -1;
+            _autoChaining = false;
+        }
 
         // 未挂 clone 替身的降级:本体只为第一刀播动画(状态内不再重播,禁止 anim.Play 直切/ChangeState 重播),
         // 后续刀没有动画事件 → 当场结算这一刀,防连音后续刀"瞬移过去却不掉血"(配置正常时走不到这里)。

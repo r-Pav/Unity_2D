@@ -56,6 +56,10 @@ public class AudioManager : MonoBehaviour
     [Tooltip("一次性音效并发音源数量(轮转取源 + PlayOneShot,连击多声可重叠)")]
     [SerializeField] private int sfxPoolSize = 6;
 
+    [Header("SFX 排程池(卡点音排程用,运行时自建)")]
+    [Tooltip("排程音效并发音源数量:PlayScheduled 把音排到指定 dspTime(拍点)播,一个源同一时刻只能占一个排程,连音密集时需要多个")]
+    [SerializeField] private int scheduledSfxPoolSize = 3;
+
     [Header("音频库")]
     [Tooltip("全局音效配置资产(AudioLibrary);为空则音效静默")]
     [SerializeField] private AudioLibrary library;
@@ -68,6 +72,10 @@ public class AudioManager : MonoBehaviour
     /// <summary>SFX 播放池(轮转取源,PlayOneShot 支持重叠)</summary>
     private AudioSource[] _sfxPool;
     private int _sfxNext;
+
+    /// <summary>SFX 排程池(PlayScheduled 卡点音用):一个源同一时刻只能排一个音,取空闲源,全忙时轮转顶掉最早的</summary>
+    private AudioSource[] _scheduledSfxPool;
+    private int _scheduledNext;
 
     /// <summary>PlayerPrefs 持久化 key（与 SettingsPanel 共用）</summary>
     private const string SettingsKey = "GameSettings";
@@ -137,6 +145,22 @@ public class AudioManager : MonoBehaviour
             _sfxPool[i] = src;
             RegisterSource(AudioGroup.Sfx, src);   // 音量跟随 sfx 组(含后续 SetVolumes 广播)
         }
+
+        // 排程池:同池规则,仅供 PlaySfxScheduled 使用(与一次性池分开,排程音不会被打断)
+        int schedCount = Mathf.Max(1, scheduledSfxPoolSize);
+        _scheduledSfxPool = new AudioSource[schedCount];
+        for (int i = 0; i < schedCount; i++)
+        {
+            var go = new GameObject($"ScheduledSfxSource_{i + 1}");
+            go.transform.SetParent(transform, false);
+            var src = go.AddComponent<AudioSource>();
+            src.playOnAwake = false;
+            src.loop = false;
+            src.spatialBlend = 0f;
+            src.volume = _sfxVol;
+            _scheduledSfxPool[i] = src;
+            RegisterSource(AudioGroup.Sfx, src);
+        }
     }
 
     /// <summary>
@@ -152,6 +176,49 @@ public class AudioManager : MonoBehaviour
         _sfxNext = (_sfxNext + 1) % _sfxPool.Length;
         if (src == null) return;
         src.PlayOneShot(clip, Mathf.Clamp01(volume));
+    }
+
+    /// <summary>
+    /// 排程播放一次性音效(卡点用):把音排在指定的 dspTime 上播,与音乐走同一个音频时钟,不受逻辑帧率影响。
+    /// 用于"踩准节拍"的确认音放在拍点上(见 PlayerCombat.PlayBackstabSfxScheduled)。
+    /// dspTime 落在过去 → Unity 直接立即播(玩家按晚了自然退化成立刻响,不做特判)。
+    /// 取源顺序:空闲源 → 全忙时轮转顶掉最早的排程;clip 空 / 池空 = 静默跳过。
+    /// 注意:排程音占住源直到播完,与 PlaySfx 的一次性池分开(互不打断)。
+    /// </summary>
+    public void PlaySfxScheduled(AudioClip clip, float volume, double dspTime)
+    {
+        if (clip == null) return;
+        if (_scheduledSfxPool == null || _scheduledSfxPool.Length == 0) return;
+
+        AudioSource src = null;
+        for (int i = 0; i < _scheduledSfxPool.Length; i++)
+        {
+            var s = _scheduledSfxPool[i];
+            if (s != null && !s.isPlaying) { src = s; break; }
+        }
+        if (src == null)
+        {
+            src = _scheduledSfxPool[_scheduledNext];
+            _scheduledNext = (_scheduledNext + 1) % _scheduledSfxPool.Length;
+        }
+        if (src == null) return;
+
+        src.clip = clip;
+        src.volume = Mathf.Clamp01(_sfxVol * Mathf.Clamp01(volume));   // 排程无 volumeScale 参数,相对音量在这里乘进去
+        src.PlayScheduled(dspTime);
+    }
+
+    /// <summary>
+    /// 取消所有未播完的排程音(切曲/暂停/退出时调):排程按旧曲的时间基准算出来的,基准一变就不该再响。
+    /// 未排程的音源调用 Stop 无副作用。
+    /// </summary>
+    public void CancelScheduledSfx()
+    {
+        if (_scheduledSfxPool == null) return;
+        foreach (var s in _scheduledSfxPool)
+        {
+            if (s != null) s.Stop();
+        }
     }
 
     /// <summary>

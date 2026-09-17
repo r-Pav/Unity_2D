@@ -90,6 +90,7 @@ public class BackstabClone : MonoBehaviour
         public bool[] rendererEnabledAtBuild;      // 各渲染器构建时的 enabled(恢复显示用,不改到原本关掉的)
         public bool active;                        // 在播
         public bool renderersVisible;              // 已显示(进 Backstab 状态后才显,防闪静态帧)
+        public bool idleHold;                      // 动画已播出但视觉保留中(停在末帧当玩家替身,等下一刀替换)
         public long serial;                        // 启动序号(池满时按序号找最早那只)
         public float startTime;                    // 本刀开始时间(缩放时间)
         public float recycleAt = -1f;              // >=0 = 已收到结束事件,到点回收
@@ -167,13 +168,18 @@ public class BackstabClone : MonoBehaviour
             // ② 回收:动画结束事件已收到 → 立即收(与本体原行为一致:结束事件即动画结束);
             //    事件丢失 → recycleTimeout 兜底,防 clone 卡在落点
             float deadline = s.recycleAt >= 0f ? s.recycleAt : s.startTime + recycleTimeout;
-            if (Time.time >= deadline) RecycleSlot(s);
+            if (Time.time >= deadline) RecycleSlot(s, holdVisible: true);   // 事件丢失兜底;本体还在等下一刀则保留末帧
         }
 
-        // ③ 没有活跃 clone 时才恢复本体(有 clone 在场时必须继续隐藏,禁止双影);
-        //    本体 IsBackstabbing 条件已清(状态已退出)才解冻,否则会把冻结期间积压的动画事件补发出来
-        //    (理由与兜底见 RestoreBaseIfIdle)
-        if (!HasActive) RestoreBaseIfIdle();
+        // ③ 收尾:画面上还有 clone(在播 或 停在末帧当替身)时本体继续隐藏,禁止双影;
+        //    没有在播的 clone 时,状态已退 / 兜底超时就收掉替身,再恢复本体
+        //    (本体 IsBackstabbing 条件已清才解冻,否则会把冻结期间积压的动画事件补发出来,见 RestoreBaseIfIdle)
+        if (HasActive) return;
+
+        if (HasIdleHold && (!IsBaseBackstabPending() || Time.time - _baseHiddenSince >= StuckBaseRecoverSeconds))
+            ReleaseAllHolds();
+
+        if (!HasVisibleClone()) RestoreBaseIfIdle();
     }
 
     private void OnDisable()
@@ -220,6 +226,7 @@ public class BackstabClone : MonoBehaviour
 
         CloneSlot slot = TakeSlot();
         slot.active = true;
+        slot.idleHold = false;   // 该槽若正停在末帧当替身:本次接管,重新播这一刀
         slot.serial = ++_serial;
         slot.startTime = Time.time;
         slot.recycleAt = -1f;
@@ -231,7 +238,8 @@ public class BackstabClone : MonoBehaviour
         // 先藏渲染器:确认进 Backstab 后才显(见 Update ①),防 clone 出生帧闪静态/默认姿态
         SetSlotRenderersVisible(slot, false);
         StartBackstab(slot);
-        if (IsPlayingBackstab(slot.animator)) SetSlotRenderersVisible(slot, true);
+        bool shownNow = IsPlayingBackstab(slot.animator);
+        if (shownNow) SetSlotRenderersVisible(slot, true);
 
         HideBase();                     // 本体隐藏 + 冻结(与 clone 不同时显示,也不重复触发事件)
         _latest = slot;                 // 残影取"最新活跃 clone"
@@ -246,6 +254,7 @@ public class BackstabClone : MonoBehaviour
             CloneSlot s = _pool[i];
             if (s.active) RecycleSlot(s);
         }
+        ReleaseAllHolds();   // 末帧保留的替身一并收掉(状态退出/打断/死亡路径)
         _latest = null;
         SetGhostSource(null);
 
@@ -274,9 +283,9 @@ public class BackstabClone : MonoBehaviour
         if (slotIndex >= 0 && slotIndex < _pool.Count)
         {
             CloneSlot slot = _pool[slotIndex];
-            if (slot.active) RecycleSlot(slot);
+            if (slot.active) RecycleSlot(slot, holdVisible: true);   // 本体还在等下一刀 → 保留末帧当替身
         }
-        if (!HasActive) RestoreBaseIfIdle();
+        if (!HasVisibleClone()) RestoreBaseIfIdle();
     }
 
     // ============================================================
@@ -370,28 +379,85 @@ public class BackstabClone : MonoBehaviour
         return oldest;
     }
 
-    /// <summary>回收:渲染器收起 → clone 根挂起 → 残影来源/本体显隐跟着更新(不销毁,池化复用)</summary>
-    private void RecycleSlot(CloneSlot slot)
+    /// <summary>
+    /// 回收:渲染器收起 → clone 根挂起 → 残影来源/本体显隐跟着更新(不销毁,池化复用)。
+    /// holdVisible = true 且本体仍在背刺状态(正等下一刀)时不收视觉:clone 停在最后一帧继续当玩家替身 ——
+    /// 防"两刀之间的空档里既没有 clone、本体又是隐藏的"(玩家会整个消失):本体在等下一刀期间的替身由它承担。
+    /// 该槽下一次被 PlayAt 复用时自然被替换成新一刀。
+    /// </summary>
+    private void RecycleSlot(CloneSlot slot, bool holdVisible = false)
     {
         if (slot == null || !slot.active) return;
         slot.active = false;
         slot.recycleAt = -1f;
-        SetSlotRenderersVisible(slot, false);
 
-        if (slot.animator != null)
+        if (holdVisible && slot.renderersVisible && IsBaseBackstabPending())
         {
-            // 复位:清条件让状态机离开 Backstab,下次复用从干净状态 Rebind 起(本例先于挂起执行)
-            slot.animator.SetBool(AnimParams.IsBackstabbing, false);
-            slot.animator.Update(0f);
+            // 末帧保留:不隐藏渲染器、不挂起根、不复位动画器(动画停在最后一帧,继续显示)
+            slot.idleHold = true;
         }
-        if (slot.root != null) slot.root.SetActive(false);
+        else
+        {
+            slot.idleHold = false;
+            SetSlotRenderersVisible(slot, false);
+
+            if (slot.animator != null)
+            {
+                // 复位:清条件让状态机离开 Backstab,下次复用从干净状态 Rebind 起(本例先于挂起执行)
+                slot.animator.SetBool(AnimParams.IsBackstabbing, false);
+                slot.animator.Update(0f);
+            }
+            if (slot.root != null) slot.root.SetActive(false);
+        }
 
         if (ReferenceEquals(_latest, slot))
         {
             _latest = FindLatestActive();
             SetGhostSource(_latest != null ? _latest.sprite : null);
         }
-        if (!HasActive) RestoreBaseIfIdle();
+        if (!HasVisibleClone()) RestoreBaseIfIdle();
+    }
+
+    /// <summary>是否还有 clone 停在末帧继续显示(等下一刀来替换)</summary>
+    private bool HasIdleHold
+    {
+        get
+        {
+            for (int i = 0; i < _pool.Count; i++)
+                if (_pool[i].idleHold) return true;
+            return false;
+        }
+    }
+
+    /// <summary>是否还有 clone 在画面上(在播 或 停在末帧);true 时本体必须继续隐藏(禁止双影)</summary>
+    private bool HasVisibleClone()
+    {
+        for (int i = 0; i < _pool.Count; i++)
+        {
+            CloneSlot s = _pool[i];
+            if (s.active || s.idleHold) return true;
+        }
+        return false;
+    }
+
+    /// <summary>收掉一只"末帧保留"的 clone(状态已退 / 兜底超时 / StopAll)</summary>
+    private void ReleaseHold(CloneSlot slot)
+    {
+        if (slot == null || !slot.idleHold) return;
+        slot.idleHold = false;
+        SetSlotRenderersVisible(slot, false);
+        if (slot.animator != null)
+        {
+            slot.animator.SetBool(AnimParams.IsBackstabbing, false);
+            slot.animator.Update(0f);
+        }
+        if (slot.root != null) slot.root.SetActive(false);
+    }
+
+    /// <summary>收掉全部"末帧保留"的 clone</summary>
+    private void ReleaseAllHolds()
+    {
+        for (int i = 0; i < _pool.Count; i++) ReleaseHold(_pool[i]);
     }
 
     private CloneSlot FindLatestActive()
@@ -543,7 +609,7 @@ public class BackstabClone : MonoBehaviour
     /// </summary>
     private void RestoreBaseIfIdle()
     {
-        if (HasActive) return;                                    // 还有刀在播 → 本体继续隐藏(禁止双影)
+        if (HasVisibleClone()) return;                            // 画面上还有 clone(在播或停在末帧)→ 本体继续隐藏(禁止双影)
         if (IsBaseBackstabPending() && Time.time - _baseHiddenSince < StuckBaseRecoverSeconds)
             return;                                               // 状态未退:继续隐藏 + 冻结
 

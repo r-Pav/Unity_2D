@@ -8,10 +8,13 @@ using UnityEngine;
 /// 两段式(Boss 曲):introClip 第一首(前奏),播到 introSwitchTime 交叠切到 clip(第二首/主体循环段);introPoints 第一首的音乐点。
 /// pointGroups:命名标点组(多数组),如 BossHeavy(重击)/BossOrb1~5(法球)/PlayerCombo(玩家连击)/BossHeavySound(重击音)/PlayerBackstab(连音背刺)。
 ///
-/// 【背刺标点组约定 — 连音背刺 P2】groupName 固定 "PlayerBackstab"(复用 MusicPointGroup 结构,不新增字段):
-///   · 组内标点 = 连音点(秒,升序);MusicPointManager 按 chainGapThreshold(默认 0.5s = Backstab.anim 时长)
-///     把相邻间隔 < 阈值的点切成若干「连音组」(孤立点自成一组,长度 1)。
-///   · 启用连音时必须把本曲 barIntervalSeconds 设为 0:否则自动重音窗口与标点窗口两路同时开,
+/// 【背刺标点组约定 — PlayerBackstab】groupName 固定 "PlayerBackstab":
+///   · 组内标点 = 单点背刺标点(秒,升序),每点各自一个判定窗口,踩中打一刀(孤立点)。
+///   · chainGroups = 手工连音组(比标点高一层的分组):每组一串时刻(升序)。组内点自动并入背刺标点集合,
+///     不用在 PlayerBackstab 里重复标;踩中组内任意一点后,组内后面的点由 PlayerBackstabState 按各自拍点
+///     自动打完(替玩家踩点,每刀都是完整背刺),期间 F 无效;已过去的点不补。
+///     与其它标点同一时刻重合时按连音处理(判定只走连音)。
+///   · 启用标点/连音时必须把本曲 barIntervalSeconds 设为 0:否则自动重音窗口与标点窗口两路同时开,
 ///     背刺判定会出现两条来源不同的窗口,行为不可预期。
 ///   · 未配置该组(或组为空)的曲 = 未启用连音:背刺判定回退自动重音窗口,行为与改前一致。
 ///   · 该组只服务玩家背刺判定;禁止接进 PlayerBeatJudge(Boss 判定链走 BossHeavySound)。
@@ -47,6 +50,12 @@ public class MusicTrackData : ScriptableObject
              "配 PlayerBackstab 的曲须把 barIntervalSeconds 设为 0")]
     public MusicPointGroup[] pointGroups;
 
+    [Header("连音组(连音背刺;标点之上一层,手工标)")]
+    [Tooltip("手工连音组:每项 = 一组连音(组内时刻升序,各组按首点递增、不要交错)。" +
+             "组内点自动并入背刺标点集合(不用在 PlayerBackstab 里重复标);踩中组内任意一点后," +
+             "组内后面的点按各自拍点自动打完(替玩家踩点),期间 F 无效;与其它标点同一时刻重合时按连音处理")]
+    public MusicChainGroup[] chainGroups;
+
     /// <summary>按组名取标点组(未配置返回 null)</summary>
     public MusicPointGroup GetGroup(string groupName)
     {
@@ -67,5 +76,14 @@ public class MusicPointGroup
     public string groupName;
 
     [Tooltip("标点时间秒,升序,两位小数")]
+    public float[] points;
+}
+
+/// <summary>连音组:一组连音标点(组内升序,手工标,不再按间隔自动切组)。
+/// 组内点等同背刺标点(代码自动并入标点表),区别只是组内后面的点会被自动打完。</summary>
+[Serializable]
+public class MusicChainGroup
+{
+    [Tooltip("本组连音标点时刻(秒,升序,两位小数)")]
     public float[] points;
 }

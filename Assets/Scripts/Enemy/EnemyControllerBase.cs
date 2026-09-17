@@ -289,6 +289,96 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     /// <summary>是否正在本地冻结中</summary>
     public bool IsLocallyFrozen => _localFreezeRemaining > 0f;
 
+    // ── 连打定格(节拍辅助 2026-09-17)──
+    /// <summary>是否处于连打运动锁定中(后续连音刀的击退被吞掉,运动只由第一击决定)</summary>
+    public bool IsComboHeld => _comboHold;
+    private bool _comboHold;
+
+    /// <summary>当前速度大小(连打"飞完"判定用)</summary>
+    public float CurrentSpeed => rb != null ? rb.velocity.magnitude : 0f;
+
+    /// <summary>当前垂直速度(连打"最高点"判定用:由正转负那一刻就是击飞的最高点)</summary>
+    public float VerticalVelocity => rb != null ? rb.velocity.y : 0f;
+
+    /// <summary>
+    /// 连打运动锁定(第一击命中结算那一刻起,直到连音结束):从这一刻起后续连音刀的击退一律吞掉,
+    /// 它的运动只由第一击那一次的击退决定,不再被后面的刀改动。
+    /// 这里**不清速度、不关重力** —— 第一击给的击飞轨迹要照常飞完,停住由 FreezeComboAtApex 在最高点做。
+    /// 同时 FSM 停更新、移动系统让位(位置只由第一击的物理轨迹决定,不被 AI/移动覆盖)。
+    /// </summary>
+    public void BeginComboHold()
+    {
+        if (isDead || _comboHold) return;
+        _comboHold = true;
+        if (rb != null && rb.gravityScale > 0f) _comboSavedGravity = rb.gravityScale;
+        _pullToPlayer = false;          // 解除空中吸附(位置不再跟着玩家)
+        _bounceSlideTimer = 0f;         // 停掉落地弹跳滑行(它会改速度,不属于第一击的轨迹)
+    }
+
+    /// <summary>连打锁定前的重力倍率(解除锁定/停住时用它恢复原值,不写死 1)</summary>
+    private float _comboSavedGravity = 1f;
+
+    /// <summary>刚体真实位置:瞬移(rb.position 赋值)后同帧 transform 还没同步,要即时读到新位置必须用它</summary>
+    public Vector2 BodyPosition => rb != null ? rb.position : (Vector2)transform.position;
+    /// <summary>刚体当前速度向量(连打阶梯算顶点用)</summary>
+    public Vector2 BodyVelocity => rb != null ? rb.velocity : Vector2.zero;
+    /// <summary>刚体当前重力倍率(连打阶梯算顶点用;至少 0.01 防除零)</summary>
+    public float BodyGravityScale => rb != null ? Mathf.Max(0.01f, rb.gravityScale) : 1f;
+
+    /// <summary>
+    /// 该点能不能站住(探针圆不与墙/地形层重叠)。探针半径口径与 ForceSetPosition 的落点钳制一致。
+    /// 连打阶梯推点时用:某一阶落在墙/管道里就不推,停在上一阶。
+    /// </summary>
+    public bool IsPositionFree(Vector2 pos)
+    {
+        float probeR = col != null ? Mathf.Max(0.1f, col.bounds.extents.x * 0.9f) : 0.3f;
+        return Physics2D.OverlapCircle(pos, probeR, ForcePushWallMask) == null;
+    }
+
+    /// <summary>
+    /// 连打阶梯:把本体直接放到这一阶的位置(不走物理)。含落点贴墙钳制(共用 ForceSetPosition),
+    /// 清速度 + 关重力 = 直接停在那一阶。
+    /// 必须把刚体位置同时写回 transform:设 rb.position 不会在同一帧反映到 transform(要等下一次物理步),
+    /// 而玩家落点/墙检测都是读 transform 的,不同步就会读到上一阶的位置(2026-09-17 复现"永远差一节",
+    /// y 差正好等于一阶高度)。注意 Physics2D.SyncTransforms() 方向是 transform→物理,不能用来做这件事。
+    /// 只作用于连打靶子,结束由 EndComboHold 恢复重力。
+    /// </summary>
+    public void SnapComboTo(Vector2 pos)
+    {
+        if (isDead) return;
+        Vector2 final = ForceSetPosition(pos);                  // 内部已含 ClampToWallSafe + 清速度
+        if (rb != null)
+        {
+            rb.gravityScale = 0f;                               // 停在那一阶不下落
+            transform.position = new Vector3(final.x, final.y, transform.position.z);   // 同帧双写
+        }
+    }
+
+    /// <summary>
+    /// 到达击飞最高点时停住:清速度 + 关重力,悬在最高点直到 EndComboHold(连音结束)</summary>
+    public void FreezeComboAtApex()
+    {
+        if (isDead) return;
+        if (rb != null)
+        {
+            rb.velocity = Vector2.zero;
+            rb.angularVelocity = 0f;
+            rb.gravityScale = 0f;
+        }
+        _airKnockbackActive = false;
+    }
+
+    /// <summary>
+    /// 退出/禁用/回收时的清理:解除连打锁定并恢复重力(幂等)。
+    /// 注意:连音正常结束时也走这里 —— 停在最高点的敌人会恢复重力落回地面。
+    /// </summary>
+    public void EndComboHold()
+    {
+        if (!_comboHold) return;
+        _comboHold = false;
+        if (rb != null && !isDead) rb.gravityScale = _comboSavedGravity;   // 恢复锁定前记录的重力(加速会把它放大过)
+    }
+
     /// <summary>
     /// 命中本地冻结 — 只冻结本敌人自身：FSM 停更新、移动停止、动画停播。
     /// duration ≤ 0 忽略；冻结中再次调用取更长的剩余时长；已死亡忽略（死亡动画正常播放）。
@@ -566,6 +656,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
             _localFreezeRemaining = 0f;
             EndLocalFreeze();
         }
+        EndComboHold();   // 连打定格清理(禁用/回收):恢复重力,防残留
 
         // 受击停顿清理：禁用/回收时恢复动画速度，防止 animator.speed=0 残留冻结
         if (hitPauseTimer > 0f)
@@ -722,7 +813,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     protected override void OnUpdate()
     {
         if (isDead) return;
-        if (_localFreezeRemaining > 0f) return;   // 本地冻结：FSM 停更，AI/攻击全部暂停
+        if (_localFreezeRemaining > 0f || _comboHold) return;   // 本地冻结 / 连打定格：FSM 停更，AI/攻击全部暂停
 
         // 受击停顿：卡帧结束后的自身小冻结（不移动 + 冻结受击动画，只影响本 enemy）。
         // 用 Time.deltaTime 倒数 → 全局卡帧(timeScale=0)期间不走，卡帧结束后才开始计 = 总卡顿 = 卡帧 + 停顿
@@ -740,8 +831,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
     protected override void OnFixedUpdate()
     {
-        // 命中本地冻结：跳过全部移动 — moveInput 残留旧值，不拦会继续 Move() 滑步
-        if (_localFreezeRemaining > 0f) return;
+        // 命中本地冻结 / 连打定格：跳过全部移动 — moveInput 残留旧值，不拦会继续 Move() 滑步
+        if (_localFreezeRemaining > 0f || _comboHold) return;
 
         // 空中击退中:移动系统完全让位,不清 x,让斜向击退速度自由飞(落地时清标志恢复)
         if (_airKnockbackActive) return;
@@ -968,6 +1059,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
             hitPauseTimer = 0f;
             if (_animator != null) _animator.speed = 1f;
         }
+        EndComboHold();   // 连打定格中死亡 → 解除（否则死亡动画期间悬在半空:重力被关掉了）
 
         // 死亡停住：清移动输入 + 水平速度（移动中被杀时 moveInput 残留 → 死亡动画期间会继续滑动）
         moveInput = 0f;
@@ -1112,6 +1204,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     public virtual void ApplyKnockback(Knockback knockback)
     {
         if (rb == null || knockback.force <= 0f) return;
+        if (_comboHold) return;   // 连打定格中:吞掉击退(位置被钉住,不能被后续的刀再打飞)
         Vector2 knockDir = knockback.direction;
         if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
         _lastKnockbackDirX = Mathf.Sign(knockDir.x);   // 记录击退水平方向(落地弹跳用)

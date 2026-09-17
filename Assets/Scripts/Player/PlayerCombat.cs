@@ -469,6 +469,26 @@ public class PlayerCombat : MonoBehaviour
     }
 
     /// <summary>
+    /// 背刺卡点音效(节拍辅助 2026-09-17):把背刺命中音排到标点(拍点)时刻播,不再等动画命中帧 ——
+    /// 玩家在窗口内按 F 时,音和音乐同拍落下,踩准的确认感在按键当下就给。
+    /// 读现有已挂的 hitSfx 字段(不新增素材槽);pointTime 由调用方给(连音 = 本刀点时刻,非连音 = 当前 bar 拍点)。
+    /// pointTime 已过(按晚了)→ PlayScheduled 立刻播,自动退化,调用方不用特判。
+    /// 只服务非 Boss 目标(Boss 目标沿用命中帧立即播,见 ExecuteBackstab)。
+    /// </summary>
+    public void PlayBackstabSfxScheduled(float pointTime)
+    {
+        if (hitSfx == null) return;
+
+        var mgr = MusicPointManager.Instance;
+        if (mgr == null)
+        {
+            AudioManager.Instance?.PlaySfx(hitSfx, hitSfxVolume);   // 场景没有音乐管理器(未接线):退回立即播,不静默
+            return;
+        }
+        AudioManager.Instance?.PlaySfxScheduled(hitSfx, hitSfxVolume, mgr.DspTimeForPoint(pointTime));
+    }
+
+    /// <summary>
     /// 玩家自身攻击位移 — 由命中帧动画事件触发(与击退同构)。
     /// 每击独立配置(x 按朝向镜像,y 垂直),直接对玩家 Rigidbody 施加 Impulse。
     /// 攻击状态 LocksInput=true 时 OnFixedUpdate 被 IsActionLocked 短路,位移速度不会被移动系统覆盖。
@@ -616,7 +636,10 @@ public class PlayerCombat : MonoBehaviour
         info.suppressAirHang = true;   // 背刺=终结技:跳过敌人空中滞空吸附(_pullToPlayer),enemy 正常击退飞出自然落地
         info.isBackstabFinisher = true;   // 受击方播背刺受击 VFX(EnemyControllerBase.backstabHitVFX,跟随击飞)
         CombatResolver.Resolve(info.source, target, info);
-        PlayHitSfx(target.IsBoss);   // 背刺命中音效(命中 Boss 走 hitBossSfx)
+        // 背刺命中音效(2026-09-17 节拍辅助):非 Boss 目标那一声已由 PlayerBackstabState 在按键成立那一帧
+        // 排到标点(拍点)上播(见 PlayBackstabSfxScheduled),这里不再重复播,否则一拍响两声;
+        // Boss 目标不在本机制范围内,沿用命中帧立即播(hitBossSfx)。
+        if (target.IsBoss) PlayHitSfx(true);
 
         // [2026-09-07 AttackVFXAnchor 收敛暂停] 背刺命中特效由被刺槽(PlayBackstab)统一承担
         //if (backstabHitVFX != null)

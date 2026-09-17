@@ -3194,7 +3194,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -21.3, y: 17.88}
+  m_AnchoredPosition: {x: -21.3, y: 20.44}
   m_SizeDelta: {x: 2, y: 3}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!212 &46724365
@@ -16878,7 +16878,6 @@ MonoBehaviour:
   windowHalfWidth: 0.2
   triggerLead: 0.033
   previewLead: 0.3
-  chainGapThreshold: 0.5
   crossFadeDuration: 1
   debugDisplay: 0
 --- !u!1 &337140642
@@ -42000,11 +41999,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 9152192033746889805, guid: 2272a696994d31a4e978d908831eb3fa, type: 3}
       propertyPath: m_LocalPosition.x
-      value: -4.19
+      value: -18.69
       objectReference: {fileID: 0}
     - target: {fileID: 9152192033746889805, guid: 2272a696994d31a4e978d908831eb3fa, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 17.330002
+      value: 17.18
       objectReference: {fileID: 0}
     - target: {fileID: 9152192033746889805, guid: 2272a696994d31a4e978d908831eb3fa, type: 3}
       propertyPath: m_LocalPosition.z
@@ -70607,7 +70606,7 @@ MonoBehaviour:
     prefab: {fileID: 8533643241398389679, guid: 6122a3bda6ee348499ca89e583f62389, type: 3}
     showDelay: 0
     sfx: {fileID: 8300000, guid: b70475e3ea3ae8944a1f4ac77db3edf4, type: 3}
-    sfxVolume: 1
+    sfxVolume: 0.815
   mapDash:
     prefab: {fileID: 8533643241398389679, guid: 6122a3bda6ee348499ca89e583f62389, type: 3}
     showDelay: 0
@@ -87291,6 +87290,14 @@ CompositeCollider2D:
         Y: 200000000
       - X: 50000000
         Y: 160000000
+      - X: -40000000
+        Y: 160000000
+      - X: -40000000
+        Y: 180000000
+      - X: -50000000
+        Y: 180000000
+      - X: -50000000
+        Y: 160000000
       - X: -110000000
         Y: 160000000
       - X: -110000000
@@ -87428,6 +87435,10 @@ CompositeCollider2D:
       - {x: 6, y: 20}
       - {x: 5, y: 20}
       - {x: 5, y: 16}
+      - {x: -4, y: 16}
+      - {x: -4, y: 18}
+      - {x: -5, y: 18}
+      - {x: -5, y: 16}
       - {x: -11, y: 16}
       - {x: -11, y: 15}
       - {x: 0, y: 15}
@@ -89559,6 +89570,16 @@ Tilemap:
       m_TileObjectToInstantiateIndex: 65535
       dummyAlignment: 0
       m_AllTileFlags: 1073741825
+  - first: {x: -5, y: 16, z: 0}
+    second:
+      serializedVersion: 2
+      m_TileIndex: 34
+      m_TileSpriteIndex: 34
+      m_TileMatrixIndex: 0
+      m_TileColorIndex: 0
+      m_TileObjectToInstantiateIndex: 65535
+      dummyAlignment: 0
+      m_AllTileFlags: 1073741825
   - first: {x: 5, y: 16, z: 0}
     second:
       serializedVersion: 2
@@ -89604,6 +89625,16 @@ Tilemap:
       serializedVersion: 2
       m_TileIndex: 35
       m_TileSpriteIndex: 35
+      m_TileMatrixIndex: 0
+      m_TileColorIndex: 0
+      m_TileObjectToInstantiateIndex: 65535
+      dummyAlignment: 0
+      m_AllTileFlags: 1073741825
+  - first: {x: -5, y: 17, z: 0}
+    second:
+      serializedVersion: 2
+      m_TileIndex: 34
+      m_TileSpriteIndex: 34
       m_TileMatrixIndex: 0
       m_TileColorIndex: 0
       m_TileObjectToInstantiateIndex: 65535
@@ -90099,7 +90130,7 @@ Tilemap:
     m_Data: {fileID: 11400000, guid: af51a40e8f0876e48b64009d36dcf5ef, type: 2}
   - m_RefCount: 1
     m_Data: {fileID: 11400000, guid: 67467ba453f24a443b09e6bf13aeb3ca, type: 2}
-  - m_RefCount: 7
+  - m_RefCount: 9
     m_Data: {fileID: 11400000, guid: 0fa2db44c50c7f94fac77f990dc2ee89, type: 2}
   - m_RefCount: 203
     m_Data: {fileID: 11400000, guid: 0fdb5e044cbf28c438f14ae8fb51cdfb, type: 2}
@@ -90172,12 +90203,12 @@ Tilemap:
     m_Data: {fileID: -1225509255, guid: a85156eca1576664582f9ccd3910b7cc, type: 3}
   - m_RefCount: 1
     m_Data: {fileID: -658504075, guid: a85156eca1576664582f9ccd3910b7cc, type: 3}
-  - m_RefCount: 7
+  - m_RefCount: 9
     m_Data: {fileID: -1224225016, guid: a85156eca1576664582f9ccd3910b7cc, type: 3}
   - m_RefCount: 203
     m_Data: {fileID: 574564791, guid: a85156eca1576664582f9ccd3910b7cc, type: 3}
   m_TileMatrixArray:
-  - m_RefCount: 250
+  - m_RefCount: 252
     m_Data:
       e00: 1
       e01: 0
@@ -90196,7 +90227,7 @@ Tilemap:
       e32: 0
       e33: 1
   m_TileColorArray:
-  - m_RefCount: 250
+  - m_RefCount: 252
     m_Data: {r: 1, g: 1, b: 1, a: 1}
   m_TileObjectToInstantiateArray: []
   m_AnimationFrameRate: 1
@@ -104477,6 +104508,7 @@ MonoBehaviour:
   bgmSources: []
   sfxSources: []
   sfxPoolSize: 6
+  scheduledSfxPoolSize: 3
   library: {fileID: 11400000, guid: e9fda8a510f74bc428e03e4f7bbd61bf, type: 2}
 --- !u!4 &1901683436
 Transform:

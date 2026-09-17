@@ -9,6 +9,7 @@ public enum GravityMultiplierSource
 {
     AirAttackHover,   // 空中攻击连段悬停
     BackstabHover,    // 背刺缓落
+    BackstabCombo,    // 背刺连打:玩家跟着目标高度悬停(落点在目标旁边,不落地)
     MapDashHover,     // 地图元素冲刺缓落
 }
 
@@ -721,6 +722,11 @@ public class PlayerController : PlayerCharacterBase
     private void HandleBackstabInput()
     {
         if (!Input.GetKeyDown(KeyCode.F)) return;
+
+        // 自动连打期间锁 F(节拍辅助 2026-09-17):踩中连音组内一点后,组内剩下的刀由背刺状态按拍点自动打完,
+        // 玩家这时再按 F 一律无效(避免穿插手动刀打乱自动游标)。
+        if (PlayerFsm != null && PlayerFsm.CurrentState is PlayerBackstabState autoBackstab && autoBackstab.AutoChaining)
+            return;
 
         var mgr = MusicPointManager.Instance;
         if (mgr == null || mgr.CurrentTrack == null) return;

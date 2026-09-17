@@ -50,3 +50,8 @@ MonoBehaviour:
     - 105.14
     - 107.05
     - 107.15
+  chainGroups:
+  - points:
+    - 6
+    - 7
+    - 8
