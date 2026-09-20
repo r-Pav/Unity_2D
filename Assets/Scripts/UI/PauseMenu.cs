@@ -135,9 +135,34 @@ public class PauseMenu : MonoBehaviour, IPanel, ISlideClose
         KillActiveAnimation();
     }
 
+    /// <summary>
+    /// 返回游戏(继续游戏按钮):[2026-09-19 saika] 无论当前在一级还是二级面板,都直接关掉整个菜单回游戏。
+    /// 例外:二级面板的确认区(覆盖存档/读取/删除确认)打开中属模态 → 按钮不生效,先处理确认。
+    /// 关闭顺序:先关已打开的二级面板(各自走自己的关闭动画,并触发 ReturnToLevel1 收二级 bg),再关本菜单(ISlideClose 一级逆动画)。
+    /// </summary>
     private void OnContinueClicked()
     {
-        PanelManager.Instance?.CloseTopPanel();
+        PanelManager pm = PanelManager.Instance;
+        if (pm == null) return;
+
+        if (IsAnyConfirmOpen()) return;   // 确认区模态:不穿透
+
+        // 用 IsPanelOpen(在面板栈里)判断,而不是 activeInHierarchy:关闭动画期间物体仍可能是 active,
+        // 重复 ClosePanel 会因「未注册」报错
+        if (savePanel != null && pm.IsPanelOpen(savePanel)) pm.ClosePanel(savePanel);
+        if (loadPanel != null && pm.IsPanelOpen(loadPanel)) pm.ClosePanel(loadPanel);
+        if (settingsPanel != null && pm.IsPanelOpen(settingsPanel)) pm.ClosePanel(settingsPanel);
+
+        pm.ClosePanel(gameObject);        // 本菜单自己关(走一级逆动画 + OnDisable 复位)
+    }
+
+    /// <summary>save/load 面板的确认区是否打开中(PauseMenu 的按钮据此拦住模态确认)</summary>
+    private bool IsAnyConfirmOpen()
+    {
+        SaveLoadPanel sl = savePanel != null ? savePanel.GetComponent<SaveLoadPanel>() : null;
+        if (sl != null && sl.IsConfirmOpen) return true;
+        sl = loadPanel != null ? loadPanel.GetComponent<SaveLoadPanel>() : null;
+        return sl != null && sl.IsConfirmOpen;
     }
 
     private void OnSaveClicked()

@@ -53,9 +53,10 @@ public class MusicPointManager : MonoBehaviour
     [Tooltip("缓入缓出时长(秒):管道/Boss 切换")]
     [SerializeField] private float crossFadeDuration = 1f;
 
-    [Header("调试")]
-    [Tooltip("屏幕显示当前音频时间/距下一点(标点验证用)")]
-    [SerializeField] private bool debugDisplay;
+    // [2026-09-18] 调试显示已关闭:恢复时去掉本块与 OnGUI 的注释即可
+//     [Header("调试")]
+//     [Tooltip("屏幕显示当前音频时间/距下一点(标点验证用)")]
+//     [SerializeField] private bool debugDisplay;
 
     private MusicTrackData _currentTrack;
     private AudioSource _activeSource;   // 当前主源(场景模式 = A)
@@ -1182,22 +1183,22 @@ public class MusicPointManager : MonoBehaviour
         source.clip = null;
     }
 
-    // 调试:当前音频时间 / 距下一点(标点验证用,可开关)
-    private void OnGUI()
-    {
-        if (!debugDisplay) return;
-        GUI.Label(new Rect(12f, 12f, 400f, 24f),
-            string.Format("Time {0:F2}  Next {1:F2}  ToNext {2:F2}  Window {3}",
-                TrackTime, NextPointTime, TimeToNextPoint, _inWindow ? "OPEN" : "closed"));
-        // 多窗口验证用:活跃点数 >1 = 重叠窗口并存;Consumed = 本圈已按点消费的点数
-        GUI.Label(new Rect(12f, 36f, 400f, 24f),
-            string.Format("Active {0}  Last {1:F3}  Consumed {2}", _activePoints.Count, _activePointTime, _consumedPoints.Count));
-        // 连音分组验证用:Chain = 本曲连音组摘要(如 "2 组 [3,1]" = 3点一组 + 1点一组)
-        // Cur = 当前组序号/点数, Pending = 当前组内第一个未执行的点下标, Next = 下一组起点, ToNext = 距起点秒数
-        var chainPts = CurrentChainPoints;   // 先读一次,让 _currentChainGroup 完成解析
-        GUI.Label(new Rect(12f, 60f, 560f, 24f),
-            string.Format("Chain {0}  Cur {1}/{2}  Pending {3}  Next {4:F2}  ToNext {5:F2}",
-                _chainGroupSummary, _currentChainGroup, chainPts.Length, PendingChainPointIndex,
-                NextChainStartTime, TimeToNextChainStart));
-    }
+//     // 调试:当前音频时间 / 距下一点(标点验证用,可开关)
+//     private void OnGUI()
+//     {
+//         if (!debugDisplay) return;
+//         GUI.Label(new Rect(12f, 12f, 400f, 24f),
+//             string.Format("Time {0:F2}  Next {1:F2}  ToNext {2:F2}  Window {3}",
+//                 TrackTime, NextPointTime, TimeToNextPoint, _inWindow ? "OPEN" : "closed"));
+//         // 多窗口验证用:活跃点数 >1 = 重叠窗口并存;Consumed = 本圈已按点消费的点数
+//         GUI.Label(new Rect(12f, 36f, 400f, 24f),
+//             string.Format("Active {0}  Last {1:F3}  Consumed {2}", _activePoints.Count, _activePointTime, _consumedPoints.Count));
+//         // 连音分组验证用:Chain = 本曲连音组摘要(如 "2 组 [3,1]" = 3点一组 + 1点一组)
+//         // Cur = 当前组序号/点数, Pending = 当前组内第一个未执行的点下标, Next = 下一组起点, ToNext = 距起点秒数
+//         var chainPts = CurrentChainPoints;   // 先读一次,让 _currentChainGroup 完成解析
+//         GUI.Label(new Rect(12f, 60f, 560f, 24f),
+//             string.Format("Chain {0}  Cur {1}/{2}  Pending {3}  Next {4:F2}  ToNext {5:F2}",
+//                 _chainGroupSummary, _currentChainGroup, chainPts.Length, PendingChainPointIndex,
+//                 NextChainStartTime, TimeToNextChainStart));
+//     }
 }

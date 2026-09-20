@@ -74,6 +74,17 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     [Tooltip("背刺受击 VFX 预制体 — 被玩家背刺终结命中时生成(伤害结算同一帧,挂 enemy 下跟随击飞);空 = 不播")]
     [SerializeField] protected GameObject backstabHitVFX;
 
+    [Header("受击音效(命中音归被击中的这一只)")]
+    [Tooltip("受击音(空 = 不播)。背刺非 Boss 那一刀由攻击方排到音乐拍点播;其余命中在本组件命中帧播")]
+    [SerializeField] protected AudioClip hurtSfx;
+    [Tooltip("受击音相对音量(最终响度 = 设置面板 SFX 音量 × 此值)")]
+    [Range(0f, 1f)] [SerializeField] protected float hurtSfxVolume = 1f;
+    [Tooltip("受击音基准变调(半音):0 = 原调,4 = 大三度,7 = 纯五度,12 = 八度。作用在本组件命中帧播的那一声(普攻/技能等);背刺那一刀的音高在 attack_VFX 上调")]
+    [Range(-12, 12)] [SerializeField] protected int hurtSemitone = 0;
+    [Tooltip("每命中一次递增半音(连击/连音升调):0 = 不递增,4 = do/mi/sol,7 = do/sol/do'")]
+    [Range(0, 12)] [SerializeField] protected int hurtRisePerHit = 0;
+
+
     [Header("VFX 变体")]
     [Tooltip("按攻击类型匹配的受击 VFX 列表（匹配到时覆盖 hitVFXPrefab）")]
     [SerializeField] private HitVFXVariant[] hitVFXVariants;
@@ -151,6 +162,9 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
     [Tooltip("战斗态垂直容差(Y 轴):战斗中有仇恨时任意方向检测玩家,垂直差在此范围内算可见(玩家绕后/跳起不丢仇恨)")]
     [SerializeField] private float combatSightHeight = 3f;
+
+    [Tooltip("战斗态墙遮挡垂直容差(Y 轴,米):战斗中有仇恨时,垂直差在此范围内才做墙遮挡检测(隔墙丢仇恨);超过此值跳过检测(玩家跳跃中/站高台上不因墙丢仇恨)")]
+    [SerializeField] private float wallCheckHeightTolerance = 1f;
 
     [Tooltip("朝向死区(X 轴):玩家水平距离小于此值时视为重合(如玩家在头顶),DirectionToPlayer 返回 0 = 停住不转身,防左右疯狂抖动")]
     [SerializeField] private float facingDeadZone = 0.3f;
@@ -1156,6 +1170,11 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
         if (ApplyDamage(info.amount, info.attackLabel, vfxPos, hitDir)) Die();
 
+        // 受击音(2026-09-18 解耦):命中音归被击中的这一只,在本组件命中帧播 —— 所有伤害入口(近战/背刺/技能/元素)
+        // 都汇到 ApplyDamage,一处接全。背刺非 Boss 那一刀的音已由攻击方按键帧排到音乐拍点(info.hurtSfxHandled),
+        // 这里不重复播,否则一拍响两声。
+        if (!info.hurtSfxHandled) PlayHurtSfx(info.hitStep);
+
         // 背刺受击 VFX(伤害结算同一帧、同一点):挂 enemy 下跟随被击飞,特效不会留在原地。
         // 标记由 PlayerCombat.ExecuteBackstab 置位(背刺标签与普通重击共用 Sword_Heavy,不能只按标签区分)。
         if (info.isBackstabFinisher && backstabHitVFX != null)
@@ -1164,6 +1183,29 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
             if (burst != null) burst.transform.SetParent(transform);
         }
         return info.amount;
+    }
+
+    /// <summary>受击音素材(供攻击方排程播背刺卡点音时读取:素材与变调都取被击中的这一只)</summary>
+    public AudioClip HurtSfx => hurtSfx;
+
+    /// <summary>受击音相对音量(同上,攻击方排程时读)</summary>
+    public float HurtSfxVolume => hurtSfxVolume;
+
+    /// <summary>
+    /// 受击音音高倍率 = 基准半音 + 每次命中递增 × 命中序号(hitStep,0 起;≤ 0 当第 1 击)。
+    /// 基准 0 + 递增 4 → 第1击 do / 第2击 mi / 第3击 sol(大三和弦);倍率换算见 AudioManager.PitchFromSemitone。
+    /// </summary>
+    public float HurtSfxPitch(int hitStep)
+    {
+        int step = hitStep > 0 ? hitStep : 0;
+        return AudioManager.PitchFromSemitone(hurtSemitone + hurtRisePerHit * step);
+    }
+
+    /// <summary>命中帧播受击音(素材空 = 静默跳过)。已由攻击方排程的命中(DamageInfo.hurtSfxHandled)不走这里。</summary>
+    public void PlayHurtSfx(int hitStep)
+    {
+        if (hurtSfx == null) return;
+        AudioManager.Instance?.PlaySfx(hurtSfx, hurtSfxVolume, HurtSfxPitch(hitStep));
     }
 
     // ── 结算管线钩子（P4b 敌人侧简单实现保证行为一致；弹反/闪避判定在 P4c 玩家侧接入）──
@@ -1520,17 +1562,55 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         if (!IsPlayerAlive()) return false;
         if (PlayerTarget == null) return false;
         // 战斗态(有仇恨):任意方向距离检测 — 玩家绕后/跳起不丢仇恨(单向射线扫不到身后)
+        // 2026-09-20:距离通过后再补一道墙遮挡检测(同一高度带里中间有墙 = 判不可见 → 走丢玩家计时);
+        // 垂直差大(玩家跳跃/高台上)时该检测自动跳过,不影响绕后/跳跃不丢仇恨
         if (IsInCombatState)
-            return PlayerInRange();
+            return PlayerInRange() && !IsWallBlockingPlayer();
         return PlayerInSightRay();
     }
 
-    /// <summary>战斗态可见:任意方向,水平距离 <= channelCheckForward 且垂直差 <= combatSightHeight(绕后/跳起不丢仇恨)</summary>
+    /// <summary>战斗态可见:任意方向,水平距离 <= channelCheckForward 且垂直差 <= combatSightHeight(绕后/跳起不丢仇恨)。
+    /// 注意这只是距离口径,中间有没有墙由 IsWallBlockingPlayer 另判(2026-09-20)。</summary>
     private bool PlayerInRange()
     {
         float deltaX = Mathf.Abs(PlayerTarget.position.x - transform.position.x);
         float deltaY = Mathf.Abs(PlayerTarget.position.y - transform.position.y);
         return deltaX <= channelCheckForward && deltaY <= combatSightHeight;
+    }
+
+    /// <summary>
+    /// 战斗态墙遮挡检测(2026-09-20 新增) — 修正「玩家攻击敌人后躲到墙后,敌人仍无限追击不脱战」。
+    /// 口径:玩家与自身垂直差在 wallCheckHeightTolerance 内(基本同一高度带)时,从自身腰部朝玩家水平射一条射线,
+    /// 到玩家位置为止;先命中的是实心墙/地形 = 中间有墙 → 判不可见(走丢玩家计时,现为 5 秒后回巡逻);
+    /// 先命中玩家本身、或射线内无遮挡 = 可见。
+    /// 射线指向玩家(与当前朝向无关),所以玩家绕后依然不掉仇恨;垂直差超过容差(玩家跳跃中/高台上)直接跳过检测,
+    /// 不会因为跳跃而丢仇恨。
+    /// 遮挡层口径 = Ground(3) + Wall(11),与 HasPatrolBoundaryAhead 的实心层一致(管道是 trigger,普通 Raycast 命中不到,故不含)。
+    /// Boss(FirstBoss)不调用 CanSeePlayer,不受本改动影响。
+    /// </summary>
+    private bool IsWallBlockingPlayer()
+    {
+        if (PlayerTarget == null) return false;
+
+        float deltaY = Mathf.Abs(PlayerTarget.position.y - transform.position.y);
+        if (deltaY > wallCheckHeightTolerance) return false;   // 跳跃中/高台:不做墙检测(不因墙丢仇恨)
+
+        float dx = PlayerTarget.position.x - transform.position.x;
+        if (Mathf.Abs(dx) < 0.01f) return false;               // 水平重合:没有可查的遮挡
+        int dir = dx > 0f ? 1 : -1;
+
+        Vector2 origin = new Vector2(transform.position.x + dir * 0.1f, transform.position.y + channelRayHeightOffset);
+        const int solidMask = (1 << 3) | (1 << 11);            // Ground=3 + Wall=11
+        RaycastHit2D[] hits = Physics2D.RaycastAll(origin, Vector2.right * dir, Mathf.Abs(dx), solidMask);
+        foreach (RaycastHit2D hit in hits)
+        {
+            if (hit.collider == null) continue;
+            if (hit.transform == transform || hit.transform.IsChildOf(transform)) continue;   // 跳过自身
+            if (hit.transform == PlayerTarget) return false;                                  // 先命中玩家 = 没被挡
+            if (hit.collider.GetComponent<PlayerController>() != null) return false;
+            return true;   // 第一个非自身障碍(墙/地形)挡住视线
+        }
+        return false;
     }
 
     /// <summary>水平射线检测玩家 — 与管道检测同一条射线(同起点/同高度/同长度 channelCheckForward,方向 = Facing)。

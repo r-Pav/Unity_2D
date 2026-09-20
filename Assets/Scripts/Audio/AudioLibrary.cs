@@ -33,6 +33,10 @@ public class AudioLibrary : ScriptableObject
     [Tooltip("面板打开 / 页签切换音(素材待补,留空 = 该类静默)")]
     public AudioClip uiOpen;
 
+    /// <summary>进入游戏音 — 主菜单「开始游戏」按钮 / 点击任意处进游戏时播一次(素材自备,留空 = 该类静默)</summary>
+    [Tooltip("进入游戏音(素材自备,留空 = 该类静默)")]
+    public AudioClip uiStart;
+
     /// <summary>UI 音效相对音量 — 最终响度 = SFX 组音量 × 该值</summary>
     [Tooltip("UI 音效相对音量(最终响度 = SFX 组音量 × 该值)")]
     [Range(0f, 1f)] public float uiVolume = 1f;

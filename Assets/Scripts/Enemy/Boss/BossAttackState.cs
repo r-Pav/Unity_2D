@@ -5,7 +5,8 @@ using UnityEngine;
 /// 进入:IsAttacking=true → 动画器 Entry 路由进 Attack 状态播放动画。
 /// 保持:攻击动画完整播完一圈才回追击(不再因玩家出范围截断)。
 /// 退出:动画播完(loop 动画 normalizedTime 回绕检测,或动画结束事件 OnBossAttackEnd)。
-/// 不做伤害判定(当前阶段只验证状态动画流转;伤害/技能后续接入)。
+/// 伤害:命中帧动画事件(OnBossAttackHitFrame → OnHitFrame)结算一次;
+///       动画未挂事件时由 OnUpdate 的 normalizedTime >= 0.5 兜底,两条路共用 _hitDone 互斥。
 /// </summary>
 public class BossAttackState : EntityState
 {
@@ -26,7 +27,8 @@ public class BossAttackState : EntityState
         base.OnEnter(); // IsAttacking=true → 动画器 Entry 路由进 Attack
         var boss = (FirstBoss)owner;
         boss.moveInput = 0f;
-        boss.StartMeleeInterval();   // 普攻间隔起点(5 秒内不再普攻;技能/重击不走 CanAttack,不受限)
+        // 普攻冷却改由 BossAttackDirector 自己记(_nextMeleeAt = Time.time + attackCooldown),
+        // 这里不再调 boss.StartMeleeInterval()(该接口保留给重击收尾用 → boss.IsMeleeIntervalActive 仍作额外门槛)
 
         // 面朝玩家
         float dir = boss.DirectionToPlayer();
@@ -46,7 +48,9 @@ public class BossAttackState : EntityState
         var boss = (FirstBoss)owner;
         if (boss.IsDead) return;
 
-        // 命中帧:动画进度过半时结算一次伤害(动画事件驱动可后续替换,当前 Attack.anim 无事件)
+        // 兜底结算:优先走命中帧动画事件(BossAnimationRelay.OnBossAttackHitFrame → OnHitFrame),
+        // 这里只是「Attack.anim 未挂命中帧事件」时的保底,老行为保持不变(进度过半即出伤)。
+        // 两条路共用 _hitDone 一次性门控 → 同一次普攻只会结算一次伤害。
         if (!_hitDone && anim != null)
         {
             var info = anim.GetCurrentAnimatorStateInfo(0);
@@ -85,6 +89,19 @@ public class BossAttackState : EntityState
         var boss = (FirstBoss)owner;
         if (boss.IsDead) return;
         ReturnToChase(boss);
+    }
+
+    /// <summary>
+    /// 命中帧动画事件(经 BossAnimationRelay.OnBossAttackHitFrame 转发):Attack 片段命中帧触发 → 结算一次普攻伤害。
+    /// 与 OnUpdate 的 normalizedTime >= 0.5 兜底共用 _hitDone:谁先到谁结算,另一方成为无操作 → 一次普攻只掉一次血。
+    /// </summary>
+    public void OnHitFrame()
+    {
+        if (_hitDone) return;              // 本帧/兜底已结算过,忽略
+        var boss = (FirstBoss)owner;
+        if (boss.IsDead) return;           // 与 OnUpdate/OnAnimEnd 同口径:死后不再出伤
+        boss.PerformDefaultMelee();
+        _hitDone = true;
     }
 
     /// <summary>攻击结束统一出口:回追击</summary>

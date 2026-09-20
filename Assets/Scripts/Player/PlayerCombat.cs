@@ -58,15 +58,9 @@ public class PlayerCombat : MonoBehaviour
     // 攻击音效(统一走 AudioManager.PlaySfx,响度随设置面板 SFX 滑条)
     // ============================================================
 
-    [Header("攻击音效")]
-    [Tooltip("普通挥砍命中音效(空 = 不播)")]
-    [SerializeField] private AudioClip hitSfx;
-
-    [Tooltip("命中 Boss 音效(空 = 回退 hitSfx)")]
-    [SerializeField] private AudioClip hitBossSfx;
-
-    [Tooltip("命中音效相对音量(最终响度 = 设置面板 SFX 音量 × 此值)")]
-    [Range(0f, 1f)] [SerializeField] private float hitSfxVolume = 1f;
+    // 攻击音效(2026-09-18 解耦):命中音已移到被击中的 EnemyControllerBase
+    // (hurtSfx / hurtSfxVolume / hurtSemitone / hurtRisePerHit 两个滑动条),挥刀音仍在 attack_VFX 的槽上。
+    // 原 hitSfx / hitBossSfx / hitSfxVolume / backstabChainSemitones 四个字段已删(Boss 天然配自己那一份)。
 
     [Header("近战")]
     [Tooltip("近战伤害")]
@@ -403,7 +397,7 @@ public class PlayerCombat : MonoBehaviour
                     duration = 0f,
                     ignoreResistance = false
                 };
-                var info = BuildDamageInfo(dmg, atkType, knock);
+                var info = BuildDamageInfo(dmg, atkType, knock, comboIndex - 1);   // 连击第几击 → 受击方受击音升调(do/mi/sol)
                 CombatResolver.Resolve(info.source, enemy, info);
                 hitAnything = true;
 
@@ -428,8 +422,6 @@ public class PlayerCombat : MonoBehaviour
 
         if (hitAnything)
         {
-            PlayHitSfx(hitBoss);   // 命中音效(空挥不响;命中 Boss 走 hitBossSfx)
-
             // 命中震屏随卡帧同入口触发（真实时间驱动，卡帧冻结期间照常播放）；命中 Boss 用 Boss 档位；
             // 震屏沿攻击方向为主（AttackDir = 武器攻击线朝向，带少量垂直抖动）
             float shakeDur = hitBoss ? bossHitShakeDuration : enemyHitShakeDuration;
@@ -443,7 +435,7 @@ public class PlayerCombat : MonoBehaviour
     /// <summary>
     /// 构造玩家攻击 DamageInfo(普通命中/弹反重击两处路径共用;source/元素/暴击统一取值)。
     /// </summary>
-    private DamageInfo BuildDamageInfo(float amount, string attackLabel, Knockback knockback)
+    private DamageInfo BuildDamageInfo(float amount, string attackLabel, Knockback knockback, int hitStep = 0)
     {
         return new DamageInfo
         {
@@ -454,38 +446,33 @@ public class PlayerCombat : MonoBehaviour
             knockback = knockback,
             element = elementModule != null ? elementModule.CurrentElement : ElementType.None, // 按触发时刻读取（决策 N5）
             canTriggerElementProc = true,   // player 攻击默认可触发元素 proc（C#9 结构体无字段默认值，显式设置）
-            critMultiplier = _lastCritMultiplier   // 暴击仲裁结果透传（0=未暴击）
+            critMultiplier = _lastCritMultiplier,   // 暴击仲裁结果透传（0=未暴击）
+            hitStep = hitStep   // 连段第几击(0 起):受击方按它给受击音升调
         };
-    }
-
-    /// <summary>
-    /// 命中音效统一出口:命中 Boss 优先 hitBossSfx,未配则回退 hitSfx;两者都空静默跳过。
-    /// 由普攻命中 / 弹反重击 / 背刺三处命中结算调用,空挥不调。
-    /// </summary>
-    private void PlayHitSfx(bool isBoss)
-    {
-        AudioClip clip = (isBoss && hitBossSfx != null) ? hitBossSfx : hitSfx;
-        AudioManager.Instance?.PlaySfx(clip, hitSfxVolume);
     }
 
     /// <summary>
     /// 背刺卡点音效(节拍辅助 2026-09-17):把背刺命中音排到标点(拍点)时刻播,不再等动画命中帧 ——
     /// 玩家在窗口内按 F 时,音和音乐同拍落下,踩准的确认感在按键当下就给。
-    /// 读现有已挂的 hitSfx 字段(不新增素材槽);pointTime 由调用方给(连音 = 本刀点时刻,非连音 = 当前 bar 拍点)。
+    /// 素材 / 音量读被击中的那一只 enemy,音高由调用方给(attack_VFX 背刺槽的基准 + 随机和谐音程池);pointTime 由调用方给(连音 = 本刀点时刻,非连音 = 当前 bar 拍点)。
     /// pointTime 已过(按晚了)→ PlayScheduled 立刻播,自动退化,调用方不用特判。
     /// 只服务非 Boss 目标(Boss 目标沿用命中帧立即播,见 ExecuteBackstab)。
     /// </summary>
-    public void PlayBackstabSfxScheduled(float pointTime)
+    public void PlayBackstabSfxScheduled(EnemyControllerBase target, float pointTime, float pitch = 1f)
     {
-        if (hitSfx == null) return;
+        if (target == null) return;
+
+        // 素材与音量取被击中的那一只(命中音归敌人);音高由调用方给(attack_VFX 的背刺槽 + 随机和谐音程池)
+        AudioClip clip = target.HurtSfx;
+        if (clip == null) return;
 
         var mgr = MusicPointManager.Instance;
         if (mgr == null)
         {
-            AudioManager.Instance?.PlaySfx(hitSfx, hitSfxVolume);   // 场景没有音乐管理器(未接线):退回立即播,不静默
+            AudioManager.Instance?.PlaySfx(clip, target.HurtSfxVolume, pitch);   // 场景没有音乐管理器(未接线):退回立即播,不静默
             return;
         }
-        AudioManager.Instance?.PlaySfxScheduled(hitSfx, hitSfxVolume, mgr.DspTimeForPoint(pointTime));
+        AudioManager.Instance?.PlaySfxScheduled(clip, target.HurtSfxVolume, mgr.DspTimeForPoint(pointTime), pitch);
     }
 
     /// <summary>
@@ -596,8 +583,6 @@ public class PlayerCombat : MonoBehaviour
 
         if (hitAnything)
         {
-            PlayHitSfx(hitBoss);   // 命中音效(弹反重击同普通路径;命中 Boss 走 hitBossSfx)
-
             // 命中震屏随卡帧同入口触发；命中 Boss 用 Boss 档位；震屏沿攻击方向为主（弹反重击同普通路径）
             float shakeDur = hitBoss ? bossHitShakeDuration : enemyHitShakeDuration;
             float shakeMag = hitBoss ? bossHitShakeMagnitude : enemyHitShakeMagnitude;
@@ -635,11 +620,11 @@ public class PlayerCombat : MonoBehaviour
         var info = BuildDamageInfo(dmg, meleeFinisherAttackType, knock);
         info.suppressAirHang = true;   // 背刺=终结技:跳过敌人空中滞空吸附(_pullToPlayer),enemy 正常击退飞出自然落地
         info.isBackstabFinisher = true;   // 受击方播背刺受击 VFX(EnemyControllerBase.backstabHitVFX,跟随击飞)
+        // 背刺命中音效(2026-09-17 卡点 + 2026-09-18 解耦):非 Boss 目标那一声已由 PlayerBackstabState 在按键成立
+        // 那一帧排到标点播(见 PlayBackstabSfxScheduled),置位让受击方命中帧不再重复播(否则一拍响两声);
+        // Boss 目标不由攻击方排程,受击方自己在本组件命中帧播(EnemyControllerBase.PlayHurtSfx)。
+        info.hurtSfxHandled = !target.IsBoss;
         CombatResolver.Resolve(info.source, target, info);
-        // 背刺命中音效(2026-09-17 节拍辅助):非 Boss 目标那一声已由 PlayerBackstabState 在按键成立那一帧
-        // 排到标点(拍点)上播(见 PlayBackstabSfxScheduled),这里不再重复播,否则一拍响两声;
-        // Boss 目标不在本机制范围内,沿用命中帧立即播(hitBossSfx)。
-        if (target.IsBoss) PlayHitSfx(true);
 
         // [2026-09-07 AttackVFXAnchor 收敛暂停] 背刺命中特效由被刺槽(PlayBackstab)统一承担
         //if (backstabHitVFX != null)

@@ -176,13 +176,15 @@ public class SkillManager : MonoBehaviour
         }
 
         // 主动技能从运行时未解锁状态开始；SO 的 skillLevel 只描述资产默认值。
-        // defaultUnlocked 技能开局自动解锁到 Lv1（不消耗技能点；读档时以存档等级为准，见 Start 事件重放）
+        // 2026-09-20 重写:这里不再直接读 defaultUnlocked —— 等级一律先归 0,
+        // 默认解锁统一由 ApplyDefaultUnlocks() 在 Start(以及读档恢复槽位之后)按根 SO 开关置位并发事件。
+        // 旧逻辑「Awake 置 1 + Start 只在 slotLevels>=1 时重放」会让读档的 0 等级把默认解锁抹掉,故废弃。
         for (int i = 0; i < skillSlots.Length; i++)
         {
             SkillData data = skillSlots[i]?.data;
             if (data is ActiveSkillData activeData)
             {
-                slotLevels[i] = activeData.defaultUnlocked ? 1 : 0;
+                slotLevels[i] = 0;
                 activeData.chosenBranch = null;
             }
             else
@@ -218,15 +220,26 @@ public class SkillManager : MonoBehaviour
         // Start() 在所有 OnEnable() 之后执行，确保 HUD 已订阅事件
         EventBus.Trigger(new PlayerManaChangedEvent(currentMana, MaxMana));
 
-        // 默认解锁事件重放：defaultUnlocked 技能在 Awake 已置 Lv1，但事件不能在 Awake 发
-        // （静态执行器 AfterSceneLoad 订阅、UI 在 OnEnable 订阅，均晚于 Awake）——此处补发驱动
-        // SkillPool 等级同步 / HUD 与技能树刷新 / 执行器解锁效果。
-        // 读档模式：SetSlot 已按存档等级重发事件（订阅方幂等）；slotLevels 被存档覆盖为 0 的槽位不重发，存档优先。
+        // 默认解锁：事件不能在 Awake 发（静态执行器 AfterSceneLoad 订阅、UI 在 OnEnable 订阅，均晚于 Awake），
+        // 所以在这里统一套用根 SO 的 defaultUnlocked 开关并补发事件。读档路径另在 SaveSystem 恢复槽位后再套一次。
+        ApplyDefaultUnlocks();
+    }
+
+    /// <summary>
+    /// 默认解锁(2026-09-20 重写) — 根 SO(ActiveSkillData)勾了 defaultUnlocked 的技能,一律解锁到至少 Lv1。
+    /// 规则:只补不降(存档/运行时等级更高时保持原等级,不会把进度打回去),按最终等级补发 SkillLevelChangedEvent,
+    /// 驱动执行器解锁效果(树B 冲刺充能、冲刺伤害等)、SkillPool 等级同步、HUD 与技能树刷新。
+    /// 订阅者幂等,可重复调用。调用点两处:Start(新游戏开局)、SaveSystem 读档恢复槽位之后(防存档的 0 等级抹掉默认解锁)。
+    /// </summary>
+    public void ApplyDefaultUnlocks()
+    {
         for (int i = 0; i < skillSlots.Length; i++)
         {
             SkillData data = skillSlots[i]?.data;
-            if (data is ActiveSkillData activeData && activeData.defaultUnlocked && slotLevels[i] >= 1)
-                EventBus.Trigger(new SkillLevelChangedEvent(data.skillName, i, slotLevels[i]));
+            if (!(data is ActiveSkillData activeData) || !activeData.defaultUnlocked) continue;
+
+            if (slotLevels[i] < 1) slotLevels[i] = 1;   // 只补不降
+            EventBus.Trigger(new SkillLevelChangedEvent(data.skillName, i, slotLevels[i]));
         }
     }
 

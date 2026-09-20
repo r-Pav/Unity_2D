@@ -533,6 +533,10 @@ public class SaveSystem : MonoBehaviour
             // 设置槽位和等级
             skillManager.SetSlot(i, skillData, slotInfo.level);
         }
+
+        // 默认解锁兜底(2026-09-20):存档里等级为 0 的槽位不能把根 SO 的 defaultUnlocked 抹掉,
+        // 槽位恢复完再统一套用一次(内部只补不降,存档等级更高时不受影响;订阅者幂等)。
+        skillManager.ApplyDefaultUnlocks();
     }
 
     // ============================================================

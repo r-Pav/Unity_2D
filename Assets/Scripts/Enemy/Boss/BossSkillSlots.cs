@@ -20,6 +20,10 @@ public class BossSkillSlots : MonoBehaviour
     [Tooltip("Boss 技能数据列表(归一化 SO;skillPrefab 上的 BossSkillExecutor 读 data 执行)")]
     [SerializeField] private BossSkillData[] allSkills;
 
+    [Header("起手瞬移(P4)")]
+    [Tooltip("起手瞬移落点距离:落点 x = 玩家 x + 玩家面朝方向 × 本值(与重击 teleportDistance 同口径)。仅对勾了 BossSkillData.trackPlayerBeforeCast 的技能生效")]
+    [SerializeField] private float castTeleportDistance = 1.5f;
+
     [Header("Debug")]
     [SerializeField] private bool logSkillExecutions;
 
@@ -33,6 +37,7 @@ public class BossSkillSlots : MonoBehaviour
     private EnemyControllerBase owner;
     private Animator animator;
     private Transform player;
+    private PlayerController playerCtrl;   // [P4] 玩家控制器(取玩家朝向/位置用,与 player 同源)
     private int currentPhase;
     private bool isQuitting;
 
@@ -80,7 +85,8 @@ public class BossSkillSlots : MonoBehaviour
 
     private void Start()
     {
-        player = PlayerController.Instance?.transform;
+        playerCtrl = PlayerController.Instance;
+        player = playerCtrl != null ? playerCtrl.transform : null;
     }
 
     // ============================================================
@@ -246,6 +252,11 @@ public class BossSkillSlots : MonoBehaviour
                 animator = animator,
                 reservedOrbGroup = reservedOrbGroup
             };
+
+            // [P4] 起手瞬移(可选标记):释放前先瞬移到玩家身边再起手。
+            //   此刻起手前霸体(P1)已由 Director 置真 → IsSkillCasting 为真,玩家普攻打不进 Hurt,无需额外霸体代码。
+            TryTeleportToPlayerBeforeCast(so);
+
             yield return currentExecutor.ExecuteSkill(ctx);
         }
         else
@@ -272,5 +283,61 @@ public class BossSkillSlots : MonoBehaviour
         if (logSkillExecutions)
             Debug.Log($"[BossSkillSlots] 技能 [{index}] {so.skillName} 执行完毕");
         OnSkillFinished?.Invoke(index);
+    }
+
+    // ============================================================
+    // [P4] 起手瞬移(可选标记)
+    // ============================================================
+
+    /// <summary>
+    /// [P4] 起手瞬移:so.trackPlayerBeforeCast 为真时,释放前把 Boss 瞬移到玩家身边再起手。
+    /// 顺序:原位生成消失表现 → 算落点(玩家位置/朝向快照 → 玩家面朝方向 × castTeleportDistance,
+    ///      该侧被实心墙/管道挡住则翻到玩家另一侧)→ ForceSetPosition(内含贴墙钳制 + 清速度,必须用返回值)
+    ///      → 转身朝玩家 → 落点生成出现表现。
+    /// 取不到玩家 / 未勾标记 / 落点不可用 → 直接返回,原地起手(不阻塞技能)。
+    /// 只走现成 API:EnemyControllerBase.ForceSetPosition / IsWallBlockedOnSide + VFXSpawner.SpawnOnBoss,
+    /// 不新增射线/碰撞器/组件。
+    /// 已知取舍(入代码评审用):IsWallBlockedOnSide 的检测带以 Boss 自身为中心(其固定口径),
+    ///   Boss 离玩家较远时该判定偏向自身一侧 → 漏判时由 ForceSetPosition 内部的贴墙钳制兜底,
+    ///   最坏结果 = Boss 落在墙外侧而非翻侧,不会穿墙。
+    /// </summary>
+    private void TryTeleportToPlayerBeforeCast(BossSkillData so)
+    {
+        if (so == null || !so.trackPlayerBeforeCast) return;
+        if (owner == null) return;
+
+        // 玩家引用:Start 时缓存;Start 早于玩家生成(Instance 为空)时在这里补取一次
+        if (playerCtrl == null)
+        {
+            playerCtrl = PlayerController.Instance;
+            player = playerCtrl != null ? playerCtrl.transform : null;
+        }
+        if (playerCtrl == null || player == null) return;   // 取不到玩家:跳过瞬移,直接起手
+
+        // ── ① 原位:消失表现(先取快照位置,下一行 Boss 就瞬移走了) ──
+        Vector3 origin = owner.transform.position;
+        VFXSpawner.SpawnOnBoss(so.disappearVFXPrefab, origin);
+
+        // ── ② 落点:玩家位置/朝向快照 → x = 玩家 x + 玩家面朝方向 × 距离(与 BossHeavyAttack.ExecuteHeavy 同口径) ──
+        Vector2 playerSnap = player.position;
+        float dirSign = playerCtrl.FacingDir >= 0 ? 1f : -1f;
+        float distance = Mathf.Max(0.1f, castTeleportDistance);
+        Vector2 landing = new Vector2(playerSnap.x + dirSign * distance, origin.y);
+
+        // ── ③ 可达性:落点那侧被实心墙/管道挡住 → 翻到玩家另一侧 ──
+        if (owner.IsWallBlockedOnSide(dirSign >= 0f ? 1 : -1))
+            landing.x = playerSnap.x - dirSign * distance;
+
+        // ── ④ 落点执行:ForceSetPosition 内含贴墙钳制 + 清速度,返回值才是实际落点 ──
+        Vector2 actual = owner.ForceSetPosition(landing);
+
+        // ── ⑤ 朝向:面向玩家(不锁朝向——瞬移只是起手前定位,施法朝向交给技能执行器) ──
+        owner.UpdateFacing((player.position.x - actual.x) >= 0f ? 1f : -1f);
+
+        // ── ⑥ 落点:出现表现 ──
+        VFXSpawner.SpawnOnBoss(so.appearVFXPrefab, actual);
+
+        if (logSkillExecutions)
+            Debug.Log($"[BossSkillSlots] 起手瞬移 {origin} → {actual}(玩家快照={playerSnap} 朝向={dirSign})");
     }
 }

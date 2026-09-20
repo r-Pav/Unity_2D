@@ -1,37 +1,39 @@
 using UnityEngine;
 
 /// <summary>
-/// 法球投射物 — 由 BossSkill_Orb 生成,OrbManager 统一管理。
-/// 以 player 为目标画线延长至地面/墙壁为终点;按音乐时钟匀速移动,
-/// 到达终点时 = 对应标点(重音)响起 → 对 player 造成伤害(data 结算)后销毁。
-/// 进度 = 1 - (标点时刻 - TrackTime)/总时长,帧率波动不漂移。
+/// 法球投射物 — 由 BossSkill_Orb 在「发射那一刻」生成,OrbManager 统一管理。
+/// 发射时按「法球 → 玩家方向」画线延长至地面/墙壁为终点(只快照一次),
+/// 之后以 Initialize 传入的速度匀速直线飞行,到达终点即对 player 造成伤害(data 结算)后销毁。
+/// 时长 = 起点到终点距离 / 速度,进度由 Time.deltaTime 累加(与音乐时钟/标点无关,帧率波动不漂移)。
 /// </summary>
 public class OrbProjectile : MonoBehaviour
 {
     private BossSkillContext _ctx;
     private BossSkillData _data;
-    private float _targetBeatTime;   // 对应标点时刻(音乐时间轴)
-    private float _totalDuration;    // 开始移动到重音的总时长(秒)
+    private float _duration;         // 飞到终点的总时长(秒) = 距离 / 速度
+    private float _elapsed;          // 已飞行时长(秒)
     private Vector2 _start;
     private Vector2 _end;
     private LayerMask _groundLayer;
     private float _rayMaxDistance;
+    private bool _initialized;       // 未 Initialize 前不推进(防被提前实例化时在 (0,0) 误命中)
     private bool _done;
 
-    public void Initialize(BossSkillContext ctx, BossSkillData data, float targetBeatTime,
+    /// <summary>由 BossSkill_Orb 在发射那一刻调用:快照起点/终点并算出飞行时长</summary>
+    public void Initialize(BossSkillContext ctx, BossSkillData data, float speed,
         LayerMask groundLayer, float rayMaxDistance)
     {
         _ctx = ctx;
         _data = data;
-        _targetBeatTime = targetBeatTime;
         _groundLayer = groundLayer;
         _rayMaxDistance = rayMaxDistance;
 
-        var mgr = MusicPointManager.Instance;
-        float now = mgr != null ? mgr.TrackTime : Time.time;
-        _totalDuration = Mathf.Max(0.1f, targetBeatTime - now);
         _start = transform.position;
         _end = ComputeEndPoint();
+        _duration = Vector2.Distance(_start, _end) / Mathf.Max(0.1f, speed);
+        _elapsed = 0f;
+        _done = false;
+        _initialized = true;
     }
 
     /// <summary>终点:法球 → player 方向画线,延长至地面/墙壁;没命中 = 方向 × 最大距离</summary>
@@ -49,17 +51,14 @@ public class OrbProjectile : MonoBehaviour
 
     private void Update()
     {
-        if (_done) return;
+        if (_done || !_initialized) return;
 
-        var mgr = MusicPointManager.Instance;
-        float trackTime = mgr != null ? mgr.TrackTime : Time.time;
-        float remaining = _targetBeatTime - trackTime;
-
-        // 音乐时钟插值:剩余时间比例 → 位置(帧率波动不累积漂移)
-        float progress = 1f - Mathf.Clamp01(remaining / _totalDuration);
+        // 纯时序:累加真实时间 → 进度(到 1 即到达终点)
+        _elapsed += Time.deltaTime;
+        float progress = _duration > 0.0001f ? Mathf.Clamp01(_elapsed / _duration) : 1f;
         transform.position = Vector2.Lerp(_start, _end, progress);
 
-        if (remaining <= 0f)
+        if (progress >= 1f)
         {
             _done = true;
             HitPlayer();

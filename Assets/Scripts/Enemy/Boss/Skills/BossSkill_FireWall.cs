@@ -17,6 +17,8 @@ public class BossSkill_FireWall : BossSkillExecutor
     [Header("火焰墙(资源与数值)")]
     [Tooltip("墙 prefab(视觉 + 子 obj 挂 MeleeRangeIndicator 定范围;不加实心 collider,墙不推人)")]
     public GameObject wallPrefab;
+    [Tooltip("左墙是否水平翻转(墙图默认画的是右墙;左墙镜像一次)")]
+    public bool flipLeftWall = true;
     [Tooltip("墙向 player 移动速度(最大速度基准)")]
     public float wallMoveSpeed = 4f;
     [Tooltip("墙距 player 的停靠距离(到距离后停)")]
@@ -73,8 +75,9 @@ public class BossSkill_FireWall : BossSkillExecutor
         // 2. 左右墙在场景配置位置生成(挂执行器 prefab 下,随技能结束销毁)
         if (wallPrefab == null)
             Debug.LogWarning("[BossSkill_FireWall] 未配置 Wall Prefab,技能 1 空放");
-        GameObject leftWall = SpawnWall(sceneConfig != null ? sceneConfig.fireWallLeftSpawn : null);
-        GameObject rightWall = SpawnWall(sceneConfig != null ? sceneConfig.fireWallRightSpawn : null);
+        // [2026-09-19 saika] 墙图默认画的是右墙:右墙原样,左墙水平翻转一次
+        GameObject leftWall = SpawnWall(sceneConfig != null ? sceneConfig.fireWallLeftSpawn : null, flipLeftWall);
+        GameObject rightWall = SpawnWall(sceneConfig != null ? sceneConfig.fireWallRightSpawn : null, false);
 
         // 3. 阶段 A:两墙同时朝 player 移动,缓出(由快变慢),到距 player stopDistance 停下(超时 10 秒兜底)
         // 停靠目标 = 开始移动那一帧的 player 位置(快照,不追实时)
@@ -141,11 +144,17 @@ public class BossSkill_FireWall : BossSkillExecutor
         }
     }
 
-    private GameObject SpawnWall(Transform spawn)
+    /// <summary>生成一面墙;flip = 水平镜像(flipX,不改 transform 缩放;判定框是轴对齐矩形,不受影响)</summary>
+    private GameObject SpawnWall(Transform spawn, bool flip)
     {
         if (wallPrefab == null || spawn == null) return null;
         GameObject wall = Instantiate(wallPrefab);   // 场景根:不挂 Boss 下,不受 Boss 层级/物理影响
         wall.transform.position = spawn.position;
+        if (flip)
+        {
+            var sr = wall.GetComponentInChildren<SpriteRenderer>();
+            if (sr != null) sr.flipX = true;
+        }
         _spawnedWalls.Add(wall);
         return wall;
     }

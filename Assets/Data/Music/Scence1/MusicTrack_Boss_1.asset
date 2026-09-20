@@ -21,16 +21,17 @@ MonoBehaviour:
   introSwitchTime: 111.06
   introPoints: []
   pointGroups:
+  - groupName: BossSkill
+    points:
+    - 5
+    - 15
   - groupName: BossHeavy
     points:
-    - 8
-    - 13
-    - 18
-    - 23
+    - 25
     - 27
+    - 29
     - 31
-  - groupName: BossOrb1
-    points:
-    - 90
+    - 33
   - groupName: PlayerCombo
     points: []
+  chainGroups: []

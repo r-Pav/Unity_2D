@@ -49,8 +49,8 @@ MonoBehaviour:
   wallPrefab: {fileID: 8393409854605961360, guid: c954e6f8288fbc04482c3f0278d0b9c8, type: 3}
   wallMoveSpeed: 10
   stopDistance: 5
-  wallLifetime: 3
-  wallInDuration: 1.5
+  wallLifetime: 1
+  wallInDuration: 1
   wallInEasePower: 6
-  wallExitDuration: 3
+  wallExitDuration: 2
   wallExitEasePower: 6

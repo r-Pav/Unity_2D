@@ -4,8 +4,9 @@ using UnityEngine;
 /// 空中攻击状态 — 三连击单状态(与地面同构,复用 Attack1/2/3 动画 clip),继承 PlayerComboState。
 /// 差异:悬停(重力小值缓沉)/ 上挑(ApplyLift,越打越高)/ 一滞空一套(每次进入强制从第 1 段)/
 /// OnEnter 强制直切 AirAttack 子机(坑 39 兜底)/ 连段结束恢复重力落态。
-/// 空中闪击(2026-09-03 重做):第 1 段不做闪(正常挥,超出攻击范围挥空);第 2/3 段切段瞬间
-/// TryBlinkToAirEnemy —— 闪现到"距玩家最远"的空中 enemy 侧面(玩家对侧),y 居中对齐,再挥击;
+/// 空中闪击(2026-09-03 重做,2026-09-19 改口径):第 1 段不做闪(正常挥,超出攻击范围挥空);第 2/3 段切段瞬间
+/// TryBlinkToAirEnemy —— 闪现到"距玩家最远"的空中 enemy 侧面(玩家对侧),只换水平位置(高度保持玩家当前 y),再挥击;
+/// 闪后先做命中预判(WouldHitAfterBlink),打不到就不换位(空挥不转);
 /// 对侧实时靠墙检测(EnemyControllerBase.IsWallBlockedOnSide):对侧净空 → 正常闪侧打;
 /// 对侧堵(墙/地面/管道)→ 不闪侧面,玩家占 enemy 原位、enemy 被往远离墙方向推 AirBlinkPushDistance,
 /// 该击把 enemy 继续推离墙,后续段 enemy 已离墙正常左右闪;范围内无空中目标 → 不闪,原地攻击。
@@ -21,6 +22,10 @@ public class PlayerAirAttackState : PlayerComboState
     // 打印段号/目标/墙侧/落点解析日志;Inspector 勾选开启,默认关不影响行为
     [SerializeField] private bool _airBlinkDebug;
     private bool AirBlinkDebug => _airBlinkDebug;
+
+    // [2026-09-19 saika 口径 C] 空中的换位只做水平方向(高度保持玩家当前 y),且空挥时不换位。
+    // 本字段 = 闪位命中预判余量(米):闪后攻击框与目标碰撞体 AABB 判不到(还差这么多以上)= 空挥 → 不转。
+    [SerializeField] private float blinkHitCheckMargin = 0.15f;
 
     private const float MinHoverTime = 0.25f;
     private const float InputOpenTimeout = 0.5f;    // 输入门事件帧兜底超时(动画事件丢失时自动开门+恢复重力)
@@ -192,8 +197,8 @@ public class PlayerAirAttackState : PlayerComboState
         Vector2 targetPosAfter;       // 结算朝向用的目标最终位置(推敌分支 enemy 已被挪走)
         if (!sideBlocked)
         {
-            // 对侧净空 → 闪对侧(水平间距 gap,y 与 enemy 居中对齐)
-            dest = new Vector2(enemyPos.x + preferredSide * gap, enemyPos.y);
+            // 对侧净空 → 闪对侧(只换水平位置:高度保持玩家当前 y,不再对齐 enemy 的 y)
+            dest = new Vector2(enemyPos.x + preferredSide * gap, rb.position.y);
             targetPosAfter = enemyPos;
         }
         else
@@ -203,7 +208,7 @@ public class PlayerAirAttackState : PlayerComboState
             int pushDir = -preferredSide;
             float pushBase = (_weaponThrow != null) ? _weaponThrow.AirBlinkPushDistance : 0.8f;
             if (pushBase <= 0f) pushBase = 0.8f;   // 配置异常兜底
-            Vector2 playerDest = enemyPos;         // 玩家占 enemy 的点(enemy 原本站得住 → 玩家可站)
+            Vector2 playerDest = new Vector2(enemyPos.x, rb.position.y);   // 玩家占 enemy 的 x(高度保持玩家当前 y)
             Vector2 enemyDest = enemyPos + Vector2.right * pushDir * pushBase;
             if (IsPushPlacementInvalid(enemyDest, playerDest, target, pc))
             {
@@ -217,11 +222,22 @@ public class PlayerAirAttackState : PlayerComboState
             }
             if (AirBlinkDebug)
                 Debug.Log($"[AirBlink] 对侧堵→占位推敌 pushDir={pushDir} enemy→{enemyDest} 玩家→{playerDest}");
-            // 顺序:先挪 enemy 再移玩家(玩家落 target 原位时 enemy 已先挪走,同帧不重叠太久)
-            enemyDest = target.ForceSetPosition(enemyDest);    // 硬挪 + 清速度(防旧击退把它拉回墙边);返回钳制后实际落点;不动状态机/动画
+            // 挪敌写入延后到命中预判通过之后(预判不过就不动 enemy)
             dest = playerDest;
             targetPosAfter = enemyDest;
         }
+
+        // [2026-09-19 saika] 空挥不换位:按闪后位置预判这一击能否打到目标;打不到 → 不转(原地挥空,位置/朝向都不动)
+        int newFacing = targetPosAfter.x >= dest.x ? 1 : -1;
+        if (!WouldHitAfterBlink(dest, targetPosAfter, target, pc, newFacing))
+        {
+            if (AirBlinkDebug) Debug.Log($"[AirBlink] 段={comboIndex} 闪后打不到(空挥)→ 不换位 dest={dest}");
+            return;
+        }
+
+        // 推敌分支:先挪 enemy 再移玩家(玩家落目标原位时 enemy 已先挪走,同帧不重叠太久)
+        if (sideBlocked)
+            targetPosAfter = target.ForceSetPosition(targetPosAfter);   // 硬挪 + 清速度(防旧击退把它拉回墙边);返回钳制后实际落点
 
         // 物理体瞬移(设置 rb.position 而非 transform.position,防物理插值在两位置间撕裂)
         rb.position = dest;
@@ -233,6 +249,42 @@ public class PlayerAirAttackState : PlayerComboState
         // 坑:必须用 dest 判定,不能读 pc.transform.position——rb.position 赋值后同帧
         // transform.position 尚未同步(还是闪前旧值),读它会朝向判反 → 攻击矩形朝敌人反侧 → 打空
         pc.UpdateFacing(targetPosAfter.x >= dest.x ? 1f : -1f);
+    }
+
+    /// <summary>
+    /// 闪位命中预判(2026-09-19 saika:空挥的时候不要转):把攻击框按「闪后玩家位置 + 朝目标」摆好,
+    /// 与目标碰撞体做 AABB 重叠判定;判不到 = 这一击闪过去也是空挥 → 调用方不换位(原地挥)。
+    /// 攻框中心偏移取当前帧的「框中心 − 玩家位置」(朝向翻转时镜像 x),尺寸用 MeleeRangeIndicator.Size(世界单位)。
+    /// 拿不到框/目标时一律返回 true(不拦,保持旧行为)。
+    /// </summary>
+    private bool WouldHitAfterBlink(Vector2 dest, Vector2 targetPosAfter, EnemyControllerBase target, PlayerController pc, int newFacing)
+    {
+        if (combat == null || combat.RangeIndicator == null || pc == null) return true;
+
+        Rigidbody2D rb = pc.GetRigidbody();
+        Vector2 playerNow = rb != null ? rb.position : (Vector2)pc.transform.position;
+        Vector2 rel = combat.RangeIndicator.Center - playerNow;
+        int curFacing = pc.FacingDir >= 0 ? 1 : -1;
+        if (newFacing != curFacing) rel.x = -rel.x;      // 闪后朝向翻转 → 框的前偏移镜像
+        Vector2 predCenter = dest + rel;
+        Vector2 size = combat.RangeIndicator.Size;
+
+        Vector2 c;
+        Vector2 ext;
+        if (target != null && target.Col != null)
+        {
+            c = target.Col.bounds.center;
+            ext = target.Col.bounds.extents;
+        }
+        else
+        {
+            c = targetPosAfter;
+            ext = new Vector2(0.35f, 0.35f);
+        }
+
+        float margin = Mathf.Max(0f, blinkHitCheckMargin);
+        return Mathf.Abs(c.x - predCenter.x) <= size.x * 0.5f + ext.x + margin
+            && Mathf.Abs(c.y - predCenter.y) <= size.y * 0.5f + ext.y + margin;
     }
 
     /// <summary>从命中 collider 里筛"非死亡 + 空中"的 enemy,取距玩家最远的一只(多 enemy 防闪进中间);无则返回 null</summary>

@@ -6,8 +6,9 @@ using UnityEngine;
 
 /// <summary>
 /// FirstBoss — 继承 BossControllerBase，实现三阶段（P1/P2/P3）行为切换。
-/// 特殊技能由 BossSkillSlots + BossAttackSO 管理，普攻走 defaultMelee fallback。
-/// 技能选择覆写为权重池模式。
+/// 特殊技能由 BossSkillSlots + BossAttackSO 管理，技能选择/节奏由 BossAttackDirector(音乐标点驱动 + 袋装随机)负责，
+/// 普攻走 BossAttackState(伤害在动画命中帧结算)。
+/// 旧的 SelectSkillIndex 权重池覆写保留但已无调用点(见下方注释)。
 /// </summary>
 public class FirstBoss : BossControllerBase
 {
@@ -34,13 +35,13 @@ public class FirstBoss : BossControllerBase
     // ============================================================
 
     [Header("技能权重")]
-    [Tooltip("P1 权重数组（对应 allSkills 中 P1 已解锁的技能 index）")]
+    [Tooltip("[2026-09-19 P1 未使用,留档] P1 权重数组（对应 allSkills 中 P1 已解锁的技能 index）")]
     [SerializeField] private float[] p1Weights = { 5f, 3f };
 
-    [Tooltip("P2 权重数组")]
+    [Tooltip("[2026-09-19 P1 未使用,留档] P2 权重数组")]
     [SerializeField] private float[] p2Weights = { 4f, 3f, 2f, 3f };
 
-    [Tooltip("P3 权重数组")]
+    [Tooltip("[2026-09-19 P1 未使用,留档] P3 权重数组")]
     [SerializeField] private float[] p3Weights = { 3f, 2f, 1f, 2f, 4f };
 
     // ============================================================
@@ -118,8 +119,9 @@ public class FirstBoss : BossControllerBase
         {
             case 1: // 进入 P2
                 currentMoveSpeedMult = p2MoveSpeedMult;
-                // P2 首次必定展示冲撞（index=2，即 allSkills 中第 3 个技能）
-                StartCoroutine(DelayedForceSkill(2, 0.5f));
+                // [2026-09-19 P1 清理] 原先此处用协程延迟强制展示技能 index=2,
+                // 但技能池只有 index 0/1 → 越界(仅在 Console 打一条无效 index 警告,无实际动作)。
+                // 技能改由 BossAttackDirector 的音乐标点驱动,阶段切换不再强制指定技能。
                 // 阶段切换 VFX
                 if (phaseP2VFXPrefab != null)
                     VFXSpawner.SpawnOnBoss(phaseP2VFXPrefab, transform.position);
@@ -134,15 +136,11 @@ public class FirstBoss : BossControllerBase
         }
     }
 
-    /// <summary>延迟 ForceSkill（等阶段无敌协程进入后再触发）</summary>
-    private System.Collections.IEnumerator DelayedForceSkill(int index, float delay)
-    {
-        yield return new WaitForSeconds(delay);
-        ForceSkill(index);
-    }
-
     // ============================================================
     // 技能选择覆写 — 加权随机（权重池模式）
+    // [2026-09-19 P1 未使用,留档] SelectSkillIndex 全项目已无调用点(技能选择改由
+    // BossAttackDirector + ShuffleBag 袋装随机承担),连同下面的 p1/p2/p3Weights 一起保留,
+    // 不删字段(防 Inspector 序列化数据丢失),也不再新增调用。
     // ============================================================
 
     protected override int SelectSkillIndex(int[] available)
@@ -202,7 +200,7 @@ public class FirstBoss : BossControllerBase
     /// 伤害范围同源:EnemyMeleeAttack.rangeIndicator 拖同一个子物体,攻击触发与伤害判定范围一致。
     /// 无子物体时不做攻击判定(返回 false)。
     /// </summary>
-    public bool IsPlayerInBossAttackRange()
+    public override bool IsPlayerInBossAttackRange()
     {
         if (PlayerTarget == null) return false;
 

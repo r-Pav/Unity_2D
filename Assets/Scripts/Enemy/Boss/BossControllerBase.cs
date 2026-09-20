@@ -515,10 +515,31 @@ public abstract class BossControllerBase : EnemyControllerBase
     public bool IsMeleeIntervalActive => meleeIntervalTimer > 0f;
 
     /// <summary>重击施放中(霸体:不掉硬直/击退,不中断;照常掉血)</summary>
-    public bool IsHeavyActive => heavyAttack != null && heavyAttack.IsActive;
+    public bool IsHeavyActive => heavyAttack != null && heavyAttack.IsBusy;
 
-    /// <summary>技能施法中(技能霸体:不中断技能、不进受击状态、不被击退;照常掉血)</summary>
-    public bool IsSkillCasting => skillSlots != null && skillSlots.IsExecuting;
+    /// <summary>技能起手前霸体标记(技能点临近 → 起手之间由 BossAttackDirector 置位;覆盖「临点拉距 → 起手」这段空档)</summary>
+    private bool _preCastGuard;
+
+    /// <summary>
+    /// 技能相关全程霸体:技能施法中,或技能起手前的保护窗口(技能点临近到起播之间)。
+    /// 用途 = 起手前不被玩家普攻打断(2026-09-19 saika 需求「释放技能前也加上技能霸体」)。
+    /// </summary>
+    public bool IsSkillCasting => (skillSlots != null && skillSlots.IsExecuting) || _preCastGuard;
+
+    /// <summary>置技能起手前霸体标记(由 BossAttackDirector 维护;技能执行中由 IsExecuting 覆盖,标记清不清都不影响)</summary>
+    public void SetPreCastGuard(bool on) => _preCastGuard = on;
+
+    /// <summary>
+    /// 技能起手前打断受击硬直。技能优先于普通受击:技能点到时若正在 Hurt,先退出硬直再起手,
+    /// 否则动画器 Entry 里 Hurt 排在 Magic 之前 → 技能动画切不进去(逻辑照跑但没有施法动作)。
+    /// 霸体优先级链不变:背刺(终结技) > 重击霸体 > 技能霸体 > 普通受击。
+    /// </summary>
+    public void CancelHurtForSkill()
+    {
+        if (isDead) return;
+        if (Fsm != null && Fsm.CurrentState is BossHurtState)
+            Fsm.ChangeState(CreateChaseState());
+    }
 
     /// <summary>本次重击是否已过伤害结算帧(P3 玩家侧判定有效期:已出伤后不再接受卡点判定)</summary>
     public bool HeavyDamageSettled => heavyAttack != null && heavyAttack.DamageSettled;
@@ -545,6 +566,13 @@ public abstract class BossControllerBase : EnemyControllerBase
 
     /// <summary>创建普攻状态(子类覆写:FirstBoss → BossAttackState;默认 null = 无普攻动画)</summary>
     public virtual IState CreateAttackState() => null;
+
+    /// <summary>
+    /// 玩家是否在 Boss 攻击范围内(子类覆写:FirstBoss → BossAttackRange 子物体实际视觉大小判定)。
+    /// 默认 false = 无攻击范围定义(基类不假设子类有范围子物体)。
+    /// BossAttackDirector 的「临点拉距」与 ChaseState 都走这里,不直连子类实现。
+    /// </summary>
+    public virtual bool IsPlayerInBossAttackRange() => false;
 
     /// <summary>创建受击状态(子类覆写:FirstBoss → BossHurtState;默认 null = 无受击动画,回退直接追击)</summary>
     public virtual IState CreateHurtState() => null;

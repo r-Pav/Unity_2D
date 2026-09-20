@@ -65,6 +65,17 @@ public class PlayerDashState : EntityState
             _ghostInterval = 0f;
 
         dash?.DoDash((PlayerController)owner);
+
+        // 冲刺拖尾光线:Dash 全程持续发射(dashTrailRenderer 未挂 = 空操作);
+        // 关闭不在这里、也不在结束分支 —— 统一交 OnExit,覆盖自然结束/受击打断全部出口。
+        dash?.BeginDashTrail();
+    }
+
+    /// <summary>退出即关拖尾发射(自然结束、受击打断、切场景都走这里);已有轨迹由 TrailRenderer 自行淡出。</summary>
+    public override void OnExit()
+    {
+        dash?.EndDashTrail();
+        base.OnExit();
     }
 
     public override void OnUpdate()

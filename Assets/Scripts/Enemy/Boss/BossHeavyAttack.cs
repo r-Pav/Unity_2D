@@ -35,6 +35,9 @@ public class BossHeavyAttack : MonoBehaviour
     public string groupName = "BossHeavy";
     [Tooltip("[v2] 现仅用于让位/等待超时兜底;闪现提前量 = judgeWindowBefore + warningLead")]
     public float prepareLead = 2f;
+    [Tooltip("重击瞬移(闪现)前额外的霸体准备秒数(默认 1 秒):进入此窗口即占用 Boss,技能点到达丢点、站桩不走、受击不掉硬直;" +
+             "技能已在施法中或技能点进入自己的霸体窗口时,重击让位(技能优先)")]
+    public float heavyGuardLead = 1f;
 
     [Header("闪现")]
     [Tooltip("闪现到 player 面前的距离")]
@@ -88,6 +91,7 @@ public class BossHeavyAttack : MonoBehaviour
 
     private bool _heavyActive;   // 重击施放中(霸体)
     private bool _cancelled;     // 被 player 攻击抵消(该次重击不造成伤害)
+    private bool _heavyPreparing;   // [2026-09-19] 重击预备霸体期(闪现前的准备窗口,已占用 Boss 但还没开始执行)
     private bool _finalized;     // 本次重击已走收尾出口(防重复收尾)
 
     // ── 位置冻结(重击期间) ──
@@ -107,7 +111,9 @@ public class BossHeavyAttack : MonoBehaviour
     // ── P3:伤害结算状态与背刺圈 ──
     private bool _damageSettled;              // 本次重击是否已过伤害判定帧(玩家侧判定有效期)
     private bool _hitDone;                    // [v2] 本次重击的出伤事件是否已结算(防动画事件重复)
-    private bool _ringShown;                  // 本次重击的背刺圈是否已出(每次重击只出一次)
+    private bool _ringShown;                  // 背刺圈是否已出(每次重击/每个标点只出一次)
+    private float _ringBeatTime = -1f;        // [P2] 常驻出圈记账:本圈的标点时刻(-1 = 本标点未消费)
+    private float _ringLastTrackTime = -1f;   // [P2] 常驻出圈上次看到的音乐时钟(检测换曲/重定位的时钟倒退)
     private bool _flashPointMissingLogged;    // 槽位为空只抱怨一次(防每圈刷日志)
 
     /// <summary>Animator 参数名 — 重击总开关(重击全程 true,收尾置 false 走编辑器的「任意状态 → Exit」过渡)</summary>
@@ -131,6 +137,13 @@ public class BossHeavyAttack : MonoBehaviour
     /// <summary>等待超时余量(秒):等待标点/让位/等动画结束事件的上限都 = prepareLead + 该值</summary>
     private const float WaitTimeoutMargin = 3f;
 
+    /// <summary>[P2] 常驻出圈的标点记账保留时长(秒):标点过去这么久之后(或待放点已换成别的点)清掉记账,
+    /// 允许下一个标点再出圈</summary>
+    private const float RingMemorySeconds = 0.5f;
+
+    /// <summary>[P2] 音乐时钟倒退判定阈值(秒):TrackTime 比上次小这么多 = 换曲/重定位/回绕,常驻记账作废</summary>
+    private const float RingClockRewindSeconds = 0.5f;
+
     /// <summary>临时日志统一标签(验收期用;saika 验收后可删)</summary>
     private const string LogTag = "[BossHeavy]";
 
@@ -139,6 +152,12 @@ public class BossHeavyAttack : MonoBehaviour
     //private AttackVFXAnchor _vfx;
 
     public bool IsActive => _heavyActive;
+
+    /// <summary>
+    /// 重击是否占用 Boss(施法中 或 闪现前的预备霸体期)。
+    /// BossControllerBase.IsHeavyActive 走这个:预备期同样让技能丢点、Chase 站桩、受击霸体生效。
+    /// </summary>
+    public bool IsBusy => _heavyActive || _heavyPreparing;
 
     /// <summary>
     /// P3:本次重击是否已过伤害判定帧(含被抵消/未命中 —— 判定帧一过就不再接受玩家侧卡点判定)。
@@ -174,16 +193,19 @@ public class BossHeavyAttack : MonoBehaviour
 
         // 协程被 Stop 后体内清理不会执行:这里兜底走一次收尾(幂等),
         // 防「禁用/销毁发生在重击中途」留下重力 0 + 朝向锁死的残留。
-        if (_heavyActive || _gravityFrozen) FinalizeHeavy();
+        if (IsBusy || _gravityFrozen) FinalizeHeavy();
 
         _heavyActive = false;
+        _heavyPreparing = false;
     }
 
     /// <summary>重击被 player 攻击命中:标记抵消(该次重击不造成伤害),Boss 照常掉血
-    /// [2026-09-15 v2.1] 同时立刻收起判定圈:玩家判定已成功,圈继续收缩会被看成"又被刺之后圈又走了一遍"</summary>
+    /// [2026-09-15 v2.1] 同时立刻收起判定圈:玩家判定已成功,圈继续收缩会被看成"又被刺之后圈又走了一遍"
+    /// [P2] 重击本体没在执行(技能让位期圈照出)时也收圈:常驻圈同样是判定圈,收完由 _ringBeatTime 记账
+    ///   保证同一标点不会再出一次(幂等:本标点没出过圈时 HideBackstabRing 是空操作)。</summary>
     public void NotifyHit()
     {
-        if (!_heavyActive) return;
+        if (!_heavyActive) { HideBackstabRing(); return; }
         _cancelled = true;
         HideBackstabRing();
     }
@@ -196,7 +218,7 @@ public class BossHeavyAttack : MonoBehaviour
     /// </summary>
     public void InterruptHeavy()
     {
-        if (!_heavyActive && !_gravityFrozen) return;   // 不在重击中:空操作
+        if (!IsBusy && !_gravityFrozen) return;   // 不在重击(含预备霸体期)/未冻结:空操作
         _cancelled = true;      // 双保险:即使出伤窗口还没走完也不再造成伤害
         FinalizeHeavy();
     }
@@ -258,24 +280,55 @@ public class BossHeavyAttack : MonoBehaviour
             float toNext = next >= 0f ? next - mgr.TrackTime : -1f;
 
             // [v2] 闪现提前量 = 判定窗口前段 + 预警秒数(闪现在前,蓄力只占末段)
-            if (toNext >= 0f && toNext <= judgeWindowBefore + warningLead)
+            // [2026-09-19] 再往前 heavyGuardLead 秒 = 重击预备霸体窗口(进入即占用 Boss,技能点到达丢点),
+            //   与技能侧的「技能点前 preCastGuardLead 秒霸体」对称:谁先进入自己的窗口谁赢,不再互相顶死。
+            float executeWindow = judgeWindowBefore + warningLead;
+            float guardWindow = executeWindow + Mathf.Max(0f, heavyGuardLead);
+
+            if (toNext >= 0f && toNext <= guardWindow)
             {
-                // 不打断技能:技能执行中重击让位,等本次标点过去再查下一个。
-                // 让位等待必须能退出:Boss 死亡 / 管理器丢失 / 超时(音乐换源 TrackTime 回绕时不至于死等)。
-                if (_slots != null && _slots.IsExecuting)
+                // 技能优先:技能已在施法中,或技能点已进入自己的霸体窗口(Boss.IsSkillCasting 覆盖两者)→ 重击让位,
+                // 等本次标点过去再查下一个。让位等待必须能退出:Boss 死亡 / 管理器丢失 / 超时。
+                if (_boss != null && _boss.IsSkillCasting)
                 {
-                    float deadline = Time.time + judgeWindowBefore + warningLead + WaitTimeoutMargin;
+                    _heavyPreparing = false;   // 让位:预备霸体一并撤掉,别占着技能
+                    float deadline = Time.time + guardWindow + WaitTimeoutMargin;
                     while (mgr != null && mgr.TrackTime < next)
                     {
                         if (_boss == null || _boss.IsDead) break;
                         if (Time.time > deadline) break;
+                        // [P2] 让位期照常出圈:让位从 guardWindow 前开始等,而圈要到 (标点 - ringLead) 前才该出,
+                        //   内层等待不调就永远不出圈。让位只跳过重击本体(不闪现/不蓄力),判定圈由常驻路径负责到底。
+                        TryUpdateRingStandalone(next, true);
                         yield return null;
                     }
                     continue;
                 }
+
+                // 预备霸体期:还没到闪现时刻 → 占用 Boss(技能丢点 / 站桩 / 受击霸体),站住等标点
+                if (toNext > executeWindow)
+                {
+                    if (!_heavyPreparing)
+                    {
+                        _heavyPreparing = true;
+                        Debug.Log($"{LogTag} 进入重击预备霸体(距标点 {toNext:F2}s),技能点到达将丢点");
+                    }
+                    if (_boss != null) _boss.moveInput = 0f;
+                    TryUpdateRingStandalone(next, false);   // 圈仍归 ExecuteHeavy 出(它负责本标点)
+                    yield return null;
+                    continue;
+                }
+
+                // 到执行窗口:撤预备标记,交给重击本体(它自己置 _heavyActive)
+                _heavyPreparing = false;
                 yield return StartCoroutine(ExecuteHeavy(next));
                 continue;
             }
+
+            // [P2] 常驻出圈:重击本体窗口之外(离标点还远 / 本圈已无点)只做圈的复位记账。
+            //   本体窗口内该标点的圈一律由 ExecuteHeavy 出 —— 两条路径各 Flash 一次 = 双驱动(历史「圈缩一点又重缩」根因)。
+            _heavyPreparing = false;
+            TryUpdateRingStandalone(next, false);
             yield return null;
         }
     }
@@ -296,6 +349,7 @@ public class BossHeavyAttack : MonoBehaviour
         _heavyEndNotified = false;
         _damageSettled = false;   // P3:新一轮重击的判定有效期重新打开
         _ringShown = false;       // P3:新一轮重击的背刺圈可以再出一次
+        _ringBeatTime = -1f;      // [P2] 圈记账交给本体这一轮(常驻路径在本体执行期不插手)
         _hitDone = false;         // [v2] 新一轮重击的出伤事件重新待触发
         ResolveChargeTiming();   // 蓄力动画时长反推(只做一次,结果缓存)
 
@@ -445,6 +499,8 @@ public class BossHeavyAttack : MonoBehaviour
         if (_finalized) return;
         _finalized = true;
 
+        _heavyPreparing = false;   // 预备霸体期也在收尾出口里复位
+
         ReleaseGravityFreeze();
 
         // IsHeavy=false → 走编辑器里「任意状态 → 退出(Exit)」那条过渡,动画复位。
@@ -487,6 +543,64 @@ public class BossHeavyAttack : MonoBehaviour
     // ============================================================
     // P3:背刺圈(挂在 Boss 身上的 BeatFlashPoint)
     // ============================================================
+
+    /// <summary>
+    /// [P2] 常驻出圈 —— 重击本体不执行时(技能让位期)也按标点出金色判定圈,时钟口径与 ExecuteHeavy 一致
+    /// (MusicPointManager.Instance.TrackTime),ringLead 同读挂点的 AimLeadSeconds。
+    ///
+    /// 归属(`heavyBodySkipped` 由调用点给出,两条路径天然互斥,不会同一标点出两次圈 = 双驱动):
+    /// · true  —— 技能让位:重击本体确定跳过本次标点(不闪现/不蓄力/不霸体),圈归本方法负责;
+    /// · false —— 主循环空档(toNext &gt; judgeWindowBefore + warningLead):本体窗口内的圈归 ExecuteHeavy,
+    ///            本方法只做复位记账,给下一个标点的出圈放行。
+    ///
+    /// next = 待放重击标点时刻(&lt; 0 = 本圈无点)。
+    /// </summary>
+    private void TryUpdateRingStandalone(float next, bool heavyBodySkipped)
+    {
+        if (_heavyActive) return;   // 互斥:本体执行期一律由 ExecuteHeavy 出圈(它内部自会收尾)
+
+        var mgr = MusicPointManager.Instance;
+        if (mgr == null) return;
+
+        // 上一次重击的「被抵消」标记只在本轮重击执行期内有意义(出伤判定与 ExecuteHeavy 的出圈都只在
+        // _heavyActive 时读它)。这里已确认 !_heavyActive → 清掉,否则「上一轮被玩家抵消 + 本轮技能让位」
+        // 会让常驻圈被永久拒掉。
+        _cancelled = false;
+
+        float ringLead = backstabRingPoint != null ? backstabRingPoint.AimLeadSeconds
+                                                  : Mathf.Max(0.05f, judgeWindowBefore);
+        float toNext = next - mgr.TrackTime;
+
+        // ── 时钟倒退(换曲 / 音乐重定位 / 回绕,以及本体执行期横跨了回绕点):本圈记账作废。
+        //    不清的话「本圈同名标点已消费」会一直挂着,新一圈的同一个标点永不出圈。
+        if (_ringLastTrackTime >= 0f && mgr.TrackTime < _ringLastTrackTime - RingClockRewindSeconds)
+        {
+            _ringShown = false;
+            _ringBeatTime = -1f;
+        }
+        _ringLastTrackTime = mgr.TrackTime;
+
+        // ── 复位:本标点已消费过(出过圈 / 被玩家判定收掉),且时钟已走过它 0.5 秒、或待放点已换成别的点
+        //    → 清掉记账,允许下一个标点出圈。
+        //    记账基准是 _ringBeatTime 而不是 _ringShown:HideBackstabRing 会提前把 _ringShown 置假,
+        //    只按 _ringShown 复位的话同一标点会立刻重新满足出圈条件 = 「圈又走一遍」。
+        if (_ringBeatTime >= 0f && (mgr.TrackTime > _ringBeatTime + RingMemorySeconds || next != _ringBeatTime))
+        {
+            _ringShown = false;
+            _ringBeatTime = -1f;
+        }
+
+        if (!heavyBodySkipped) return;   // 本体窗口内:出圈归 ExecuteHeavy(这里只做上面的复位记账)
+
+        // ── 出圈:本标点还没消费过,且距它 ≤ 环从起点缩到判定外环的用时。
+        //    toNext >= 0(标点还在未来):NextPointInGroup 在本圈标点都过完时会兜底返回末点,
+        //    不挡掉这个负差值的话每帧都会重新出圈。
+        if (_ringBeatTime < 0f && !_ringShown && !_cancelled && next >= 0f && toNext >= 0f && toNext <= ringLead)
+        {
+            ShowBackstabRing(toNext);
+            _ringBeatTime = next;
+        }
+    }
 
     /// <summary>
     /// 出 Boss 背刺圈 —— 对 Boss 身上挂点的 BeatFlashPoint 调 Flash(距该标点的剩余秒数, 当前曲的判定窗口时长)。

@@ -39,6 +39,16 @@ public class BossSkillData : ScriptableObject
     [Tooltip("音效 key(可选)")]
     public string sfxKey;
 
+    [Header("起手瞬移(P4,可选)")]
+    [Tooltip("起手瞬移标记:勾选后,本技能释放前先把 Boss 瞬移到玩家身边再起手(追踪方式 = 瞬移,与重击落点算法同口径:落点 = 玩家面朝方向 × 1.5,玩家该侧被实心墙/管道挡住则翻到另一侧)。瞬移期间技能霸体已生效(施法中 + P1 起手前霸体),玩家普攻打不进 Hurt。默认 false = 原地起手,行为与勾选前完全一致")]
+    public bool trackPlayerBeforeCast = false;
+
+    [Tooltip("瞬移「消失」表现(可选,留空则无表现):在 Boss 原位置生成,配合出现表现做出「消失—出现」的位移观感。仅在勾选 trackPlayerBeforeCast 时生效")]
+    public GameObject disappearVFXPrefab;
+
+    [Tooltip("瞬移「出现」表现(可选,留空则无表现):在落点(ForceSetPosition 钳制后的实际位置)生成。仅在勾选 trackPlayerBeforeCast 时生效")]
+    public GameObject appearVFXPrefab;
+
     /// <summary>
     /// 构造伤害结算信息(统一入口:伤害/击退/标签全部从 data 读)。
     /// faceDir.x 用于击退 x 镜像(朝左 = -1,朝右 = 1)。

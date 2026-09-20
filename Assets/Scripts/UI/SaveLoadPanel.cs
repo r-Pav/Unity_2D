@@ -71,6 +71,12 @@ public class SaveLoadPanel : MonoBehaviour, IPanel, ISlideClose
         Delete
     }
 
+    /// <summary>
+    /// 确认区是否打开中(覆盖存档 / 读取该存档 / 删除该存档确认)。
+    /// [2026-09-19] 供 PauseMenu 的「返回游戏」按钮判断:确认区是模态,按钮不穿透。
+    /// </summary>
+    public bool IsConfirmOpen => confirmArea != null && confirmArea.activeInHierarchy;
+
     private PendingAction _pendingAction = PendingAction.None;
     private int _pendingSlot = -1;
 

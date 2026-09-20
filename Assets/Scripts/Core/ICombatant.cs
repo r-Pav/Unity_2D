@@ -72,6 +72,12 @@ public struct DamageInfo
 
     /// <summary>true = 背刺终结技命中(PlayerCombat.ExecuteBackstab 置位):受击方播背刺受击 VFX(backstabHitVFX)。默认 false。</summary>
     public bool isBackstabFinisher;
+
+    /// <summary>本次命中是连段第几击(0 起,由攻击方写入):受击方按它给受击音升调(基准半音 + 递增 × hitStep)。默认 0 = 第一击 = 原调。</summary>
+    public int hitStep;
+
+    /// <summary>true = 这一击的受击音已由攻击方自行排程(背刺卡点:按键帧排到 dspTime):受击方命中帧不再重复播。默认 false。</summary>
+    public bool hurtSfxHandled;
 }
 
 /// <summary>

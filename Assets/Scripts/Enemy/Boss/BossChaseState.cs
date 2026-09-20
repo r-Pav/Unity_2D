@@ -3,7 +3,8 @@ using UnityEngine;
 /// <summary>
 /// Boss 追击状态 — 无 AI 检测矩形/视野判断(detectionWidth/Height 不参与)。
 /// 激活后一直朝玩家移动;玩家进入攻击范围子物体(BossAttackRange) → 停住 + 请求攻击。
-/// 攻击编排(BossAttackDirector)决定放技能还是普攻:技能执行中站桩等结束;普攻走攻击状态(动画播完回追击)。
+/// 攻击编排(BossAttackDirector)决定放技能还是普攻:技能执行中站桩等结束;普攻走攻击状态(动画播完回追击);
+/// 临近技能点(剩余时间不足一次完整普攻动画)时由 BossAttackDirector.TryHandleBackoff 接管这一帧的移动输入(后退拉距)。
 /// </summary>
 public class BossChaseState : EntityState
 {
@@ -35,6 +36,14 @@ public class BossChaseState : EntityState
         if (boss.IsAttacking)
         {
             boss.moveInput = 0f;
+            return;
+        }
+
+        // 临近技能点(剩余时间不足一次完整普攻动画)且玩家在范围内:停手 + 背离玩家后退一小段
+        // (到点由 BossAttackDirector.Update 释放技能;这里只负责这一帧的移动输入)
+        if (boss.AttackDirector != null && boss.AttackDirector.TryHandleBackoff())
+        {
+            boss.moveInput = boss.AttackDirector.BackoffMoveInput;
             return;
         }
 

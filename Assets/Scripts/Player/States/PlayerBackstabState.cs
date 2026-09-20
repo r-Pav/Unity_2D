@@ -789,7 +789,7 @@ public class PlayerBackstabState : EntityState
             // 背刺持续特效:进背刺动作播背刺槽(统一入口;退出 OnExit Stop)。
             // 槽子物体位置 saika 编辑器摆(attack_VFX 下 slot_backstab,相对玩家);空槽/未挂锚点 = 判空跳过不崩。
             // [2026-09-17 背刺目标锁定] 只有 validBackstab(真的打出去了)才播;空挥(无目标 / 隔墙不可达)不播特效。
-            _vfx?.PlayBackstab();
+            _vfx?.PlayBackstab(pointIndex);   // 刀序 → 背刺音效音高(随机和谐音程)
 
             // 节拍辅助(2026-09-17):踩准的确认音排在标点(拍点)上播,不等动画命中帧,音与音乐同拍落下。
             // 连音用本刀点时刻;非连音(自动重音路径)用当前 bar 拍点。只做非 Boss 目标(Boss 沿用命中帧立即播)。
@@ -797,7 +797,9 @@ public class PlayerBackstabState : EntityState
             if (!target.IsBoss && combat != null)
             {
                 float sfxPoint = pointTime >= 0f ? pointTime : (mgr != null ? mgr.AutoBarPointTime : -1f);
-                if (sfxPoint >= 0f) combat.PlayBackstabSfxScheduled(sfxPoint);
+                // 命中音(与背刺动作音效是两回事):素材/音量/音高都取被击中的 enemy,随机池只管背刺槽
+                if (sfxPoint >= 0f)
+                    combat.PlayBackstabSfxScheduled(target, sfxPoint, target.HurtSfxPitch(pointIndex));
             }
         }
         else

@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -42,7 +43,7 @@ public class AudioManager : MonoBehaviour
     public enum AudioGroup { Master, Bgm, Sfx }
 
     /// <summary>UI 音效类型(全局共用;None = 不播)</summary>
-    public enum UiSfxKind { None, Hover, Click, Close, Open }
+    public enum UiSfxKind { None, Hover, Click, Close, Open, Start }   // Start 加在末尾:枚举是序列化值,插中间会让已有配置错位
 
     [Header("音频源组(自动注册,可留空)")]
     [Tooltip("主音量源：全局 master 音量（UI/混音）")]
@@ -67,6 +68,11 @@ public class AudioManager : MonoBehaviour
     /// <summary>最近一次音量值(注册新源时应用,不重新读档)</summary>
     private float _masterVol = 1f;
     private float _bgmVol = 1f;
+
+    /// <summary>过渡期 BGM 淡变系数(0=静音 1=用户设置音量)。叠加在用户设置之上,不改用户设置本身;
+    /// 新注册的 BGM 源(过渡后新场景的播放器)注册即拿当前系数 → 加载期间保持静音,到点再渐入。</summary>
+    private float _bgmFadeMul = 1f;
+    private Coroutine _bgmFadeRoutine;
     private float _sfxVol = 1f;
 
     /// <summary>SFX 播放池(轮转取源,PlayOneShot 支持重叠)</summary>
@@ -111,9 +117,59 @@ public class AudioManager : MonoBehaviour
         _bgmVol = bgm;
         _sfxVol = sfx;
         ApplyVolume(masterSources, master);
-        ApplyVolume(bgmSources, bgm);
+        ApplyBgmVolume();   // = bgm × 过渡系数(见 FadeBgmMultiplier)
         ApplyVolume(sfxSources, sfx);
     }
+
+    /// <summary>
+    /// 过渡期 BGM 淡变(场景切换时用):把 BGM 组整体响度乘一个系数过渡到 targetMul(0 静音 / 1 恢复)。
+    /// 系数叠加在用户设置音量之上,不动用户设置;时长用 unscaledDeltaTime(过渡可能发生在 timeScale=0)。
+    /// 再次调用会打断上一次淡变。duration ≤ 0 时立即到位。
+    /// </summary>
+    public void FadeBgmMultiplier(float targetMul, float duration)
+    {
+        if (_bgmFadeRoutine != null)
+        {
+            StopCoroutine(_bgmFadeRoutine);
+            _bgmFadeRoutine = null;
+        }
+
+        if (duration <= 0f)
+        {
+            _bgmFadeMul = targetMul;
+            ApplyBgmVolume();
+            return;
+        }
+
+        _bgmFadeRoutine = StartCoroutine(BgmFadeRoutine(targetMul, duration));
+    }
+
+    private IEnumerator BgmFadeRoutine(float targetMul, float duration)
+    {
+        float start = _bgmFadeMul;
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            // 夹大帧:场景加载后首帧 unscaledDeltaTime 含整段加载耗时,不夹会一帧跳完整段淡变
+            elapsed += Mathf.Min(Time.unscaledDeltaTime, MaxFrameStep);
+            _bgmFadeMul = Mathf.Lerp(start, targetMul, Mathf.Clamp01(elapsed / duration));
+            ApplyBgmVolume();
+            yield return null;
+        }
+
+        _bgmFadeMul = targetMul;
+        ApplyBgmVolume();
+        _bgmFadeRoutine = null;
+    }
+
+    /// <summary>BGM 组音量应用点(唯一):用户设置音量 × 过渡淡变系数</summary>
+    private void ApplyBgmVolume()
+    {
+        ApplyVolume(bgmSources, _bgmVol * _bgmFadeMul);
+    }
+
+    /// <summary>单帧最大步进(秒):场景同步加载后首帧 deltaTime 含加载耗时,不夹住会把整段渐变一帧跳完</summary>
+    private const float MaxFrameStep = 0.1f;
 
     /// <summary>当前 BGM 音量(切换协程缩放基准,避免覆盖用户设置)</summary>
     public float BgmVolume => _bgmVol;
@@ -167,16 +223,40 @@ public class AudioManager : MonoBehaviour
     /// 播放一次性音效(clip 空 = 静默跳过,不警告)。轮转取源 + PlayOneShot,快速连击时多声可重叠不互相打断。
     /// volume 为 0~1 相对缩放,最终响度 = SFX 音量 × volume。
     /// </summary>
-    public void PlaySfx(AudioClip clip, float volume = 1f)
+    public void PlaySfx(AudioClip clip, float volume = 1f, float pitch = 1f)
     {
         if (clip == null) return;
         if (_sfxPool == null || _sfxPool.Length == 0) return;
 
-        var src = _sfxPool[_sfxNext];
-        _sfxNext = (_sfxNext + 1) % _sfxPool.Length;
+        // 取源优先空闲源:pitch 是 AudioSource 级属性,复用正在发声的源会把上一发一起改调(连击变调会串音)。
+        // 全忙时退回轮转取源(与改前的轮转行为一致)。
+        AudioSource src = null;
+        for (int i = 0; i < _sfxPool.Length; i++)
+        {
+            int idx = (_sfxNext + i) % _sfxPool.Length;
+            if (_sfxPool[idx] != null && !_sfxPool[idx].isPlaying)
+            {
+                src = _sfxPool[idx];
+                _sfxNext = (idx + 1) % _sfxPool.Length;
+                break;
+            }
+        }
+        if (src == null)
+        {
+            src = _sfxPool[_sfxNext];
+            _sfxNext = (_sfxNext + 1) % _sfxPool.Length;
+        }
         if (src == null) return;
+
+        src.pitch = Mathf.Clamp(pitch, 0.01f, 3f);
         src.PlayOneShot(clip, Mathf.Clamp01(volume));
     }
+
+    /// <summary>
+    /// 半音偏移 → AudioSource.pitch 倍率(2^(n/12)):0 = 原调,4 = 大三度(1.2599),7 = 纯五度(1.4983),12 = 八度(2.0)。
+    /// pitch 是重采样,音高升高的同时音效时长按 1/倍率缩短(0.3s 的短打击音听不出问题)。
+    /// </summary>
+    public static float PitchFromSemitone(int semitone) => Mathf.Pow(2f, semitone / 12f);
 
     /// <summary>
     /// 排程播放一次性音效(卡点用):把音排在指定的 dspTime 上播,与音乐走同一个音频时钟,不受逻辑帧率影响。
@@ -185,7 +265,7 @@ public class AudioManager : MonoBehaviour
     /// 取源顺序:空闲源 → 全忙时轮转顶掉最早的排程;clip 空 / 池空 = 静默跳过。
     /// 注意:排程音占住源直到播完,与 PlaySfx 的一次性池分开(互不打断)。
     /// </summary>
-    public void PlaySfxScheduled(AudioClip clip, float volume, double dspTime)
+    public void PlaySfxScheduled(AudioClip clip, float volume, double dspTime, float pitch = 1f)
     {
         if (clip == null) return;
         if (_scheduledSfxPool == null || _scheduledSfxPool.Length == 0) return;
@@ -205,6 +285,7 @@ public class AudioManager : MonoBehaviour
 
         src.clip = clip;
         src.volume = Mathf.Clamp01(_sfxVol * Mathf.Clamp01(volume));   // 排程无 volumeScale 参数,相对音量在这里乘进去
+        src.pitch = Mathf.Clamp(pitch, 0.01f, 3f);                      // 连音背刺按刀序升调(do/mi/sol)
         src.PlayScheduled(dspTime);
     }
 
@@ -236,6 +317,7 @@ public class AudioManager : MonoBehaviour
             UiSfxKind.Click => library.uiClick,
             UiSfxKind.Close => library.uiClose,
             UiSfxKind.Open => library.uiOpen,
+            UiSfxKind.Start => library.uiStart,
             _ => null
         };
         PlaySfx(clip, library.uiVolume);
@@ -275,7 +357,7 @@ public class AudioManager : MonoBehaviour
         switch (group)
         {
             case AudioGroup.Master: return _masterVol;
-            case AudioGroup.Bgm: return _bgmVol;
+            case AudioGroup.Bgm: return _bgmVol * _bgmFadeMul;   // 新注册的 BGM 源同样带过渡系数
             case AudioGroup.Sfx: return _sfxVol;
             default: return 1f;
         }

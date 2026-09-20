@@ -23,6 +23,17 @@ public class BossAnimationRelay : MonoBehaviour
             atk.OnAnimEnd();
     }
 
+    /// <summary>
+    /// Attack 片段命中帧事件 — 挂在 Attack.anim 的命中帧上(与 OnBossAttackEnd 同一套转发路径) →
+    /// 转发给 BossAttackState.OnHitFrame 结算普攻伤害。
+    /// 未挂该事件时旧行为不变:BossAttackState.OnUpdate 的 normalizedTime 进度兜底仍会出伤。
+    /// </summary>
+    public void OnBossAttackHitFrame()
+    {
+        if (_boss != null && _boss.Fsm.CurrentState is BossAttackState atk)
+            atk.OnHitFrame();
+    }
+
     /// <summary>技能命中帧事件 — 转发给当前技能执行器(经 BossSkillSlots 路由)。技能动画的事件帧调这里。</summary>
     public void OnBossSkillHitFrame()
     {

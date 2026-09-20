@@ -46,6 +46,12 @@ public class AttackVFXAnchor : MonoBehaviour
 
         [Tooltip("挥刀音效相对音量(最终响度 = 设置面板 SFX 音量 × 此值)")]
         [Range(0f, 1f)] public float sfxVolume = 1f;
+
+        [Tooltip("挥刀音基准变调(半音,滑动条):0 = 原调,4 = 大三度,7 = 纯五度,12 = 八度")]
+        [Range(-12, 12)] public int sfxSemitone = 0;
+
+        [Tooltip("本槽连击每段递增半音(第 2 段起):0 = 每段同音,4 = do/mi/升sol")]
+        [Range(0, 12)] public int sfxRisePerStep = 0;
     }
 
     [Header("通用槽(Show 按名字 — Boss/敌人用,玩家不填)")]
@@ -64,6 +70,16 @@ public class AttackVFXAnchor : MonoBehaviour
 
     [Header("玩家 · 被刺(PlayBackstab)")]
     public ComboSlot backstab = new ComboSlot();
+
+    [Header("玩家 · 背刺命中音的音高(素材与音量在敌人身上,音高在攻击者侧调)")]
+    [Tooltip("勾上 = 背刺每一刀的音高从下面的和谐音程池里随机取一个(相邻两刀避开同音);不勾 = 背刺槽的基准 + 每段递增滑条")]
+    public bool backstabRandomHarmony = false;
+
+    [Tooltip("背刺和谐音程池(半音偏移,加在背刺槽基准上):0=do 3=降mi 4=mi 5=fa 7=sol 9=la 12=do'")]
+    public int[] backstabHarmonySemitones = { 0, 4, 7, 12 };
+
+    /// <summary>上一刀抽到的和谐音程(运行时,避开相邻重复用;不序列化)</summary>
+    private int _lastBackstabHarmony = int.MinValue;
 
     [Header("玩家 · 地图元素冲刺(PlayMapDash)")]
     public ComboSlot mapDash = new ComboSlot();
@@ -91,16 +107,17 @@ public class AttackVFXAnchor : MonoBehaviour
     // ============================================================
 
     /// <summary>地面连击段特效(1~3 → ground1/2/3;越界自动钳)</summary>
-    public void PlayGround(int comboIndex) => PlayComboSlot(GetSlot(ground1, ground2, ground3, comboIndex));
+    public void PlayGround(int comboIndex) => PlayComboSlot(GetSlot(ground1, ground2, ground3, comboIndex), comboIndex);
 
     /// <summary>空中连击段特效(1~3 → air1/2/3;越界自动钳)</summary>
-    public void PlayAir(int comboIndex) => PlayComboSlot(GetSlot(air1, air2, air3, comboIndex));
+    public void PlayAir(int comboIndex) => PlayComboSlot(GetSlot(air1, air2, air3, comboIndex), comboIndex);
 
     /// <summary>背刺特效(→ backstab)</summary>
-    public void PlayBackstab() => PlayComboSlot(backstab);
+    /// <summary>背刺动作音效(→ backstab 槽)。hitStep = 组内刀序(0 起),音高走 BackstabSfxPitch(随机和谐音程 / 基准 + 递增)</summary>
+    public void PlayBackstab(int hitStep = 0) => PlayComboSlot(backstab, 0, BackstabSfxPitch(hitStep));
 
     /// <summary>地图元素冲刺特效(→ mapDash)</summary>
-    public void PlayMapDash() => PlayComboSlot(mapDash);
+    public void PlayMapDash() => PlayComboSlot(mapDash, 0);
 
     /// <summary>攻击结束:收起当前组(与 Hide 同义,语义化别名)</summary>
     public void Stop() => Hide();
@@ -115,8 +132,43 @@ public class AttackVFXAnchor : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// 挥刀音音高倍率 = 本槽基准半音(sfxSemitone) + 每段递增(sfxRisePerStep) × (段号 - 1),第 1 段不加递增。
+    /// 段号 ≤ 0(背刺/冲刺)= 只取本槽基准;基准 0 + 递增 4 → 第1段 do / 第2段 mi / 第3段 升sol。
+    /// </summary>
+    private float ComboPitch(ComboSlot slot, int comboIndex)
+    {
+        int step = comboIndex > 1 ? comboIndex - 1 : 0;
+        return AudioManager.PitchFromSemitone(slot.sfxSemitone + slot.sfxRisePerStep * step);
+    }
+
+    /// <summary>
+    /// 背刺那一刀的命中音音高倍率(命中音素材/音量仍在敌人身上,音高在攻击者侧调)。
+    /// 勾了随机 → 从 backstabHarmonySemitones 池里随机取一个和谐音程加在背刺槽基准上,相邻两刀避开同音
+    /// (抽到与上一刀相同的值就重抽,最多 8 次;池里只有一个值或全是同一个值时无从避开);
+    /// 没勾 → 背刺槽基准 + 每段递增 × 刀序(hitStep 为组内刀序,0 起,第 1 刀不加递增)。
+    /// </summary>
+    public float BackstabSfxPitch(int hitStep)
+    {
+        int baseSemi = backstab != null ? backstab.sfxSemitone : 0;
+
+        if (backstabRandomHarmony && backstabHarmonySemitones != null && backstabHarmonySemitones.Length > 0)
+        {
+            int len = backstabHarmonySemitones.Length;
+            int semi = backstabHarmonySemitones[Random.Range(0, len)];
+            for (int i = 0; i < 8 && semi == _lastBackstabHarmony; i++)
+                semi = backstabHarmonySemitones[Random.Range(0, len)];   // 避开上一刀
+            _lastBackstabHarmony = semi;
+            return AudioManager.PitchFromSemitone(baseSemi + semi);
+        }
+
+        int step = hitStep > 0 ? hitStep : 0;
+        int rise = backstab != null ? backstab.sfxRisePerStep : 0;
+        return AudioManager.PitchFromSemitone(baseSemi + rise * step);
+    }
+
     /// <summary>播放一个玩家分组槽(VFX / 音效各自判空,两个都空则静默跳过;自动收上一组)</summary>
-    private void PlayComboSlot(ComboSlot slot)
+    private void PlayComboSlot(ComboSlot slot, int comboIndex, float? pitchOverride = null)
     {
         if (slot == null) return;
 
@@ -127,8 +179,9 @@ public class AttackVFXAnchor : MonoBehaviour
         Hide();  // 收上一组(与是否配 VFX 无关,无 VFX 时内部空转)
 
         // 挥刀音效立即播(showDelay 只作用于 VFX 延迟生成,不影响音效手感)
+        // comboIndex = 连击段号(1 起)→ 半音偏移 → pitch(段1 原调 / 段2 大三度 / 段3 纯五度);0 = 不变调
         if (hasSfx)
-            AudioManager.Instance?.PlaySfx(slot.sfx, slot.sfxVolume);
+            AudioManager.Instance?.PlaySfx(slot.sfx, slot.sfxVolume, pitchOverride ?? ComboPitch(slot, comboIndex));
 
         if (!hasVfx) return;   // 只配了音效:不动特效,也不启动特效超时保险
 

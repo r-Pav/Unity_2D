@@ -139,6 +139,102 @@ public static class ParticleFXGenerator
         trails.dieWithParticles = true;
     }
 
+    [MenuItem("Tools/粒子特效/Player/冲刺拖尾光")]
+    public static void CreateDashTrailLight()
+    {
+        string path = OutputDir + "/DashTrailLight_Template.prefab";
+
+        if (!AssetDatabase.IsValidFolder(OutputDir))
+        {
+            Debug.LogError("[ParticleFXGenerator] 输出目录不存在:" + OutputDir);
+            return;
+        }
+        // 不 DeleteAsset:已存在时覆盖保存(保 guid,场景已拖的槽位引用不断)
+
+        GameObject root = new GameObject("DashTrailLight_Template");
+        ConfigureDashTrailLight(root);
+
+        GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, path);
+        Object.DestroyImmediate(root);
+
+        if (prefab != null)
+        {
+            EditorGUIUtility.PingObject(prefab);
+            Selection.activeObject = prefab;
+            Debug.Log("[ParticleFXGenerator] 已生成:" + path, prefab);
+        }
+        else
+        {
+            Debug.LogError("[ParticleFXGenerator] prefab 保存失败:" + path);
+        }
+    }
+
+    /// <summary>
+    /// 冲刺拖尾光:冲刺瞬间甩出去的一道光线,约 0.3s 收完(单次,不持续喷)。
+    /// 只用一张 line_sharp 光条贴图 + Additive 材质:粒子本体是横向光条,
+    /// 每粒子 Trails 把光条拉成"头宽尾收窄"的光尾,合成整条拖尾光线,不做多层叠加。
+    /// Cone 默认沿本地 +Z,绕 Y 转 90° 后指向 +X(2D 相机看 XY 平面)。
+    /// World 空间:光甩在原地,角色继续冲刺不会把光拖走;想让光贴着角色走改成 Local 一行。
+    /// 用法:冲刺触发瞬间在角色身后 Instantiate,角色朝左时把 prefab 绕 Y 转 180°。
+    /// </summary>
+    private static void ConfigureDashTrailLight(GameObject root)
+    {
+        ParticleSystem ps = CreateChildParticle(root.transform, "Streak",
+            "Assets/Epic Toon FX/Materials/Misc/line_sharp.mat");
+
+        ParticleSystem.MainModule main = ps.main;
+        main.duration = 0.5f;
+        main.loop = false;
+        main.playOnAwake = true;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.22f, 0.32f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(14f, 20f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.35f, 0.5f);
+        main.startColor = new Color(1f, 0.9f, 0.65f);
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.gravityModifier = 0f;
+        main.maxParticles = 20;
+
+        // 一次性 burst 3 条,不持续喷
+        ParticleSystem.EmissionModule emission = ps.emission;
+        emission.enabled = true;
+        emission.rateOverTime = new ParticleSystem.MinMaxCurve(0f);
+        emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 3) });
+
+        // 沿 +X 甩出,4° 小锥角让 3 条光略微错开
+        ParticleSystem.ShapeModule shape = ps.shape;
+        shape.enabled = true;
+        shape.shapeType = ParticleSystemShapeType.Cone;
+        shape.radius = 0.05f;
+        shape.angle = 4f;
+        shape.rotation = new Vector3(0f, 90f, 0f);
+
+        // 光条本体渐隐:头部亮白暖金 → 尾部透明
+        ParticleSystem.ColorOverLifetimeModule color = ps.colorOverLifetime;
+        color.enabled = true;
+        color.color = new ParticleSystem.MinMaxGradient(MakeFadeGradient(new Color(1f, 0.95f, 0.8f)));
+
+        // 本体轻微收小,头部最实
+        ParticleSystem.SizeOverLifetimeModule size = ps.sizeOverLifetime;
+        size.enabled = true;
+        size.size = new ParticleSystem.MinMaxCurve(1f, new AnimationCurve(
+            new Keyframe(0f, 1f), new Keyframe(1f, 0.55f)));
+
+        // 每粒子拖尾 = 光尾:头宽 0.35 → 尾 0.05(收窄但不收尖)
+        ParticleSystem.TrailModule trails = ps.trails;
+        trails.enabled = true;
+        trails.mode = ParticleSystemTrailMode.PerParticle;
+        trails.lifetime = 0.18f;
+        trails.minVertexDistance = 0.02f;
+        trails.widthOverTrail = new ParticleSystem.MinMaxCurve(1f, new AnimationCurve(
+            new Keyframe(0f, 0.35f), new Keyframe(1f, 0.05f)));
+        trails.colorOverTrail = new ParticleSystem.MinMaxGradient(MakeFadeGradient(new Color(1f, 0.9f, 0.7f)));
+        trails.dieWithParticles = true;
+
+        // 拖尾同样吃光条材质,不设的话拖尾不显示
+        ParticleSystemRenderer rend = ps.GetComponent<ParticleSystemRenderer>();
+        rend.trailMaterial = rend.sharedMaterial;
+    }
+
     [MenuItem("Tools/粒子特效/Player/背刺爆发(短促)")]
     public static void CreateBackstabBurst()
     {
