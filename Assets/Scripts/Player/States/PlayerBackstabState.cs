@@ -73,6 +73,10 @@ public class PlayerBackstabState : EntityState
     /// OnEnter 消费后立刻置 null —— 不留到下一刀 / 下一个窗口(防跨刀残留)</summary>
     private EnemyControllerBase _explicitTarget;
 
+    /// <summary>本次进入是连音路径(true)还是自动重音/单点路径(false)—— 由 PlayerController.TryEnterBackstab
+    /// 在 ChangeState 之前写入。背刺挥刀音按它分支:连音 = 组内按刀序递增;单点 = 循环取单音(1,2,3;1,2,3)</summary>
+    private bool _chainMode;
+
     /// <summary>圈(提示)侧目标来源(EnemyBeatIndicator 上「出圈那一刻锁定」的敌人);
     /// 懒缓存:OnEnter 未缓存时 owner.GetComponent 取一次,取不到即 null(③级判空跳过,不报错)</summary>
     private EnemyBeatIndicator _beatIndicator;
@@ -192,6 +196,9 @@ public class PlayerBackstabState : EntityState
         _comboHitAge = -1f;
         _ladderStep = 0;     // 连音阶梯:每次进入状态重置(上一组被打断时也不残留)
         _strikeSeq = 0;
+        _ladderCount = 0;    // 均分份数/起终点也要清:残留旧值会让"新组阶梯还没建"时按旧坐标系推进敌人
+        _ladderStart = Vector2.zero;
+        _ladderEnd = Vector2.zero;
 
         // 显式目标(2026-09-17 背刺目标锁定,Boss 重击判定链):入口 ChangeState 前写入,
         // 这里读出来立刻置空 —— 一刀级,绝不残留到下一刀 / 下一个窗口。
@@ -213,7 +220,12 @@ public class PlayerBackstabState : EntityState
             _beatIndicator = owner.GetComponent<EnemyBeatIndicator>();
 
         var mgr = MusicPointManager.Instance;
-        int pointIndex = ResolveStrikePointIndex(mgr);      // -1 = 非连音路径(自动重音/无连音组)
+        // 单点路径(入口传 chainMode=false:自动重音窗口 / Boss 判定链)一律按非连音处理,不解析连音点序号:
+        // 单点背刺踩在连音组预告期里时,解析的兜底分支会给回 0,这一刀就会被连打/阶梯逻辑当成"本组第 1 刀"
+        // → 组点被误消费 + 玩家被阶梯侧面瞬移带走(2026-09-20 复现"被刺之后 player 被传到很远的地方")。
+        int pointIndex = _chainMode ? ResolveStrikePointIndex(mgr) : -1;
+        // [2026-09-20 清理临时调试] 诊断日志(需要时把下一行开头的 // 去掉)
+        // Debug.Log($"[背刺诊断] 进入 chainMode={_chainMode} pointIndex={pointIndex} hasChain={(mgr != null && mgr.HasChain)} chainLen={(mgr != null ? mgr.CurrentChainPoints.Length : -1)} inChainWin={(mgr != null && mgr.IsInChainWindow)} inAutoWin={(mgr != null && mgr.IsAutoBarWindow)} track={(mgr != null ? mgr.TrackTime : -1f):F2}");
         ExecuteStrike(ResolveStrikeTarget(explicitTarget, pointIndex, mgr), pointIndex, mgr);
     }
 
@@ -242,6 +254,12 @@ public class PlayerBackstabState : EntityState
     public void SetExplicitTarget(EnemyControllerBase target)
     {
         _explicitTarget = target;
+    }
+
+    /// <summary>写入本次进入的路径(连音 / 单点);PlayerController.TryEnterBackstab 在 ChangeState 之前调用</summary>
+    public void SetChainMode(bool chainMode)
+    {
+        _chainMode = chainMode;
     }
 
     public override void OnUpdate()
@@ -522,7 +540,11 @@ public class PlayerBackstabState : EntityState
         }
 
         Vector2 v = _comboTarget.BodyVelocity;
-        float g = Mathf.Abs(Physics2D.gravity.y) * _comboTarget.BodyGravityScale;
+        // 用不夹下限的重力原值:悬停中(rb.gravityScale = 0)时 BodyGravityScale 会给到 0.01 下限,
+        // vy/g 直接放大 100 倍 → 顶点跑到两百多米外(2026-09-20 实测 apex=(254,247))
+        float gScale = _comboTarget.BodyGravityScaleRaw;
+        if (gScale <= 0.01f) gScale = 1f;
+        float g = Mathf.Abs(Physics2D.gravity.y) * gScale;
         Vector2 p0 = _comboTarget.BodyPosition;
         float riseV = Mathf.Max(0f, v.y);
 
@@ -535,6 +557,7 @@ public class PlayerBackstabState : EntityState
         _ladderEnd = apex;
         _ladderCount = Mathf.Max(1, _chainCount);
         _ladderStep = 0;
+        // Debug.Log($"[背刺诊断] 建阶梯 p0={p0} v={v} g={g:F3} 敌人gScale={_comboTarget.BodyGravityScale:F3} apex={apex} count={_ladderCount} seq={_strikeSeq}");
         SetLadderStep(_strikeSeq > 0 ? _strikeSeq : 1);   // 建好就立刻站到"当前这一刀对应的阶"(命中晚于第二刀时直接跳到第 2 阶)
     }
 
@@ -548,6 +571,7 @@ public class PlayerBackstabState : EntityState
         if (!TryResolveComboLanding(_comboTarget, out Vector2 dest)) return;   // 侧面被墙/管道堵 → 这次不传,等下一刀
         var pcSide = (PlayerController)owner;
         pcSide.UpdateFacing(_comboTarget.BodyPosition.x >= dest.x ? 1f : -1f);   // 面向敌人(与 ExecuteStrike 同口径)
+        // Debug.Log($"[背刺诊断] 玩家瞬移 from={(Vector2)owner.transform.position} to={dest} 敌人={_comboTarget.BodyPosition}");
         teleport.TeleportTo(dest);
     }
 
@@ -559,6 +583,7 @@ public class PlayerBackstabState : EntityState
     {
         if (_comboTarget == null || _ladderCount <= 0) return;
         int s = Mathf.Clamp(step, 1, _ladderCount);
+        // Debug.Log($"[背刺诊断] 定阶 请求={step} 实际={s} 当前={_ladderStep} count={_ladderCount} start={_ladderStart} end={_ladderEnd}");
         if (s <= _ladderStep) return;
         _ladderStep = s;
         ApplyLadderStep();
@@ -573,6 +598,7 @@ public class PlayerBackstabState : EntityState
         if (_comboTarget == null || _ladderCount <= 0) return;
         float t = Mathf.Clamp01(_ladderStep / (float)_ladderCount);
         Vector2 p = Vector2.Lerp(_ladderStart, _ladderEnd, t);
+        // Debug.Log($"[背刺诊断] 敌人瞬移 t={t:F2} p={p} 原={_comboTarget.BodyPosition} free={_comboTarget.IsPositionFree(p)}");
         if (!_comboTarget.IsPositionFree(p)) return;
         _comboTarget.SnapComboTo(p);
     }
@@ -644,6 +670,9 @@ public class PlayerBackstabState : EntityState
     private void ExecuteStrike(EnemyControllerBase target, int pointIndex, MusicPointManager mgr)
     {
         _stateTimer = 0f;   // 每刀重置:超时兜底变成"单刀级"(连音组跨多刀不被第一刀的计时掐断)
+
+        // [2026-09-20 清理临时调试] 诊断日志(需要时把下一行开头的 // 去掉)
+        // Debug.Log($"[背刺诊断] 出刀 pointIndex={pointIndex} target={(target != null ? target.name : "null")} arming={_comboArming} seq={_strikeSeq} step={_ladderStep} count={_chainCount} 玩家={(Vector2)owner.transform.position}");
 
         // ── 本刀快照:点时刻 + 组身份(非连音路径保持原样)──
         float pointTime = -1f;
@@ -730,6 +759,7 @@ public class PlayerBackstabState : EntityState
         // 只在"本组确实还有后续刀"时启用(连音组长度 > 1):单点组 / 非连音路径没有后续刀,
         // 开了只会把普通背刺的击飞中途掐断(2026-09-17 复现"普通的背刺也不击飞了")。
         if (validBackstab && target != null && !ReferenceEquals(_comboTarget, target)
+            && pointIndex >= 0            // 只有连音刀才启动连打定格/阶梯:单点背刺启动会被阶梯瞬移到很远的阶点
             && mgr != null && mgr.HasChain && mgr.CurrentChainPoints.Length > 1)
         {
             _comboTarget?.EndComboHold();
@@ -742,6 +772,7 @@ public class PlayerBackstabState : EntityState
             _strikeSeq = 1;        // 本组第 1 刀
             _chainCount = mgr.CurrentChainPoints.Length;   // 阶梯均分份数 = 本组点数
             HoldPlayerGravity();   // 连打:玩家要跟着目标的高度走(落点在目标旁边,不能掉回地面)
+            // Debug.Log($"[背刺诊断] 启动连打 target={target.name} 组点数={_chainCount} 玩家={(Vector2)owner.transform.position}");
         }
 
         _target = target;   // 隔墙/无目标已被置空 → 本刀记为空挥(命中帧判空跳过)
@@ -789,7 +820,10 @@ public class PlayerBackstabState : EntityState
             // 背刺持续特效:进背刺动作播背刺槽(统一入口;退出 OnExit Stop)。
             // 槽子物体位置 saika 编辑器摆(attack_VFX 下 slot_backstab,相对玩家);空槽/未挂锚点 = 判空跳过不崩。
             // [2026-09-17 背刺目标锁定] 只有 validBackstab(真的打出去了)才播;空挥(无目标 / 隔墙不可达)不播特效。
-            _vfx?.PlayBackstab(pointIndex);   // 刀序 → 背刺音效音高(随机和谐音程)
+            // 背刺挥刀音音高(节拍辅助):连音 → 组内按刀序递增;单点(自动重音/Boss 判定链)→ 循环取单音。
+            // 路径由入口定死(_chainMode),不拿点序号推断(单点背刺落在连音组预告期里时点序号会给 0 → 音高永远第 1 个音)。
+            if (_chainMode) _vfx?.PlayBackstab(pointIndex >= 0 ? pointIndex : 0);
+            else _vfx?.PlayBackstabSingle();
 
             // 节拍辅助(2026-09-17):踩准的确认音排在标点(拍点)上播,不等动画命中帧,音与音乐同拍落下。
             // 连音用本刀点时刻;非连音(自动重音路径)用当前 bar 拍点。只做非 Boss 目标(Boss 沿用命中帧立即播)。
@@ -961,6 +995,22 @@ public class PlayerBackstabState : EntityState
         if (!float.IsNaN(_chainFirstPoint) && Mathf.Abs(chainPts[0] - _chainFirstPoint) < TimeEpsilon) return;
         _chainFirstPoint = chainPts[0];
         _stabCount.Clear();
+        _vfx?.BeginBackstabPitchSet();   // 每个连音组抽一次挥刀音高组(按曲拍数选批,组内按刀序递增;命中音不参与)
+
+        // 连打定格/阶梯必须跟着换组一起清:同一次状态里连打两组时,靶子若还是同一个敌人,
+        // "目标变了才重建阶梯"的判定会整段跳过,而新组第一刀的命中帧又可能晚于第二刀 ——
+        // 中间这一刀就会拿上一组的阶梯起终点把敌人瞬移过去(2026-09-20 复现"第二组连音把玩家传到很远的地方")。
+        // 清靶子前先解定格:别把敌人留在悬停(重力已被关)状态。
+        _comboTarget?.EndComboHold();
+        _comboTarget = null;
+        _comboArming = false;
+        _comboFlying = false;
+        _comboHitAge = -1f;
+        _ladderStep = 0;
+        _strikeSeq = 0;
+        _ladderCount = 0;
+        _ladderStart = Vector2.zero;
+        _ladderEnd = Vector2.zero;
     }
 
     /// <summary>当前是否仍是本状态绑定过的那个连音组(组结束后 pts 为空 / 切到下一组 → false)</summary>

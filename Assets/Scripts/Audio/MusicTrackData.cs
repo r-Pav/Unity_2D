@@ -50,6 +50,11 @@ public class MusicTrackData : ScriptableObject
              "配 PlayerBackstab 的曲须把 barIntervalSeconds 设为 0")]
     public MusicPointGroup[] pointGroups;
 
+    [Header("连音(每小节拍数)")]
+    [Tooltip("每小节拍数:3 = 3/4 → 连音的挥刀音取三连音音高批;4 = 4/4 → 取四连音批。" +
+             "未填或其它值一律按 4(代码内置两批,不会没音高)")]
+    public int beatsPerBar = 4;
+
     [Header("连音组(连音背刺;标点之上一层,手工标)")]
     [Tooltip("手工连音组:每项 = 一组连音(组内时刻升序,各组按首点递增、不要交错)。" +
              "组内点自动并入背刺标点集合(不用在 PlayerBackstab 里重复标);踩中组内任意一点后," +

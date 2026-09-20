@@ -278,6 +278,8 @@ public class AudioManager : MonoBehaviour
         }
         if (src == null)
         {
+            // [2026-09-20 清理临时调试] 池满时在这里顶掉最早一发;要看有没有吞音,把下面一行打开
+            //Debug.Log($"[音效排程诊断] 排程池 {_scheduledSfxPool.Length} 源全忙:顶掉槽 {_scheduledNext + 1}");
             src = _scheduledSfxPool[_scheduledNext];
             _scheduledNext = (_scheduledNext + 1) % _scheduledSfxPool.Length;
         }

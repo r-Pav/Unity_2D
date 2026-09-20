@@ -339,6 +339,10 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     /// <summary>刚体当前重力倍率(连打阶梯算顶点用;至少 0.01 防除零)</summary>
     public float BodyGravityScale => rb != null ? Mathf.Max(0.01f, rb.gravityScale) : 1f;
 
+    /// <summary>敌人当前重力倍率原值(不夹下限;0 = 重力被关,如连打悬停 SnapComboTo / FreezeComboAtApex)。
+    /// 算击飞顶点必须用这个:BodyGravityScale 夹了 0.01 下限,拿它当"悬停时还有 0.01 重力"会把顶点放大上百倍</summary>
+    public float BodyGravityScaleRaw => rb != null ? rb.gravityScale : 1f;
+
     /// <summary>
     /// 该点能不能站住(探针圆不与墙/地形层重叠)。探针半径口径与 ForceSetPosition 的落点钳制一致。
     /// 连打阶梯推点时用:某一阶落在墙/管道里就不推,停在上一阶。

@@ -70537,14 +70537,12 @@ MonoBehaviour:
     sfxSemitone: 0
     sfxRisePerStep: 0
   backstab:
-    prefab: {fileID: 8533643241398389679, guid: 6122a3bda6ee348499ca89e583f62389, type: 3}
+    prefab: {fileID: 5173002791888551807, guid: 9be62b93ea853b946bbd5a07b1a2470e, type: 3}
     showDelay: 0
     sfx: {fileID: 8300000, guid: b70475e3ea3ae8944a1f4ac77db3edf4, type: 3}
     sfxVolume: 0.815
     sfxSemitone: 0
     sfxRisePerStep: 0
-  backstabRandomHarmony: 1
-  backstabHarmonySemitones: 000000000400000005000000070000000c000000
   mapDash:
     prefab: {fileID: 8533643241398389679, guid: 6122a3bda6ee348499ca89e583f62389, type: 3}
     showDelay: 0

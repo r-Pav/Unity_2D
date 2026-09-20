@@ -731,6 +731,12 @@ public class PlayerController : PlayerCharacterBase
         var mgr = MusicPointManager.Instance;
         if (mgr == null || mgr.CurrentTrack == null) return;
 
+        // [2026-09-20 清理临时调试] F 键入口快照(要看按 F 走哪条分支时,把下面 4 行的 // 去掉)
+        //{
+        //    float[] ptsDiag = mgr.HasChain ? mgr.CurrentChainPoints : null;
+        //    Debug.Log($"[背刺诊断] 按F track={mgr.TrackTime:F2} hasChain={mgr.HasChain} inChainWin={mgr.IsInChainWindow} autoWin={mgr.IsAutoBarWindow} 当前组点数={(ptsDiag != null ? ptsDiag.Length : 0)} 首点={(ptsDiag != null && ptsDiag.Length > 0 ? ptsDiag[0] : -1f)} inCombat={(AttackingStat.Instance != null && AttackingStat.Instance.InCombat)} 状态={(PlayerFsm != null && PlayerFsm.CurrentState != null ? PlayerFsm.CurrentState.GetType().Name : "null")}");
+        //}
+
         // ── ① 连音路径(P8):当前曲存在连音组 → 判定条件由"自动重音窗口"换成"本组内存在活跃且未消费的点"。
         // HasChain == _chainPoints.Count > 0,与 NextChainStartTime >= 0 等价(P2 产物);
         // 存在连音组时自动重音窗口不再接管 F(规格 P2:当前曲存在 PlayerBackstab 组 → 背刺走该组)。
@@ -821,6 +827,9 @@ public class PlayerController : PlayerCharacterBase
             return false;
 
         // TryExecute 自带空引用/就绪双守卫;它返回 false(例如元素恰在本帧被别的单位消费)时仍落回背刺路径
+        // [2026-09-20 清理临时调试] 要看 F 是否被元素冲刺抢走,把下面两行打开
+        //bool dashTaken = mapDash.TryExecute(point);
+        //Debug.Log($"[背刺诊断] F 被元素冲刺接管 point={point.name} 结果={dashTaken}");
         return mapDash.TryExecute(point);
     }
 
@@ -894,6 +903,9 @@ public class PlayerController : PlayerCharacterBase
         // [2026-09-17 背刺目标锁定] 显式目标必须**在 ChangeState 之前**写入:OnEnter 里读出来即消费并置空(一刀级)。
         // 非显式调用(explicitTarget == null)= 显式清空,行为与改动前一字不差。
         BackstabState.SetExplicitTarget(explicitTarget);
+        // 背刺音高路径:连音(true)/ 单点(false)由入口定死。状态内不能拿点序号正负去推断 ——
+        // 单点背刺踩在连音组预告期里时,点序号解析的兜底分支会给出 0,音高就永远停在第 1 个音。
+        BackstabState.SetChainMode(chainMode);
         PlayerFsm.ChangeState(BackstabState);
         // 消费:连音路径的按点消费由 PlayerBackstabState.OnEnter → ExecuteStrike 完成(同上,入口层不消费);
         // 自动重音路径消费当前窗口(本 bar 限一次背刺,防窗口内连按 F 连触发;空挥也消耗,miss 就过)。

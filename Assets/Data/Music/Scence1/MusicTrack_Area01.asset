@@ -15,43 +15,23 @@ MonoBehaviour:
   clip: {fileID: 8300000, guid: ed2b0565486bac948bd75830a36125fd, type: 3}
   loopPoint: 0
   points: []
-  barIntervalSeconds: 2
+  barIntervalSeconds: 0
   introClip: {fileID: 0}
   introSwitchTime: 0
   introPoints: []
   pointGroups:
   - groupName: PlayerBackstab
     points:
-    - 8.22
-    - 10.26
-    - 12.28
-    - 17.02
-    - 29.12
-    - 31.13
-    - 33.15
-    - 45.24
-    - 47.27
-    - 52.01
-    - 54.02
-    - 58.05
-    - 62.08
-    - 64.1
-    - 70.15
-    - 78.21
-    - 82.26
-    - 85.29
-    - 86.29
-    - 89.01
-    - 94.04
-    - 95.06
-    - 97.07
-    - 99.09
-    - 105.03
-    - 105.14
-    - 107.05
-    - 107.15
+    - 8
+    - 12
+    - 20
+  beatsPerBar: 3
   chainGroups:
   - points:
     - 6
     - 6.3
     - 6.6
+  - points:
+    - 16
+    - 16.2
+    - 16.4

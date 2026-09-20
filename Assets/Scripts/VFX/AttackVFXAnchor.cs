@@ -71,15 +71,29 @@ public class AttackVFXAnchor : MonoBehaviour
     [Header("玩家 · 被刺(PlayBackstab)")]
     public ComboSlot backstab = new ComboSlot();
 
-    [Header("玩家 · 背刺命中音的音高(素材与音量在敌人身上,音高在攻击者侧调)")]
-    [Tooltip("勾上 = 背刺每一刀的音高从下面的和谐音程池里随机取一个(相邻两刀避开同音);不勾 = 背刺槽的基准 + 每段递增滑条")]
-    public bool backstabRandomHarmony = false;
+    // ── 背刺挥刀音的音高(素材/音量在敌人身上,音高在攻击者侧调)──
+    // 音高组由代码内置(写死):按 MusicTrackData.beatsPerBar 选批,3 → 三连音批,4/未填/非法 → 四连音批
 
-    [Tooltip("背刺和谐音程池(半音偏移,加在背刺槽基准上):0=do 3=降mi 4=mi 5=fa 7=sol 9=la 12=do'")]
-    public int[] backstabHarmonySemitones = { 0, 4, 7, 12 };
+    // ── 内置音高组(写死;单位 = 半音偏移,加在背刺槽基准 sfxSemitone 上)──
+    /// <summary>3 拍批(3/4):组内 3 个音,连音时按刀序递增</summary>
+    private static readonly int[][] PitchSets3 =
+    {
+        new[] { 0, 4, 7 },      // 大三和弦 do mi sol
+        new[] { 0, 2, 4 },      // 全音递增 do re mi
+        new[] { 0, 5, 7 },      // 四五度
+    };
 
-    /// <summary>上一刀抽到的和谐音程(运行时,避开相邻重复用;不序列化)</summary>
-    private int _lastBackstabHarmony = int.MinValue;
+    /// <summary>4 拍批(4/4):组内 4 个音,连音时按刀序递增;曲子没填拍数也走这批</summary>
+    private static readonly int[][] PitchSets4 =
+    {
+        new[] { 0, 4, 7, 12 },  // 大三和弦收八度 do mi sol do'
+        new[] { 0, 2, 4, 7 },   // 五声上行 do re mi sol
+        new[] { 0, 5, 7, 12 },  // 四度上行收八度
+    };
+
+    private int[] _backstabPitchSet;    // 当前音高组(半音数组;null = 还没抽过)
+    private int _backstabSetLast = -1;  // 上一次抽到的批内索引(相邻两次避开同一组)
+    private int _backstabLoopIndex;     // 单刀背刺的循环游标(1,2,3;1,2,3 循环取单音;连音抽新组时归零)
 
     [Header("玩家 · 地图元素冲刺(PlayMapDash)")]
     public ComboSlot mapDash = new ComboSlot();
@@ -113,8 +127,12 @@ public class AttackVFXAnchor : MonoBehaviour
     public void PlayAir(int comboIndex) => PlayComboSlot(GetSlot(air1, air2, air3, comboIndex), comboIndex);
 
     /// <summary>背刺特效(→ backstab)</summary>
-    /// <summary>背刺动作音效(→ backstab 槽)。hitStep = 组内刀序(0 起),音高走 BackstabSfxPitch(随机和谐音程 / 基准 + 递增)</summary>
+    /// <summary>背刺动作音效(→ backstab 槽),连音路径。hitStep = 组内刀序(0 起),音高 = 组内第 hitStep 个音(到顶夹最后一个)</summary>
     public void PlayBackstab(int hitStep = 0) => PlayComboSlot(backstab, 0, BackstabSfxPitch(hitStep));
+
+    /// <summary>背刺动作音效(→ backstab 槽),单点路径(自动重音 / Boss 判定链)。
+    /// 音高 = 循环游标取组内单音并往后走:1,2,3;1,2,3(连音抽到新组时游标归零,从这里重新起)</summary>
+    public void PlayBackstabSingle() => PlayComboSlot(backstab, 0, NextLoopPitch());
 
     /// <summary>地图元素冲刺特效(→ mapDash)</summary>
     public void PlayMapDash() => PlayComboSlot(mapDash, 0);
@@ -142,29 +160,62 @@ public class AttackVFXAnchor : MonoBehaviour
         return AudioManager.PitchFromSemitone(slot.sfxSemitone + slot.sfxRisePerStep * step);
     }
 
+    /// <summary>连音组进入时调(PlayerBackstabState.BindChainGroup):按当前曲子的拍数抽一组音高,
+    /// 相邻两个连音组避开抽到同一组,单刀背刺的循环游标归零(换调性后从组内第一个音重新起)</summary>
+    public void BeginBackstabPitchSet()
+    {
+        DrawBackstabPitchSet();
+        _backstabLoopIndex = 0;
+    }
+
+    /// <summary>抽一组音高:拍数 3 → 三连音批,其余(4/未填/非法)→ 四连音批;批内随机,相邻两次避开同一组</summary>
+    private void DrawBackstabPitchSet()
+    {
+        var mgr = MusicPointManager.Instance;
+        int[][] bank = mgr != null && mgr.BeatsPerBar == 3 ? PitchSets3 : PitchSets4;
+
+        int idx = Random.Range(0, bank.Length);
+        for (int i = 0; i < 8 && bank.Length > 1 && idx == _backstabSetLast; i++)
+            idx = Random.Range(0, bank.Length);
+        _backstabSetLast = idx;
+        _backstabPitchSet = bank[idx];
+    }
+
     /// <summary>
-    /// 背刺那一刀的命中音音高倍率(命中音素材/音量仍在敌人身上,音高在攻击者侧调)。
-    /// 勾了随机 → 从 backstabHarmonySemitones 池里随机取一个和谐音程加在背刺槽基准上,相邻两刀避开同音
-    /// (抽到与上一刀相同的值就重抽,最多 8 次;池里只有一个值或全是同一个值时无从避开);
-    /// 没勾 → 背刺槽基准 + 每段递增 × 刀序(hitStep 为组内刀序,0 起,第 1 刀不加递增)。
+    /// 背刺挥刀音的音高倍率(素材/音量在敌人身上,音高在攻击者侧调)。
+    /// hitStep &gt;= 0(连音路径:组内刀序)→ 取组内第 hitStep 个音,超出组长度夹在最后一个(不循环);
+    /// hitStep &lt; 0(单刀背刺)→ 取循环游标的下一个音,1,2,3;1,2,3 循环着走。
+    /// 组未抽过(直接单刀背刺)→ 先懒抽一组,不会没音高。
     /// </summary>
     public float BackstabSfxPitch(int hitStep)
     {
+        if (_backstabPitchSet == null || _backstabPitchSet.Length == 0) DrawBackstabPitchSet();
+
         int baseSemi = backstab != null ? backstab.sfxSemitone : 0;
+        int len = _backstabPitchSet.Length;
 
-        if (backstabRandomHarmony && backstabHarmonySemitones != null && backstabHarmonySemitones.Length > 0)
-        {
-            int len = backstabHarmonySemitones.Length;
-            int semi = backstabHarmonySemitones[Random.Range(0, len)];
-            for (int i = 0; i < 8 && semi == _lastBackstabHarmony; i++)
-                semi = backstabHarmonySemitones[Random.Range(0, len)];   // 避开上一刀
-            _lastBackstabHarmony = semi;
-            return AudioManager.PitchFromSemitone(baseSemi + semi);
-        }
+        int idx = hitStep >= 0
+            ? (hitStep < len ? hitStep : len - 1)   // 连音:按刀序递增,到顶后保持最后一个音
+            : NextLoopIndex(len);                    // 传负值的旧调用:按循环取单音,行为同 PlayBackstabSingle
+        return AudioManager.PitchFromSemitone(baseSemi + _backstabPitchSet[idx]);
+    }
 
-        int step = hitStep > 0 ? hitStep : 0;
-        int rise = backstab != null ? backstab.sfxRisePerStep : 0;
-        return AudioManager.PitchFromSemitone(baseSemi + rise * step);
+    /// <summary>单点背刺的音高倍率:循环游标取组内一个音,并把游标推到下一个(1,2,3;1,2,3)</summary>
+    public float NextLoopPitch()
+    {
+        if (_backstabPitchSet == null || _backstabPitchSet.Length == 0) DrawBackstabPitchSet();
+
+        int baseSemi = backstab != null ? backstab.sfxSemitone : 0;
+        int idx = NextLoopIndex(_backstabPitchSet.Length);
+        return AudioManager.PitchFromSemitone(baseSemi + _backstabPitchSet[idx]);
+    }
+
+    /// <summary>循环游标:返回当前音在组内的下标,并把游标推到下一个(取值 mod 组长度)</summary>
+    private int NextLoopIndex(int len)
+    {
+        int idx = _backstabLoopIndex % len;
+        _backstabLoopIndex = (idx + 1) % len;
+        return idx;
     }
 
     /// <summary>播放一个玩家分组槽(VFX / 音效各自判空,两个都空则静默跳过;自动收上一组)</summary>

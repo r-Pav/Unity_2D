@@ -105,6 +105,17 @@ public class MusicPointManager : MonoBehaviour
     /// <summary>当前曲目(空 = 未配置)</summary>
     public MusicTrackData CurrentTrack => _currentTrack;
 
+    /// <summary>当前曲子的每小节拍数(3 = 3/4,4 = 4/4):背刺挥刀音高组按它选批。
+    /// 未配置曲目 / 未填 / 非法值一律按 4 —— 只有 3 与非 3 两种结果,不会出现没有音高批的情况</summary>
+    public int BeatsPerBar
+    {
+        get
+        {
+            int b = _currentTrack != null ? _currentTrack.beatsPerBar : 0;
+            return b == 3 ? 3 : 4;
+        }
+    }
+
     /// <summary>缓入缓出时长(切换用)</summary>
     public float CrossFadeDuration => crossFadeDuration;
 
