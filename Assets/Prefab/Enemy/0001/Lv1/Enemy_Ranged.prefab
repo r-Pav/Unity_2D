@@ -281,7 +281,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 4224880568054176625}
   serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 24.58, y: 0.34, z: -0.022004815}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -379,7 +379,7 @@ MonoBehaviour:
   speedMultiplier: 1
   config: {fileID: 11400000, guid: 3a31f91ef5df44d4fbabc92ab9d33e5f, type: 2}
   level: 1
-  maxHealth: 50
+  maxHealth: 500
   hitColor: {r: 0.8301887, g: 0.23104309, b: 0.23104309, a: 1}
   hitFlashDuration: 0.1
   enemyHitPause: 0
@@ -391,6 +391,10 @@ MonoBehaviour:
   directionalHitVFXPrefab: {fileID: 0}
   deathVFXPrefab: {fileID: 0}
   backstabHitVFX: {fileID: 0}
+  hurtSfx: {fileID: 0}
+  hurtSfxVolume: 1
+  hurtSemitone: 0
+  hurtRisePerHit: 0
   hitVFXVariants: []
   attackWidth: 3
   attackHeight: 3
@@ -419,6 +423,7 @@ MonoBehaviour:
   channelRayHeightOffset: 0.5
   patrolBoundaryDistance: 0.8
   combatSightHeight: 3
+  wallCheckHeightTolerance: 1
   facingDeadZone: 0.3
   moveInput: 0
   attackCooldownTimer: 0
@@ -1065,7 +1070,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5737f6d7d82132744b78395ce13d20ce, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  aimPrefab: {fileID: 0}
+  aimPrefab: {fileID: 297918510233002943, guid: ed819b90865f14646a6d5ee15109694c, type: 3}
   flashSprite: {fileID: 4230973666395393128}
   flashColor: {r: 1, g: 0.92, b: 0.4, a: 1}
   flashDuration: 0.25

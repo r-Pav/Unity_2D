@@ -1175,8 +1175,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         if (ApplyDamage(info.amount, info.attackLabel, vfxPos, hitDir)) Die();
 
         // 受击音(2026-09-18 解耦):命中音归被击中的这一只,在本组件命中帧播 —— 所有伤害入口(近战/背刺/技能/元素)
-        // 都汇到 ApplyDamage,一处接全。背刺非 Boss 那一刀的音已由攻击方按键帧排到音乐拍点(info.hurtSfxHandled),
-        // 这里不重复播,否则一拍响两声。
+        // 都汇到 ApplyDamage,一处接全。背刺不播受击音(2026-09-21 saika 定稿:背刺音效 = attack_VFX 背刺槽那只音,
+        // 由攻击方排到标点播,info.hurtSfxHandled 恒置位),这里不重复播,否则一拍响两声。
         if (!info.hurtSfxHandled) PlayHurtSfx(info.hitStep);
 
         // 背刺受击 VFX(伤害结算同一帧、同一点):挂 enemy 下跟随被击飞,特效不会留在原地。

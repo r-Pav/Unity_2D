@@ -76,7 +76,8 @@ public struct DamageInfo
     /// <summary>本次命中是连段第几击(0 起,由攻击方写入):受击方按它给受击音升调(基准半音 + 递增 × hitStep)。默认 0 = 第一击 = 原调。</summary>
     public int hitStep;
 
-    /// <summary>true = 这一击的受击音已由攻击方自行排程(背刺卡点:按键帧排到 dspTime):受击方命中帧不再重复播。默认 false。</summary>
+    /// <summary>true = 这一击的受击音由攻击方自行处理,受击方命中帧不再播(背刺用:背刺音效 = attack_VFX 背刺槽那只音,
+    /// 已由攻击方排到标点播,受击音一律不播)。默认 false = 受击方自己播。</summary>
     public bool hurtSfxHandled;
 }
 

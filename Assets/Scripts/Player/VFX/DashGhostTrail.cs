@@ -134,6 +134,18 @@ public class DashGhostTrail : MonoBehaviour
         SpriteRenderer source = ActiveSource;
         if (source == null)
             return; // 空引用安全:来源未拖 → 静默跳过
+        SpawnAt(source.transform.position);
+    }
+
+    /// <summary>
+    /// 在指定世界位置生成一个残影(位置由调用方指定):渲染数据仍取当前取帧来源的当前帧,
+    /// 只把出身位置换成 worldPos。背刺瞬移的路径补影用 —— 玩家本体落在落点,残影铺在来路上。
+    /// </summary>
+    public void SpawnAt(Vector3 worldPos)
+    {
+        SpriteRenderer source = ActiveSource;
+        if (source == null)
+            return; // 空引用安全:来源未拖 → 静默跳过
 
         // 存活管理:先清理已销毁的克隆体(淡完 OnComplete Destroy 后键为 Unity null)
         _deadKeys.Clear();
@@ -155,7 +167,7 @@ public class DashGhostTrail : MonoBehaviour
         // new GameObject 默认无父级 = 出生即在世界根(天然独立于移动中的 Player,无需父级搬运)
         var go = new GameObject("DashGhost");
         SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
-        go.transform.SetPositionAndRotation(sourceT.position, sourceT.rotation);
+        go.transform.SetPositionAndRotation(worldPos, sourceT.rotation);   // 位置 = 调用方指定(默认即来源当前位置)
 
         // 克隆体 = 当前取帧来源(source)的精确世界副本:玩家/clone 怎么渲染,残影就怎么渲染,方向零手动处理。
         // 材质复用 source.sharedMaterial(玩家本体材质,双面渲染 + PNG 透明通道支持 alpha;

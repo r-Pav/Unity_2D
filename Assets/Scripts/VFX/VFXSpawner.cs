@@ -30,6 +30,16 @@ public static class VFXSpawner
         Transform container = GetOrCreateContainer(category);
         GameObject instance = Object.Instantiate(prefab, position, rotation, container);
 
+        // [2026-09-21 统一入口] 激活 + 播放统一在这里做，调用方不必各自处理：
+        //   团结引擎坑①：Instantiate 复制预制体激活状态，特效包根节点常为 inactive → 必须 SetActive(true)；
+        //   团结引擎坑②：特效包粒子的 playOnAwake 常为 0（如 Enemy_Hit_Back 全部 4 个 PS）→ active 也不会自己播，必须逐个 Play()。
+        // 原分散在 EnemyRangedAttack.SpawnVFX / AttackVFXAnchor.Acquire / SlowZone 等处各写一遍，漏写的调用点
+        // （受击 VFX 等）就表现为「特效不生效」。池化复用的调用方（AttackVFXAnchor）走自己的实例管理，不受影响。
+        if (!instance.activeSelf) instance.SetActive(true);
+        var particles = instance.GetComponentsInChildren<ParticleSystem>(true);
+        for (int i = 0; i < particles.Length; i++)
+            particles[i].Play();
+
         // 自动挂载自毁脚本（检测 Animator/ParticleSystem 时长，到时 Destroy）
         if (!instance.TryGetComponent<VFXAutoDestruct>(out _))
             instance.AddComponent<VFXAutoDestruct>();

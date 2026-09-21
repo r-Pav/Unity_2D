@@ -61,6 +61,9 @@ public class AudioManager : MonoBehaviour
     [Tooltip("排程音效并发音源数量:PlayScheduled 把音排到指定 dspTime(拍点)播,一个源同一时刻只能占一个排程,连音密集时需要多个")]
     [SerializeField] private int scheduledSfxPoolSize = 3;
 
+    [Tooltip("排程音源上限:全忙时按需扩新源,扩到这个上限才顶掉最早结束的那一发(连音密集时保证每个音独立走完)")]
+    [SerializeField] private int scheduledSfxPoolMax = 12;
+
     [Header("音频库")]
     [Tooltip("全局音效配置资产(AudioLibrary);为空则音效静默")]
     [SerializeField] private AudioLibrary library;
@@ -79,9 +82,13 @@ public class AudioManager : MonoBehaviour
     private AudioSource[] _sfxPool;
     private int _sfxNext;
 
-    /// <summary>SFX 排程池(PlayScheduled 卡点音用):一个源同一时刻只能排一个音,取空闲源,全忙时轮转顶掉最早的</summary>
+    /// <summary>SFX 排程池(PlayScheduled 卡点音用):一个源同一时刻只能排一个音。
+    /// 取源靠自记占用截止 `_scheduledBusyUntil`,不问 `AudioSource.isPlaying` —— 排到未来的音 isPlaying 可能还不是 true,
+    /// 会被误判空闲而抢用(2026-09-21 saika:连音每个音要有独立生命周期,彼此互不干扰)。</summary>
     private AudioSource[] _scheduledSfxPool;
-    private int _scheduledNext;
+
+    /// <summary>与排程池一一对应的占用截止(音频时钟秒,dspTime 口径;<= 当前 dspTime = 空闲)</summary>
+    private double[] _scheduledBusyUntil;
 
     /// <summary>PlayerPrefs 持久化 key（与 SettingsPanel 共用）</summary>
     private const string SettingsKey = "GameSettings";
@@ -205,18 +212,23 @@ public class AudioManager : MonoBehaviour
         // 排程池:同池规则,仅供 PlaySfxScheduled 使用(与一次性池分开,排程音不会被打断)
         int schedCount = Mathf.Max(1, scheduledSfxPoolSize);
         _scheduledSfxPool = new AudioSource[schedCount];
+        _scheduledBusyUntil = new double[schedCount];   // 0 = 空闲
         for (int i = 0; i < schedCount; i++)
-        {
-            var go = new GameObject($"ScheduledSfxSource_{i + 1}");
-            go.transform.SetParent(transform, false);
-            var src = go.AddComponent<AudioSource>();
-            src.playOnAwake = false;
-            src.loop = false;
-            src.spatialBlend = 0f;
-            src.volume = _sfxVol;
-            _scheduledSfxPool[i] = src;
-            RegisterSource(AudioGroup.Sfx, src);
-        }
+            _scheduledSfxPool[i] = CreateScheduledSource(i);
+    }
+
+    /// <summary>建一个排程音源(池初始化与满池扩张共用);名字带槽序号,便于诊断日志认源</summary>
+    private AudioSource CreateScheduledSource(int index)
+    {
+        var go = new GameObject($"ScheduledSfxSource_{index + 1}");
+        go.transform.SetParent(transform, false);
+        var src = go.AddComponent<AudioSource>();
+        src.playOnAwake = false;
+        src.loop = false;
+        src.spatialBlend = 0f;   // 2D:不随距离衰减
+        src.volume = _sfxVol;
+        RegisterSource(AudioGroup.Sfx, src);   // 音量跟随 sfx 组(含后续 SetVolumes 广播)
+        return src;
     }
 
     /// <summary>
@@ -259,36 +271,104 @@ public class AudioManager : MonoBehaviour
     public static float PitchFromSemitone(int semitone) => Mathf.Pow(2f, semitone / 12f);
 
     /// <summary>
-    /// 排程播放一次性音效(卡点用):把音排在指定的 dspTime 上播,与音乐走同一个音频时钟,不受逻辑帧率影响。
-    /// 用于"踩准节拍"的确认音放在拍点上(见 PlayerCombat.PlayBackstabSfxScheduled)。
-    /// dspTime 落在过去 → Unity 直接立即播(玩家按晚了自然退化成立刻响,不做特判)。
-    /// 取源顺序:空闲源 → 全忙时轮转顶掉最早的排程;clip 空 / 池空 = 静默跳过。
-    /// 注意:排程音占住源直到播完,与 PlaySfx 的一次性池分开(互不打断)。
+    /// 排程播放的诊断快照(2026-09-21 背刺卡点比对 debug):记录最近一次 PlaySfxScheduled 用了哪个源、
+    /// 目标/实际起播时刻、占用截止与池状态。只读,不参与播放逻辑;诊断完连同上下的日志块一起删。
     /// </summary>
-    public void PlaySfxScheduled(AudioClip clip, float volume, double dspTime, float pitch = 1f)
+    public struct ScheduledSfxInfo
     {
-        if (clip == null) return;
-        if (_scheduledSfxPool == null || _scheduledSfxPool.Length == 0) return;
+        public AudioSource source;
+        public double requestDsp;    // 调用那一刻的 dspTime
+        public double targetDsp;     // 要求起播的 dspTime(标点换算来的)
+        public double startDsp;      // 实际会开始播的 dspTime(目标在过去 → = 请求时刻)
+        public double busyUntil;     // 本槽占用截止
+        public float pitch;
+        public int slotIndex;        // 槽序号(0 起,源名后缀 = +1)
+        public int poolCount;        // 本次排程后的池大小
+        public int poolMax;          // 池上限
+        public bool expanded;        // 本次为它新扩了一个源
+        public bool stole;           // 本次顶掉了还在响的一发
+    }
 
-        AudioSource src = null;
+    /// <summary>最近一次 PlaySfxScheduled 的诊断快照(只在同一帧里读有意义)</summary>
+    public ScheduledSfxInfo LastScheduledSfx { get; private set; }
+
+    /// <summary>
+    /// 排程播放一次性音效(卡点用):把音排在指定的 dspTime 上播,与音乐走同一个音频时钟,不受逻辑帧率影响。
+    /// 用于"踩准节拍"的确认音放在拍点上(背刺音效卡点:见 AttackVFXAnchor.PlayBackstab / PlayBackstabSingle 的 scheduleDsp 参数)。
+    /// dspTime 落在过去 → Unity 直接立即播(玩家按晚了自然退化成立刻响,不做特判)。
+    /// 取源顺序(2026-09-21 改自记占用):① 占用截止已过的空闲槽 → ② 未到上限则扩新槽 → ③ 到上限才顶掉最早结束的那一发。
+    /// 不读 `isPlaying`:排到未来的音在那个时刻可能还不是 true,会被误判空闲而抢用(前一发被换 clip 顶掉)。
+    /// 每发占住自己的槽直到 `clip.length ÷ pitch` 播完,彼此互不干扰;clip 空 / 池空 = 静默跳过。
+    /// 返回值 = 本次排程占用的源(null = 没排出去),供调用方诊断实际发声时刻用;正常播放不需要它。
+    /// </summary>
+    public AudioSource PlaySfxScheduled(AudioClip clip, float volume, double dspTime, float pitch = 1f)
+    {
+        if (clip == null) return null;
+        if (_scheduledSfxPool == null || _scheduledSfxPool.Length == 0) return null;
+
+        double now = AudioSettings.dspTime;
+        int slot = -1;
+        bool expanded = false;
+        bool stole = false;
+
+        // ① 空闲槽:自记占用截止已过(不问 isPlaying)
         for (int i = 0; i < _scheduledSfxPool.Length; i++)
         {
-            var s = _scheduledSfxPool[i];
-            if (s != null && !s.isPlaying) { src = s; break; }
+            if (_scheduledSfxPool[i] != null && _scheduledBusyUntil[i] <= now) { slot = i; break; }
         }
-        if (src == null)
-        {
-            // [2026-09-20 清理临时调试] 池满时在这里顶掉最早一发;要看有没有吞音,把下面一行打开
-            //Debug.Log($"[音效排程诊断] 排程池 {_scheduledSfxPool.Length} 源全忙:顶掉槽 {_scheduledNext + 1}");
-            src = _scheduledSfxPool[_scheduledNext];
-            _scheduledNext = (_scheduledNext + 1) % _scheduledSfxPool.Length;
-        }
-        if (src == null) return;
 
+        // ② 全忙:还没到上限 → 扩一个新槽(连音密集时每个音都能独立走完,互不顶掉)
+        int max = Mathf.Max(1, scheduledSfxPoolMax);
+        if (slot < 0 && _scheduledSfxPool.Length < max)
+        {
+            slot = _scheduledSfxPool.Length;
+            System.Array.Resize(ref _scheduledSfxPool, slot + 1);
+            System.Array.Resize(ref _scheduledBusyUntil, slot + 1);
+            _scheduledSfxPool[slot] = CreateScheduledSource(slot);
+            expanded = true;
+        }
+
+        // ③ 到上限:顶掉最早结束的那一发(只有这一步会打断已在走的音,且留了诊断开关)
+        if (slot < 0)
+        {
+            int oldest = 0;
+            for (int i = 1; i < _scheduledBusyUntil.Length; i++)
+                if (_scheduledBusyUntil[i] < _scheduledBusyUntil[oldest]) oldest = i;
+            slot = oldest;
+            stole = true;
+            // [2026-09-21 清理临时调试] 要看有没有吞音,把下面一行打开
+            //Debug.Log($"[音效排程诊断] 排程池已到上限 {max}:顶掉最早结束的槽 {slot + 1}");
+        }
+
+        AudioSource src = _scheduledSfxPool[slot];
+        if (src == null) return null;
+
+        float p = Mathf.Clamp(pitch, 0.01f, 3f);
         src.clip = clip;
         src.volume = Mathf.Clamp01(_sfxVol * Mathf.Clamp01(volume));   // 排程无 volumeScale 参数,相对音量在这里乘进去
-        src.pitch = Mathf.Clamp(pitch, 0.01f, 3f);                      // 连音背刺按刀序升调(do/mi/sol)
+        src.pitch = p;                                                 // 连音背刺按刀序升调(do/mi/sol)
         src.PlayScheduled(dspTime);
+
+        // 占用截止 = 真正开始播的时刻 + 实际播放时长(clip 时长 ÷ pitch,pitch 是重采样)+ 一点缓冲
+        double start = dspTime > now ? dspTime : now;
+        _scheduledBusyUntil[slot] = start + clip.length / p + 0.05;
+
+        // [2026-09-21 背刺卡点比对 debug] 快照给调用方打日志用(同一帧读)
+        LastScheduledSfx = new ScheduledSfxInfo
+        {
+            source = src,
+            requestDsp = now,
+            targetDsp = dspTime,
+            startDsp = start,
+            busyUntil = _scheduledBusyUntil[slot],
+            pitch = p,
+            slotIndex = slot,
+            poolCount = _scheduledSfxPool.Length,
+            poolMax = max,
+            expanded = expanded,
+            stole = stole,
+        };
+        return src;
     }
 
     /// <summary>
@@ -301,6 +381,11 @@ public class AudioManager : MonoBehaviour
         foreach (var s in _scheduledSfxPool)
         {
             if (s != null) s.Stop();
+        }
+        // 占用表一起复位:全停之后所有槽都是空闲(2026-09-21 自记占用)
+        if (_scheduledBusyUntil != null)
+        {
+            for (int i = 0; i < _scheduledBusyUntil.Length; i++) _scheduledBusyUntil[i] = 0.0;
         }
     }
 

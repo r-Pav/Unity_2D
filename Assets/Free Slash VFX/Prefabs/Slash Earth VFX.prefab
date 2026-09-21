@@ -1,17 +1,18 @@
 %YAML 1.1
-%TAG !u! tag:unity3d.com,2011:
+%TAG !u! tag:yousandi.cn,2023:
 --- !u!1 &1664297955
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
+  serializedVersion: 7
   m_Component:
   - component: {fileID: 1664297956}
   - component: {fileID: 1664297958}
   - component: {fileID: 1664297957}
   m_Layer: 0
+  m_HasEditorInfo: 1
   m_Name: Smoke
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -25,13 +26,13 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1664297955}
+  serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 2030497858867394351}
-  m_RootOrder: 3
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!198 &1664297958
 ParticleSystem:
@@ -251,6 +252,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -280,6 +282,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     startSize:
@@ -601,6 +604,7 @@ ParticleSystem:
         m_PostInfinity: 2
         m_RotationOrder: 4
     randomizeRotationDirection: 0
+    gravitySource: 0
     maxNumParticles: 1000
     customEmitterVelocity: {x: 0, y: 0, z: 0}
     size3D: 0
@@ -729,8 +733,7 @@ ParticleSystem:
           m_PreInfinity: 2
           m_PostInfinity: 2
           m_RotationOrder: 4
-    m_Mesh: {fileID: 7567532504055388576, guid: 44e7eb8b5ecd6bc498f00e168e155aa8,
-      type: 3}
+    m_Mesh: {fileID: 7567532504055388576, guid: 44e7eb8b5ecd6bc498f00e168e155aa8, type: 3}
     m_MeshRenderer: {fileID: 0}
     m_SkinnedMeshRenderer: {fileID: 0}
     m_Sprite: {fileID: 0}
@@ -1389,6 +1392,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 3
       minGradient:
@@ -1418,6 +1422,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 3
   UVModule:
@@ -3638,6 +3643,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -3667,6 +3673,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     range: {x: 0, y: 1}
@@ -4044,6 +4051,7 @@ ParticleSystem:
         m_RotationOrder: 4
     minVertexDistance: 0
     textureMode: 0
+    textureScale: {x: 1, y: 1}
     ribbonCount: 1
     shadowBias: 0.5
     worldSpace: 1
@@ -4086,6 +4094,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 3
       minGradient:
@@ -4115,6 +4124,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     widthOverTrail:
@@ -4202,6 +4212,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -4231,6 +4242,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
   CustomDataModule:
@@ -4269,6 +4281,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -4298,6 +4311,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     colorLabel0: Color
@@ -4560,6 +4574,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -4589,6 +4604,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     colorLabel1: Color
@@ -4826,6 +4842,9 @@ ParticleSystemRenderer:
   m_ReflectionProbeUsage: 0
   m_RayTracingMode: 0
   m_RayTraceProcedural: 0
+  m_virtualGeometry: 0
+  m_ShadingRate: 0
+  m_ForceDisableGRD: 0
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
@@ -4864,13 +4883,15 @@ ParticleSystemRenderer:
   m_RenderAlignment: 0
   m_Pivot: {x: -0.03, y: -0.03, z: 0}
   m_Flip: {x: 0, y: 0, z: 0}
-  m_UseCustomVertexStreams: 1
   m_EnableGPUInstancing: 1
   m_ApplyActiveColorSpace: 1
   m_AllowRoll: 1
   m_FreeformStretching: 1
   m_RotateWithStretchDirection: 1
+  m_UseCustomVertexStreams: 1
   m_VertexStreams: 000103040520
+  m_UseCustomTrailVertexStreams: 0
+  m_TrailVertexStreams: 00010304
   m_Mesh: {fileID: -7669366264721368863, guid: 7f2c09fa4c36d064083944bc9331f95e, type: 3}
   m_Mesh1: {fileID: 0}
   m_Mesh2: {fileID: 0}
@@ -4886,12 +4907,13 @@ GameObject:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
+  serializedVersion: 7
   m_Component:
   - component: {fileID: 7135452905007143412}
   - component: {fileID: 8553566179235284039}
   - component: {fileID: 5755201286325082614}
   m_Layer: 0
+  m_HasEditorInfo: 1
   m_Name: Point Light
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -4905,13 +4927,13 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 619728971178405419}
+  serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 2030497858867394351}
-  m_RootOrder: 2
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!108 &8553566179235284039
 Light:
@@ -4975,6 +4997,7 @@ Light:
   m_UseViewFrustumForShadowCasterCull: 1
   m_ShadowRadius: 0
   m_ShadowAngle: 0
+  m_UseOcclusionCulling: 1
 --- !u!114 &5755201286325082614
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4987,26 +5010,30 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 474bcb49853aa07438625e644c072ee6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_Version: 1
+  m_Version: 3
   m_UsePipelineSettings: 1
   m_AdditionalLightsShadowResolutionTier: 2
   m_LightLayerMask: 1
+  m_RenderingLayers: 1
   m_CustomShadowLayers: 0
   m_ShadowLayerMask: 1
+  m_ShadowRenderingLayers: 1
   m_LightCookieSize: {x: 1, y: 1}
   m_LightCookieOffset: {x: 0, y: 0}
+  m_SoftShadowQuality: 1
 --- !u!1 &938015022062582350
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
+  serializedVersion: 7
   m_Component:
   - component: {fileID: 6805927158475685072}
   - component: {fileID: 2273735311834164033}
   - component: {fileID: 3241968023514950786}
   m_Layer: 0
+  m_HasEditorInfo: 1
   m_Name: Slash Distortion
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -5020,13 +5047,13 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 938015022062582350}
+  serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 2030497858867394351}
-  m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!198 &2273735311834164033
 ParticleSystem:
@@ -5246,6 +5273,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -5275,6 +5303,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     startSize:
@@ -5596,6 +5625,7 @@ ParticleSystem:
         m_PostInfinity: 2
         m_RotationOrder: 4
     randomizeRotationDirection: 0
+    gravitySource: 0
     maxNumParticles: 1000
     customEmitterVelocity: {x: 0, y: 0, z: 0}
     size3D: 0
@@ -6383,6 +6413,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 3
       minGradient:
@@ -6412,6 +6443,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
   UVModule:
@@ -8632,6 +8664,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -8661,6 +8694,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     range: {x: 0, y: 1}
@@ -9038,6 +9072,7 @@ ParticleSystem:
         m_RotationOrder: 4
     minVertexDistance: 0.2
     textureMode: 0
+    textureScale: {x: 1, y: 1}
     ribbonCount: 1
     shadowBias: 0.5
     worldSpace: 0
@@ -9080,6 +9115,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -9109,6 +9145,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     widthOverTrail:
@@ -9196,6 +9233,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -9225,6 +9263,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
   CustomDataModule:
@@ -9263,6 +9302,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -9292,6 +9332,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     colorLabel0: Color
@@ -9545,6 +9586,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -9574,6 +9616,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     colorLabel1: Color
@@ -9811,6 +9854,9 @@ ParticleSystemRenderer:
   m_ReflectionProbeUsage: 0
   m_RayTracingMode: 0
   m_RayTraceProcedural: 0
+  m_virtualGeometry: 0
+  m_ShadingRate: 0
+  m_ForceDisableGRD: 0
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
@@ -9849,13 +9895,15 @@ ParticleSystemRenderer:
   m_RenderAlignment: 2
   m_Pivot: {x: 0, y: 0, z: 0}
   m_Flip: {x: 0, y: 0, z: 0}
-  m_UseCustomVertexStreams: 1
   m_EnableGPUInstancing: 1
   m_ApplyActiveColorSpace: 1
   m_AllowRoll: 1
   m_FreeformStretching: 0
   m_RotateWithStretchDirection: 1
+  m_UseCustomVertexStreams: 1
   m_VertexStreams: 00010304052024
+  m_UseCustomTrailVertexStreams: 0
+  m_TrailVertexStreams: 00010304
   m_Mesh: {fileID: 7567532504055388576, guid: 44e7eb8b5ecd6bc498f00e168e155aa8, type: 3}
   m_Mesh1: {fileID: 0}
   m_Mesh2: {fileID: 0}
@@ -9871,12 +9919,13 @@ GameObject:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
+  serializedVersion: 7
   m_Component:
   - component: {fileID: 2030497858867394351}
   - component: {fileID: 9214180321543832281}
   - component: {fileID: 4151979827846830648}
   m_Layer: 0
+  m_HasEditorInfo: 1
   m_Name: Slash Earth VFX
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -9890,7 +9939,8 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2060418090655630911}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0.7071068, y: 0, z: 0, w: 0.7071068}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -9901,8 +9951,7 @@ Transform:
   - {fileID: 1664297956}
   - {fileID: 9139691572188876448}
   m_Father: {fileID: 0}
-  m_RootOrder: 0
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 90, y: 0, z: 0}
 --- !u!198 &9214180321543832281
 ParticleSystem:
   m_ObjectHideFlags: 0
@@ -10121,6 +10170,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -10150,6 +10200,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     startSize:
@@ -10471,6 +10522,7 @@ ParticleSystem:
         m_PostInfinity: 2
         m_RotationOrder: 4
     randomizeRotationDirection: 0
+    gravitySource: 0
     maxNumParticles: 1000
     customEmitterVelocity: {x: 0, y: 0, z: 0}
     size3D: 0
@@ -11258,6 +11310,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 3
       minGradient:
@@ -11287,6 +11340,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
   UVModule:
@@ -13507,6 +13561,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -13536,6 +13591,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     range: {x: 0, y: 1}
@@ -13913,6 +13969,7 @@ ParticleSystem:
         m_RotationOrder: 4
     minVertexDistance: 0.2
     textureMode: 0
+    textureScale: {x: 1, y: 1}
     ribbonCount: 1
     shadowBias: 0.5
     worldSpace: 0
@@ -13955,6 +14012,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -13984,6 +14042,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     widthOverTrail:
@@ -14071,6 +14130,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -14100,6 +14160,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
   CustomDataModule:
@@ -14138,6 +14199,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -14167,6 +14229,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     colorLabel0: Color
@@ -14420,6 +14483,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -14449,6 +14513,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     colorLabel1: Color
@@ -14686,6 +14751,9 @@ ParticleSystemRenderer:
   m_ReflectionProbeUsage: 0
   m_RayTracingMode: 0
   m_RayTraceProcedural: 0
+  m_virtualGeometry: 0
+  m_ShadingRate: 0
+  m_ForceDisableGRD: 0
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
@@ -14724,13 +14792,15 @@ ParticleSystemRenderer:
   m_RenderAlignment: 2
   m_Pivot: {x: 0, y: 0, z: 0}
   m_Flip: {x: 0, y: 0, z: 0}
-  m_UseCustomVertexStreams: 1
   m_EnableGPUInstancing: 1
   m_ApplyActiveColorSpace: 1
   m_AllowRoll: 1
   m_FreeformStretching: 0
   m_RotateWithStretchDirection: 1
+  m_UseCustomVertexStreams: 1
   m_VertexStreams: 00010304052024
+  m_UseCustomTrailVertexStreams: 0
+  m_TrailVertexStreams: 00010304
   m_Mesh: {fileID: 7567532504055388576, guid: 44e7eb8b5ecd6bc498f00e168e155aa8, type: 3}
   m_Mesh1: {fileID: 0}
   m_Mesh2: {fileID: 0}
@@ -14746,12 +14816,13 @@ GameObject:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
+  serializedVersion: 7
   m_Component:
   - component: {fileID: 6589323534517844491}
   - component: {fileID: 5831527860620512085}
   - component: {fileID: 6565445238187837870}
   m_Layer: 0
+  m_HasEditorInfo: 1
   m_Name: Flying
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -14765,13 +14836,13 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2827960293289749486}
+  serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 2030497858867394351}
-  m_RootOrder: 1
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!198 &5831527860620512085
 ParticleSystem:
@@ -14991,6 +15062,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -15020,6 +15092,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     startSize:
@@ -15341,6 +15414,7 @@ ParticleSystem:
         m_PostInfinity: 2
         m_RotationOrder: 4
     randomizeRotationDirection: 0
+    gravitySource: 0
     maxNumParticles: 1000
     customEmitterVelocity: {x: 0, y: 0, z: 0}
     size3D: 0
@@ -15469,8 +15543,7 @@ ParticleSystem:
           m_PreInfinity: 2
           m_PostInfinity: 2
           m_RotationOrder: 4
-    m_Mesh: {fileID: 7567532504055388576, guid: 44e7eb8b5ecd6bc498f00e168e155aa8,
-      type: 3}
+    m_Mesh: {fileID: 7567532504055388576, guid: 44e7eb8b5ecd6bc498f00e168e155aa8, type: 3}
     m_MeshRenderer: {fileID: 0}
     m_SkinnedMeshRenderer: {fileID: 0}
     m_Sprite: {fileID: 0}
@@ -16129,6 +16202,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 3
       minGradient:
@@ -16158,6 +16232,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 3
   UVModule:
@@ -18378,6 +18453,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -18407,6 +18483,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     range: {x: 0, y: 1}
@@ -18784,6 +18861,7 @@ ParticleSystem:
         m_RotationOrder: 4
     minVertexDistance: 0
     textureMode: 0
+    textureScale: {x: 1, y: 1}
     ribbonCount: 1
     shadowBias: 0.5
     worldSpace: 1
@@ -18826,6 +18904,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 3
       minGradient:
@@ -18855,6 +18934,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     widthOverTrail:
@@ -18942,6 +19022,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -18971,6 +19052,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
   CustomDataModule:
@@ -19009,6 +19091,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -19038,6 +19121,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     colorLabel0: Color
@@ -19291,6 +19375,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
       minGradient:
@@ -19320,6 +19405,7 @@ ParticleSystem:
         atime6: 0
         atime7: 0
         m_Mode: 0
+        m_ColorSpace: -1
         m_NumColorKeys: 2
         m_NumAlphaKeys: 2
     colorLabel1: Color
@@ -19557,6 +19643,9 @@ ParticleSystemRenderer:
   m_ReflectionProbeUsage: 0
   m_RayTracingMode: 0
   m_RayTraceProcedural: 0
+  m_virtualGeometry: 0
+  m_ShadingRate: 0
+  m_ForceDisableGRD: 0
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
@@ -19595,13 +19684,15 @@ ParticleSystemRenderer:
   m_RenderAlignment: 0
   m_Pivot: {x: -0.03, y: -0.03, z: 0}
   m_Flip: {x: 0, y: 0, z: 0}
-  m_UseCustomVertexStreams: 0
   m_EnableGPUInstancing: 1
   m_ApplyActiveColorSpace: 1
   m_AllowRoll: 1
   m_FreeformStretching: 1
   m_RotateWithStretchDirection: 1
+  m_UseCustomVertexStreams: 0
   m_VertexStreams: 000103040520
+  m_UseCustomTrailVertexStreams: 0
+  m_TrailVertexStreams: 00010304
   m_Mesh: {fileID: 3887683042572766240, guid: b923f557708903c4e96a3db6625d8447, type: 3}
   m_Mesh1: {fileID: 0}
   m_Mesh2: {fileID: 0}
@@ -19616,150 +19707,122 @@ PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Modification:
+    serializedVersion: 3
     m_TransformParent: {fileID: 2030497858867394351}
     m_Modifications:
-    - target: {fileID: 1035977224672214417, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 1035977224672214417, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: m_Name
       value: Impact
       objectReference: {fileID: 0}
-    - target: {fileID: 1418760837371908204, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 1418760837371908204, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: looping
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 1418760837371908204, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 1418760837371908204, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: playOnAwake
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 2022601551518229877, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 2022601551518229877, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: looping
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 2022601551518229877, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 2022601551518229877, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: playOnAwake
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 2022601551518229877, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 2022601551518229877, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: InitialModule.startColor.maxColor.b
       value: 0.33490568
       objectReference: {fileID: 0}
-    - target: {fileID: 2022601551518229877, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 2022601551518229877, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: InitialModule.startColor.maxColor.g
       value: 0.60184324
       objectReference: {fileID: 0}
-    - target: {fileID: 2022601551518229877, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 2022601551518229877, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: InitialModule.startColor.maxColor.r
       value: 1
       objectReference: {fileID: 0}
-    - target: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: m_RootOrder
       value: 4
       objectReference: {fileID: 0}
-    - target: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: m_LocalPosition.x
       value: -1.52
       objectReference: {fileID: 0}
-    - target: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: m_LocalPosition.y
       value: 0.049999252
       objectReference: {fileID: 0}
-    - target: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: m_LocalPosition.z
       value: 0.06099987
       objectReference: {fileID: 0}
-    - target: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: m_LocalRotation.w
       value: 0.7071068
       objectReference: {fileID: 0}
-    - target: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: m_LocalRotation.x
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: m_LocalRotation.y
       value: -0.7071068
       objectReference: {fileID: 0}
-    - target: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: m_LocalRotation.z
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: m_LocalEulerAnglesHint.x
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: m_LocalEulerAnglesHint.y
       value: -90
       objectReference: {fileID: 0}
-    - target: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 5885339532838503758, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 5885339532838503758, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: looping
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 5885339532838503758, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 5885339532838503758, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: playOnAwake
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 5885339532838503758, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 5885339532838503758, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: InitialModule.startColor.maxColor.b
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 5885339532838503758, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 5885339532838503758, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: InitialModule.startColor.maxColor.g
       value: 0.3909036
       objectReference: {fileID: 0}
-    - target: {fileID: 5885339532838503758, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 5885339532838503758, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: InitialModule.startColor.maxColor.r
       value: 1
       objectReference: {fileID: 0}
-    - target: {fileID: 6738265595721992703, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 6738265595721992703, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: looping
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 6738265595721992703, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 6738265595721992703, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: playOnAwake
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 6738265595721992703, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 6738265595721992703, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: InitialModule.startColor.maxColor.b
       value: 0.514151
       objectReference: {fileID: 0}
-    - target: {fileID: 6738265595721992703, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 6738265595721992703, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: InitialModule.startColor.maxColor.g
       value: 0.66807365
       objectReference: {fileID: 0}
-    - target: {fileID: 6738265595721992703, guid: 057aa477789506a44bd206e9c5acad19,
-        type: 3}
+    - target: {fileID: 6738265595721992703, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
       propertyPath: InitialModule.startColor.maxColor.r
       value: 1
       objectReference: {fileID: 0}
@@ -19767,10 +19830,12 @@ PrefabInstance:
     - {fileID: 4787279837735626548, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
     - {fileID: 2173357803029992035, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
     - {fileID: 2702761241813398671, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
 --- !u!4 &9139691572188876448 stripped
 Transform:
-  m_CorrespondingSourceObject: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19,
-    type: 3}
+  m_CorrespondingSourceObject: {fileID: 4054212429024354123, guid: 057aa477789506a44bd206e9c5acad19, type: 3}
   m_PrefabInstance: {fileID: 5086184345220895211}
   m_PrefabAsset: {fileID: 0}

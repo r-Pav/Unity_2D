@@ -249,10 +249,14 @@ MonoBehaviour:
   chargeFlashBaseFreq: 4
   chargeFlashAccel: 6
   chargeFlashMaxFreq: 20
-  hitVFXPrefab: {fileID: 184316, guid: 14bb13abe3804f242b49ffc7f2604227, type: 3}
+  hitVFXPrefab: {fileID: 876302400590192879, guid: e3508ad174fa61f48ba85b8d788e1676, type: 3}
   directionalHitVFXPrefab: {fileID: 0}
   deathVFXPrefab: {fileID: 6625299371266367536, guid: 6e562d7d4048bcc43bc5ec1e8f954a8a, type: 3}
-  backstabHitVFX: {fileID: 3891496703827485365, guid: 7d156202ee692a347a366a2d96f019b9, type: 3}
+  backstabHitVFX: {fileID: 876302400590192879, guid: e3508ad174fa61f48ba85b8d788e1676, type: 3}
+  hurtSfx: {fileID: 0}
+  hurtSfxVolume: 1
+  hurtSemitone: 0
+  hurtRisePerHit: 0
   hitVFXVariants: []
   attackWidth: 2.31
   attackHeight: 1.26
@@ -281,6 +285,7 @@ MonoBehaviour:
   channelRayHeightOffset: 0
   patrolBoundaryDistance: 3
   combatSightHeight: 6
+  wallCheckHeightTolerance: 1
   facingDeadZone: 0.3
   moveInput: 0
   attackCooldownTimer: 0

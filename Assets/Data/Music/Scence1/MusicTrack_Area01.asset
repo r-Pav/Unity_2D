@@ -19,12 +19,7 @@ MonoBehaviour:
   introClip: {fileID: 0}
   introSwitchTime: 0
   introPoints: []
-  pointGroups:
-  - groupName: PlayerBackstab
-    points:
-    - 8
-    - 12
-    - 20
+  pointGroups: []
   beatsPerBar: 3
   chainGroups:
   - points:
@@ -35,3 +30,27 @@ MonoBehaviour:
     - 16
     - 16.2
     - 16.4
+  - points:
+    - 99.08
+    - 99.23
+    - 100.09
+    - 100.19
+    - 100.29
+    - 101.09
+    - 101.25
+    - 102.01
+    - 102.21
+    - 103.01
+    - 103.11
+  - points:
+    - 29.08
+    - 29.23
+    - 30.09
+    - 30.19
+    - 30.29
+    - 31.09
+    - 31.25
+    - 32.1
+    - 32.21
+    - 33.01
+    - 33.11

@@ -265,7 +265,7 @@ public class PlayerBackstabState : EntityState
     public override void OnUpdate()
     {
         _stateTimer += Time.deltaTime;
-        if (_stateTimer > MaxBackstabDuration)
+        if (_stateTimer > TimeoutLimit())
         {
             ExitBackstab();   // 单刀级超时兜底(执行刀时重置):动画事件丢失也不会永久锁死输入
             return;
@@ -400,6 +400,8 @@ public class PlayerBackstabState : EntityState
         base.OnExit();          // 先清 IsBackstabbing(解冻本体动画器的前提,见 BackstabClone.StopAll 注释)
         _target = null;
         _clone?.StopAll();      // 收掉全部替身并恢复本体显隐/动画器(P6 接口;退出/打断/死亡全路径兜底,幂等)
+        _clone?.FlushBackstabAlignSummary();   // [2026-09-21 对位 debug] 动画侧汇总(刀序 / 标点 / 动画起始 / 差)
+        _vfx?.FlushBackstabDiagSummary();      // [2026-09-21 对位 debug] 音效侧汇总(刀序 / 标点 / 音效起始 / 差)
         _vfx?.Stop();           // 收起背刺持续特效(动画结束/超时退出/被打断兜底;幂等)
         _strikes.Clear();
         _hitEventSeq = 0;
@@ -431,6 +433,20 @@ public class PlayerBackstabState : EntityState
     // 一刀执行(第一刀 = OnEnter;同组后续刀 = TryExecuteNextPoint / 自动连打)
     // ============================================================
 
+    /// <summary>超时兜底上限:自动连打等下一刀时放宽成「下一刀剩余时间 + 1s」——
+    /// 组内点间隔再大(0.86s 空档、跨几秒的长组)也不会被兜底掐断(2026-09-21 saika:进组后每个音都要到点播)。
+    /// 非自动连打 / 拿不到点表 → MaxBackstabDuration 原值。</summary>
+    private float TimeoutLimit()
+    {
+        if (!_autoChaining) return MaxBackstabDuration;
+        var mgr = MusicPointManager.Instance;
+        if (mgr == null || !mgr.HasChain) return MaxBackstabDuration;
+        var pts = mgr.CurrentChainPoints;
+        if (_autoChainCursor < 0 || _autoChainCursor >= pts.Length) return MaxBackstabDuration;
+        float remain = pts[_autoChainCursor] - mgr.TrackTime;   // 距下一刀还有多久(已到 = 负数)
+        return Mathf.Max(MaxBackstabDuration, remain + 1f);
+    }
+
     /// <summary>
     /// 自动连打推进(节拍辅助 2026-09-17):踩中连音组内一点后,组内后面的点按各自拍点由本状态自动执行 ——
     /// 等于替玩家踩点,每一刀都是完整背刺(瞬移 / 伤害 / 特效 / 音效)。每帧最多推进一刀,拍点没到就等下一帧。
@@ -455,15 +471,9 @@ public class PlayerBackstabState : EntityState
 
         int pointIndex = _autoChainCursor;
         EnemyControllerBase nextTarget = ResolveStrikeTarget(null, pointIndex, mgr);
-        if (nextTarget == null)
-        {
-            // 连打没靶可打了(原目标已死且找不到下一个):结束连打并退出背刺状态,
-            // 不把剩下的点原地空挥完(2026-09-17 saika 定)
-            _autoChaining = false;
-            ExitBackstab();
-            return;
-        }
-        ExecuteStrike(nextTarget, pointIndex, mgr);
+        // 目标没了也照打(2026-09-21 saika 覆写 09-17 口径):进组后组内每个点都必须到点开花 ——
+        // 空挥刀只是没有伤害/刀光,音效与节奏不断(ExecuteStrike 的 sfxEvenIfMiss)。玩家手按 F 的空挥仍不响。
+        ExecuteStrike(nextTarget, pointIndex, mgr, sfxEvenIfMiss: true);
     }
 
     /// <summary>
@@ -667,7 +677,7 @@ public class PlayerBackstabState : EntityState
     /// clone 在落点播这一刀的完整动画 → 记一条刀记录 → 按点消费 → 重置超时计时。
     /// 本状态不离开、不 ChangeState(靠 Entry 路由播动画的老路径:未挂 clone 时本体自己播第一刀)。
     /// </summary>
-    private void ExecuteStrike(EnemyControllerBase target, int pointIndex, MusicPointManager mgr)
+    private void ExecuteStrike(EnemyControllerBase target, int pointIndex, MusicPointManager mgr, bool sfxEvenIfMiss = false)
     {
         _stateTimer = 0f;   // 每刀重置:超时兜底变成"单刀级"(连音组跨多刀不被第一刀的计时掐断)
 
@@ -788,8 +798,8 @@ public class PlayerBackstabState : EntityState
 
         if (validBackstab)
         {
-            // 瞬移前留起点残影(玩家还在原位,拷贝当前帧 → 瞬移后残影停在原地淡出 = 闪现残像)
-            SpawnGhost();
+            // 瞬移前沿「起点 → 落点」直线补影(玩家还在原位,拷贝当前帧 → 瞬移后残影留在路径上淡出 = 冲刺拖影)
+            SpawnGhost(playerDest);
             if (canSwap)
             {
                 // 先挪 enemy(物理体位 + 清速度,防旧击退速度把它带跑;无 rb 走 transform),再移玩家。
@@ -820,21 +830,7 @@ public class PlayerBackstabState : EntityState
             // 背刺持续特效:进背刺动作播背刺槽(统一入口;退出 OnExit Stop)。
             // 槽子物体位置 saika 编辑器摆(attack_VFX 下 slot_backstab,相对玩家);空槽/未挂锚点 = 判空跳过不崩。
             // [2026-09-17 背刺目标锁定] 只有 validBackstab(真的打出去了)才播;空挥(无目标 / 隔墙不可达)不播特效。
-            // 背刺挥刀音音高(节拍辅助):连音 → 组内按刀序递增;单点(自动重音/Boss 判定链)→ 循环取单音。
-            // 路径由入口定死(_chainMode),不拿点序号推断(单点背刺落在连音组预告期里时点序号会给 0 → 音高永远第 1 个音)。
-            if (_chainMode) _vfx?.PlayBackstab(pointIndex >= 0 ? pointIndex : 0);
-            else _vfx?.PlayBackstabSingle();
-
-            // 节拍辅助(2026-09-17):踩准的确认音排在标点(拍点)上播,不等动画命中帧,音与音乐同拍落下。
-            // 连音用本刀点时刻;非连音(自动重音路径)用当前 bar 拍点。只做非 Boss 目标(Boss 沿用命中帧立即播)。
-            // 空挥 / 隔墙不可达不走这里:与原有"空挥不响"口径一致(没打出去就没这一声)。
-            if (!target.IsBoss && combat != null)
-            {
-                float sfxPoint = pointTime >= 0f ? pointTime : (mgr != null ? mgr.AutoBarPointTime : -1f);
-                // 命中音(与背刺动作音效是两回事):素材/音量/音高都取被击中的 enemy,随机池只管背刺槽
-                if (sfxPoint >= 0f)
-                    combat.PlayBackstabSfxScheduled(target, sfxPoint, target.HurtSfxPitch(pointIndex));
-            }
+            // 背刺音效(卡点)已移到本方法末尾统一播:有效刀出声 + 出刀光,自动连打的空挥刀只出声。
         }
         else
         {
@@ -847,10 +843,36 @@ public class PlayerBackstabState : EntityState
             if (Mathf.Abs(h) > 0.1f) pc.UpdateFacing(h);
         }
 
+        // 背刺音效卡点(2026-09-21 saika 定稿):这一刀的音效 = attack_VFX 背刺槽那只音(不再是敌人受击音),
+        // 排到本刀标点时刻播:连音 / 标点单点 = 本刀点时刻,重音 = 当前 bar 拍点;标点拿不到 → 0 = 立即播。
+        // 出声条件:真的打出去了(validBackstab),或自动连打的空挥刀(sfxEvenIfMiss:进组后组内每个点都要到点出声)。
+        // 玩家手按 F 打出去的空挥仍不响(2026-09-17 口径未变)。
+        if (validBackstab || sfxEvenIfMiss)
+        {
+            double sfxDsp = 0.0;
+            float sfxPoint = pointTime >= 0f ? pointTime : (mgr != null ? mgr.AutoBarPointTime : -1f);
+            if (sfxPoint >= 0f && mgr != null) sfxDsp = mgr.DspTimeForPoint(sfxPoint);
+
+            // 音高(节拍辅助):连音 → 组内按刀序递增;单点(自动重音/Boss 判定链)→ 循环取单音。
+            // 路径由入口定死(_chainMode),不拿点序号推断(单点背刺落在连音组预告期里时点序号会给 0 → 音高永远第 1 个音)。
+            // 空挥刀只出声、不 spawn 刀光也不收上一组特效(PlayBackstabSfxOnly)。
+            if (_chainMode)
+            {
+                int step = pointIndex >= 0 ? pointIndex : 0;
+                if (validBackstab) _vfx?.PlayBackstab(step, sfxDsp, sfxPoint);
+                else _vfx?.PlayBackstabSfxOnly(step, sfxDsp, sfxPoint);
+            }
+            else if (validBackstab)
+            {
+                _vfx?.PlayBackstabSingle(sfxDsp, sfxPoint);
+            }
+        }
+
         // 动画交给 clone 替身:每一刀都在玩家落点完整播一遍 Backstab(本体隐藏 + 本体事件冻结在 clone 侧处理)。
         // 位置用"落点"而不是 pc.transform.position:TeleportTo 走 rb.position,同帧 transform 可能还是瞬移前旧值。
         // 朝向用 pc.FacingDir(UpdateFacing 已在本帧写定),与 CharacterBase.UpdateFacing 的 scale.x 符号同口径。
-        PlayCloneStrike(validBackstab ? playerDest : (Vector2)pc.transform.position, pc);
+        PlayCloneStrike(validBackstab ? playerDest : (Vector2)pc.transform.position, pc,
+                        pointIndex >= 0 ? pointIndex : 0, pointTime >= 0f ? pointTime : -1f);
 
         var rec = new StrikeRecord
         {
@@ -862,7 +884,8 @@ public class PlayerBackstabState : EntityState
         };
         _strikes.Add(rec);
 
-        // 按点消费:让 MusicPointManager 的消费记录与状态推进一致(同点重复调用幂等;没打出去的点不消费)
+        // 按点消费:让 MusicPointManager 的消费记录与状态推进一致(同点重复调用幂等)。
+        // 空挥刀也消费(2026-09-21):连音组内每个点都要走完一轮,消费记录就是自动连打的游标依据之一。
         if (pointTime >= 0f) mgr.ConsumePoint(pointTime);
 
         // 自动连打游标(节拍辅助 2026-09-17):本刀之后组内还有未执行点 → 交给 TickAutoChain 按拍点自动打完;
@@ -889,10 +912,21 @@ public class PlayerBackstabState : EntityState
     }
 
     /// <summary>在玩家落点播这一刀的 Backstab 动画(未挂 BackstabClone = 判空跳过,本体走原 Entry 路由播动画)</summary>
-    private void PlayCloneStrike(Vector2 position, PlayerController pc)
+    private void PlayCloneStrike(Vector2 position, PlayerController pc, int diagStep, float diagPoint)
     {
-        if (_clone == null) return;
-        _clone.PlayAt(position, pc != null && pc.FacingDir < 0);
+        if (_clone == null)
+        {
+            // [2026-09-21 对位 debug] 没挂 clone 的降级路径:动画由本体演
+            var mgrDiag = MusicPointManager.Instance;
+            if (mgrDiag != null)
+            {
+                string pointLabel = diagPoint >= 0f ? $"{diagPoint:F3}" : "无";
+                string diffLabel = diagPoint >= 0f ? $"差={(mgrDiag.TrackTime - diagPoint) * 1000f:+0.0;-0.0}ms" : "差=-";
+                Debug.Log($"[对位] 动画 刀序={diagStep} 标点={pointLabel} 动画起始={mgrDiag.TrackTime:F3} {diffLabel} 进状态=本体(无clone)");
+            }
+            return;
+        }
+        _clone.PlayAt(position, pc != null && pc.FacingDir < 0, diagStep, diagPoint);
     }
 
     // ============================================================
@@ -914,19 +948,25 @@ public class PlayerBackstabState : EntityState
         {
             float p = pts[i];
             if (mgr.IsPointConsumed(p)) continue;
-            if (mgr.IsPointActive(p)) return i;
+            if (mgr.IsPointActive(p))
+            {
+                return i;
+            }
         }
 
         int pending = mgr.PendingChainPointIndex;      // ② 组内第一个未消费点,且窗口已开(用 WindowSeconds 保守判定,不用 mgr 私有参数)
         if (pending >= 0 && pending < pts.Length && mgr.TrackTime >= pts[pending] - mgr.WindowSeconds)
+        {
             return pending;
+        }
         return -1;
     }
 
     /// <summary>
     /// 本刀目标(2026-09-17 背刺目标锁定,四级顺序,每级都要 !IsDead):
     ///   ① explicitTarget:Boss 重击判定链传入的显式目标(不做视口校验 —— 判定成功就打它);
-    ///   ② pointIndex >= 0(连音路径)→ _planner.GetTargetForPoint(pointIndex)(P3 分配器单一数据源,口径一字不改);
+    ///   ② pointIndex >= 0(连音路径)→ _planner.GetTargetForPoint(pointIndex):整组同目标(2026-09-21),
+    ///      目标死了 / 组快照里没有可用目标 → 直接空挥,不再往下回退换人(死亡口径只判 IsDead,不看屏幕);
     ///   ③ _beatIndicator.CurrentTarget(圈上锁定目标)且 _planner.IsInViewport(它) —— 圈在 A 身上就打到 A,
     ///      哪怕玩家此刻离另一个敌人更近(不再在按 F 那一帧重搜"最近敌人");
     ///   ④ _planner.FindNearestInViewport():锁定目标已死 / 出了视口 → 回退"视口内最近敌人";
@@ -937,11 +977,15 @@ public class PlayerBackstabState : EntityState
         // ① 显式目标(Boss 重击判定链):判定成功就是它,不看视口
         if (explicitTarget != null && !explicitTarget.IsDead) return explicitTarget;
 
-        // ② 连音路径:组内该点分配到的敌人(未准备 / 目标已销毁时不在此级返回,继续往下回退)
-        if (pointIndex >= 0 && mgr != null)
+        // ② 连音路径:组内该点分配到的敌人(2026-09-21:整组同目标 = 出第 1 个环的那只)。
+        //    目标死了 / 组快照里没有可用目标 → 直接空挥(return null),不再往下回退换人 —— 连音组一旦开打
+        //    就只认这一只;换人会变成「打一半跑去打别人」。失效口径只判 IsDead,不管它在不在屏幕内。
+        //    只有「本组快照没做过」(EnemyBeatIndicator 未接线 / 组内中途激活)才落到下面的 ③④ 兜底。
+        if (pointIndex >= 0 && mgr != null && _planner != null)
         {
-            var planned = _planner != null ? _planner.GetTargetForPoint(pointIndex) : null;
+            var planned = _planner.GetTargetForPoint(pointIndex);
             if (planned != null && !planned.IsDead) return planned;
+            if (_planner.ChainLength > 0) return null;   // 快照做过但这一刀的目标没了 → 空挥
         }
 
         if (_planner == null) return FindNearestTarget();   // 场景未接线:退回旧口径(6 米搜索,已停用,仅兜底)
@@ -1092,12 +1136,22 @@ public class PlayerBackstabState : EntityState
         return false;
     }
 
-    /// <summary>背刺瞬移起点残影:玩家还在起点时生成,瞬移后残影停在原地淡出。未挂 DashGhostTrail 则跳过(不挡背刺)</summary>
-    private void SpawnGhost()
+    /// <summary>背刺冲刺残影(2026-09-21):瞬移前沿「玩家当前位置 → 落点」直线补 3 张,
+    /// 玩家还在原位时拷贝当前帧,瞬移后残影留在来路上淡出 = 冲刺拖影。
+    /// 只铺到 2/3 处(不含落点本身),避免残影压在玩家本体身上。未挂 DashGhostTrail 则跳过(不挡背刺)。</summary>
+    private void SpawnGhost(Vector2 destination)
     {
-        if (_ghostTrail != null)
-            _ghostTrail.SpawnOnce();
+        if (_ghostTrail == null) return;
+        Vector2 from = owner.transform.position;
+        for (int i = 0; i < BackstabGhostCount; i++)
+        {
+            float t = i / (float)BackstabGhostCount;   // 0 / 1/3 / 2/3(不含 1)
+            _ghostTrail.SpawnAt(Vector2.Lerp(from, destination, t));
+        }
     }
+
+    /// <summary>背刺冲刺沿路径补的残影张数(不新增配置字段,与冲刺残影密度同量级)</summary>
+    private const int BackstabGhostCount = 3;
 
     /// <summary>
     /// 「最近敌人」查询 —— 兜底用。签名与访问级别保持不变(PlayerController 侧引用不破)。

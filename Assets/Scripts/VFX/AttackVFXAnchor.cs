@@ -117,6 +117,40 @@ public class AttackVFXAnchor : MonoBehaviour
     private Coroutine _delayedRoutine;  // showDelay 延迟生成句柄
 
     // ============================================================
+    // [2026-09-21 背刺卡点比对 debug] 一组的逐刀差,退出时打一次汇总;诊断完连同下面的日志块一起删
+    // ============================================================
+    /// <summary>一刀的比对结果(音乐轴):差 = 实际发声音乐时刻 − 标点(正 = 晚了)</summary>
+    private struct DiagRow { public int step; public float point; public float diffMs; public float dspDiffMs; }
+    private readonly List<DiagRow> _diagRows = new List<DiagRow>();
+    private bool _diagAudioInfoPrinted;
+    /// <summary>诊断参包:step = 刀序,pointTime = 本刀标点(&lt; 0 = 不记诊断)</summary>
+    private struct BackstabDiag
+    {
+        public int step;
+        public float pointTime;
+        public BackstabDiag(int step, float pointTime) { this.step = step; this.pointTime = pointTime; }
+    }
+
+    /// <summary>[2026-09-21 背刺卡点比对 debug] 打一组连音的汇总(PlayerBackstabState.OnExit 调);诊断完删。</summary>
+    public void FlushBackstabDiagSummary()
+    {
+        if (_diagRows.Count == 0) return;
+        int n = _diagRows.Count, inRange = 0;
+        float min = float.MaxValue, max = float.MinValue, sum = 0f;
+        var sb = new System.Text.StringBuilder();
+        foreach (var r in _diagRows)
+        {
+            if (Mathf.Abs(r.diffMs) <= 20f) inRange++;
+            if (r.diffMs < min) min = r.diffMs;
+            if (r.diffMs > max) max = r.diffMs;
+            sum += r.diffMs;
+            sb.Append($"{r.step}:{r.diffMs:+0;-0} ");
+        }
+        Debug.Log($"[对位] 汇总音效 刀数={n} 落在±20ms内={inRange}/{n} 最小差={min:+0.0;-0.0}ms 最大差={max:+0.0;-0.0}ms 平均差={(sum / n):+0.0;-0.0}ms 逐刀(ms)={sb}");
+        _diagRows.Clear();
+    }
+
+    // ============================================================
     // 玩家侧统一入口(攻击开始/切段/结束事件调用;空槽/未配置 = 静默跳过)
     // ============================================================
 
@@ -126,13 +160,22 @@ public class AttackVFXAnchor : MonoBehaviour
     /// <summary>空中连击段特效(1~3 → air1/2/3;越界自动钳)</summary>
     public void PlayAir(int comboIndex) => PlayComboSlot(GetSlot(air1, air2, air3, comboIndex), comboIndex);
 
-    /// <summary>背刺特效(→ backstab)</summary>
-    /// <summary>背刺动作音效(→ backstab 槽),连音路径。hitStep = 组内刀序(0 起),音高 = 组内第 hitStep 个音(到顶夹最后一个)</summary>
-    public void PlayBackstab(int hitStep = 0) => PlayComboSlot(backstab, 0, BackstabSfxPitch(hitStep));
+    /// <summary>背刺特效 + 背刺音效(→ backstab 槽),连音路径。hitStep = 组内刀序(0 起),音高 = 组内第 hitStep 个音(到顶夹最后一个)。
+    /// scheduleDsp &gt; 0 = 音效排到该 dspTime(本刀标点时刻)播,与 BGM 同拍;0 = 立即播(标点拿不到时的退化)。
+    /// pointTime &gt;= 0 = 本刀标点的音乐时刻(只用于「卡点比对」诊断行,不参与播放逻辑)。</summary>
+    public void PlayBackstab(int hitStep = 0, double scheduleDsp = 0.0, float pointTime = -1f)
+        => PlayComboSlot(backstab, 0, BackstabSfxPitch(hitStep), scheduleDsp, false, new BackstabDiag(hitStep, pointTime));
 
     /// <summary>背刺动作音效(→ backstab 槽),单点路径(自动重音 / Boss 判定链)。
-    /// 音高 = 循环游标取组内单音并往后走:1,2,3;1,2,3(连音抽到新组时游标归零,从这里重新起)</summary>
-    public void PlayBackstabSingle() => PlayComboSlot(backstab, 0, NextLoopPitch());
+    /// 音高 = 循环游标取组内单音并往后走:1,2,3;1,2,3(连音抽到新组时游标归零,从这里重新起)。
+    /// scheduleDsp &gt; 0 = 排到该 dspTime(拍点 / 标点时刻)播;0 = 立即播。</summary>
+    public void PlayBackstabSingle(double scheduleDsp = 0.0, float pointTime = -1f)
+        => PlayComboSlot(backstab, 0, NextLoopPitch(), scheduleDsp, false, new BackstabDiag(0, pointTime));
+
+    /// <summary>只播背刺音效、不动特效(不 spawn、也不 Hide 上一组):连音自动连打打到没有目标的空挥刀用 ——
+    /// 进组后组内每个点都要到点出声,但不该出现刀光。音高口径同 PlayBackstab。</summary>
+    public void PlayBackstabSfxOnly(int hitStep, double scheduleDsp = 0.0, float pointTime = -1f)
+        => PlayComboSlot(backstab, 0, BackstabSfxPitch(hitStep), scheduleDsp, true, new BackstabDiag(hitStep, pointTime));
 
     /// <summary>地图元素冲刺特效(→ mapDash)</summary>
     public void PlayMapDash() => PlayComboSlot(mapDash, 0);
@@ -166,6 +209,7 @@ public class AttackVFXAnchor : MonoBehaviour
     {
         DrawBackstabPitchSet();
         _backstabLoopIndex = 0;
+        _diagRows.Clear();   // [2026-09-21 背刺卡点比对 debug] 换组:上一组的统计作废(退出时会先打汇总)
     }
 
     /// <summary>抽一组音高:拍数 3 → 三连音批,其余(4/未填/非法)→ 四连音批;批内随机,相邻两次避开同一组</summary>
@@ -218,23 +262,42 @@ public class AttackVFXAnchor : MonoBehaviour
         return idx;
     }
 
-    /// <summary>播放一个玩家分组槽(VFX / 音效各自判空,两个都空则静默跳过;自动收上一组)</summary>
-    private void PlayComboSlot(ComboSlot slot, int comboIndex, float? pitchOverride = null)
+    /// <summary>播放一个玩家分组槽(VFX / 音效各自判空,两个都空则静默跳过;自动收上一组)。
+    /// scheduleDsp &gt; 0 = 音效排到该 dspTime 播(背刺卡点:与 BGM 走同一个音频时钟);0 = 立即播(普通攻击槽的默认行为)。
+    /// sfxOnly = 只出声、不 spawn 特效也不收上一组特效:连音自动连打的空挥刀用。</summary>
+    private void PlayComboSlot(ComboSlot slot, int comboIndex, float? pitchOverride = null, double scheduleDsp = 0.0, bool sfxOnly = false, BackstabDiag diag = default)
     {
         if (slot == null) return;
 
         bool hasVfx = slot.prefab != null;
         bool hasSfx = slot.sfx != null;
         if (!hasVfx && !hasSfx) return;   // 未配置:不播不警告
+        if (sfxOnly && !hasSfx) return;   // 只要出声但这条槽没配音效:静默跳过
 
-        Hide();  // 收上一组(与是否配 VFX 无关,无 VFX 时内部空转)
+        if (!sfxOnly) Hide();  // 收上一组(与是否配 VFX 无关,无 VFX 时内部空转)
 
-        // 挥刀音效立即播(showDelay 只作用于 VFX 延迟生成,不影响音效手感)
+        // 挥刀音效(showDelay 只作用于 VFX 延迟生成,不影响音效手感)
         // comboIndex = 连击段号(1 起)→ 半音偏移 → pitch(段1 原调 / 段2 大三度 / 段3 纯五度);0 = 不变调
         if (hasSfx)
-            AudioManager.Instance?.PlaySfx(slot.sfx, slot.sfxVolume, pitchOverride ?? ComboPitch(slot, comboIndex));
+        {
+            float pitch = pitchOverride ?? ComboPitch(slot, comboIndex);
 
-        if (!hasVfx) return;   // 只配了音效:不动特效,也不启动特效超时保险
+            var am = AudioManager.Instance;
+
+            if (scheduleDsp > 0.0)
+            {
+                var src = am?.PlaySfxScheduled(slot.sfx, slot.sfxVolume, scheduleDsp, pitch);
+                // [2026-09-21 对位 debug] 只做一件事:等这一声真的响起来,反推它在音乐轴上的起始时刻,和标点比。
+                if (src != null && diag.pointTime >= 0f)
+                    StartCoroutine(LogBackstabSfxOnsetRoutine(src, diag.step, diag.pointTime));
+            }
+            else
+            {
+                am?.PlaySfx(slot.sfx, slot.sfxVolume, pitch);
+            }
+        }
+
+        if (sfxOnly || !hasVfx) return;   // 只出声 / 只配了音效:不动特效,也不启动特效超时保险
 
         if (_delayedRoutine != null) { StopCoroutine(_delayedRoutine); _delayedRoutine = null; }
         if (_lifeRoutine != null) { StopCoroutine(_lifeRoutine); _lifeRoutine = null; }
@@ -245,6 +308,43 @@ public class AttackVFXAnchor : MonoBehaviour
             SpawnPrefab(slot.prefab);
 
         _lifeRoutine = StartCoroutine(LifetimeGuard());
+    }
+
+    /// <summary>
+    /// [2026-09-21 背刺卡点比对 debug] 等这一声真的响起来之后,反推它的起播时刻,换算成「这一声响的时候音乐播到了哪」,
+    /// 与标点直接比对。两个数都来自同一个采样帧、且都不经过逻辑层的 TrackTime 换算,所以能验出排程映射有没有错:
+    ///   本声已播时长 = AudioSource.time ÷ pitch(除以 pitch:变调是重采样,播放速率 = pitch 倍);
+    ///   实际发声音乐时刻 = BGM主源.time(同一帧) − 本声已播时长      ← 两个独立音源各报自己的位置,时差抵消;
+    ///   dsp差 = 实际起始 dsp(采样时 dsp − 已播时长) − 排程目标 dsp  ← 纯音频时钟,判断"排到没排到"。
+    /// 分辨率下限 = AudioSettings 的 DSP 缓冲(一缓冲约 3~21ms),量级以下的差没有意义。诊断完删本块。
+    /// </summary>
+    private IEnumerator LogBackstabSfxOnsetRoutine(AudioSource src, int step, float pointTime)
+    {
+        // 等这一声真的开始(AudioSource.time 有非零量才测得了),最多等 0.3s
+        float waited = 0f;
+        while (src != null && src.time <= 0f && waited < 0.3f)
+        {
+            waited += Time.unscaledDeltaTime;
+            yield return null;
+        }
+        yield return null;
+
+        var mgr = MusicPointManager.Instance;
+        if (mgr == null) yield break;
+
+        if (!src.isPlaying)
+        {
+            Debug.Log($"[对位] 音效 刀序={step} 标点={pointTime:F3} 音效起始=未采到(源已停/被下一次排程换掉) 差=-");
+            yield break;
+        }
+
+        // 本声已播时长 = AudioSource.time ÷ pitch(pitch 是重采样);音乐位置与它同一个采样帧读,时差抵消
+        float played = src.time / Mathf.Max(0.01f, src.pitch);
+        float musicAtOnset = mgr.TrackTime - played;
+        float diffMs = (musicAtOnset - pointTime) * 1000f;
+
+        Debug.Log($"[对位] 音效 刀序={step} 标点={pointTime:F3} 音效起始={musicAtOnset:F3} 差={diffMs:+0.0;-0.0}ms");
+        _diagRows.Add(new DiagRow { step = step, point = pointTime, diffMs = diffMs, dspDiffMs = 0f });
     }
 
     private IEnumerator ShowDelayedPrefab(GameObject prefab, float delay)

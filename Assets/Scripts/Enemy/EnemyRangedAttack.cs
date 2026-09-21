@@ -129,15 +129,10 @@ public class EnemyRangedAttack : MonoBehaviour, IEnemyAttack
         return (Vector2)_owner.transform.position + Vector2.up * 0.5f;
     }
 
-    /// <summary>生成 VFX — 走 VFXSpawner 容器 + 自动销毁；团结引擎坑：Instantiate 复制预制体 active 状态，
-    /// 特效包根节点常为 inactive → 需 SetActive(true) 再逐个 Play()（ParticleSystem 无 enabled 属性）</summary>
+    /// <summary>生成 VFX — 统一走 VFXSpawner 入口（容器 / 强制激活 / 逐个 Play / 自动销毁都在入口里做）</summary>
     private void SpawnVFX(GameObject prefab)
     {
         if (prefab == null || _owner == null) return;
-        GameObject instance = VFXSpawner.Spawn(VFXCategory.EnemyVFX, prefab, GetSpawnPos(), Quaternion.identity);
-        if (instance == null) return;
-        instance.SetActive(true);
-        foreach (var ps in instance.GetComponentsInChildren<ParticleSystem>(true))
-            ps.Play();
+        VFXSpawner.Spawn(VFXCategory.EnemyVFX, prefab, GetSpawnPos(), Quaternion.identity);
     }
 }

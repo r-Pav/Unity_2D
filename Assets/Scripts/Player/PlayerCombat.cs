@@ -451,29 +451,9 @@ public class PlayerCombat : MonoBehaviour
         };
     }
 
-    /// <summary>
-    /// 背刺卡点音效(节拍辅助 2026-09-17):把背刺命中音排到标点(拍点)时刻播,不再等动画命中帧 ——
-    /// 玩家在窗口内按 F 时,音和音乐同拍落下,踩准的确认感在按键当下就给。
-    /// 素材 / 音量读被击中的那一只 enemy,音高由调用方给(attack_VFX 背刺槽的基准 + 随机和谐音程池);pointTime 由调用方给(连音 = 本刀点时刻,非连音 = 当前 bar 拍点)。
-    /// pointTime 已过(按晚了)→ PlayScheduled 立刻播,自动退化,调用方不用特判。
-    /// 只服务非 Boss 目标(Boss 目标沿用命中帧立即播,见 ExecuteBackstab)。
-    /// </summary>
-    public void PlayBackstabSfxScheduled(EnemyControllerBase target, float pointTime, float pitch = 1f)
-    {
-        if (target == null) return;
-
-        // 素材与音量取被击中的那一只(命中音归敌人);音高由调用方给(attack_VFX 的背刺槽 + 随机和谐音程池)
-        AudioClip clip = target.HurtSfx;
-        if (clip == null) return;
-
-        var mgr = MusicPointManager.Instance;
-        if (mgr == null)
-        {
-            AudioManager.Instance?.PlaySfx(clip, target.HurtSfxVolume, pitch);   // 场景没有音乐管理器(未接线):退回立即播,不静默
-            return;
-        }
-        AudioManager.Instance?.PlaySfxScheduled(clip, target.HurtSfxVolume, mgr.DspTimeForPoint(pointTime), pitch);
-    }
+    // [2026-09-21 saika 定稿] 背刺不再播敌人受击音(EnemyControllerBase.hurtSfx),
+    // 原「给敌人受击音排程卡点」的 PlayBackstabSfxScheduled + 诊断协程已删除;
+    // 卡点改由背刺槽音效承担:AttackVFXAnchor.PlayBackstab / PlayBackstabSingle 带 dspTime 排程(见 PlayerBackstabState)。
 
     /// <summary>
     /// 玩家自身攻击位移 — 由命中帧动画事件触发(与击退同构)。
@@ -620,10 +600,10 @@ public class PlayerCombat : MonoBehaviour
         var info = BuildDamageInfo(dmg, meleeFinisherAttackType, knock);
         info.suppressAirHang = true;   // 背刺=终结技:跳过敌人空中滞空吸附(_pullToPlayer),enemy 正常击退飞出自然落地
         info.isBackstabFinisher = true;   // 受击方播背刺受击 VFX(EnemyControllerBase.backstabHitVFX,跟随击飞)
-        // 背刺命中音效(2026-09-17 卡点 + 2026-09-18 解耦):非 Boss 目标那一声已由 PlayerBackstabState 在按键成立
-        // 那一帧排到标点播(见 PlayBackstabSfxScheduled),置位让受击方命中帧不再重复播(否则一拍响两声);
-        // Boss 目标不由攻击方排程,受击方自己在本组件命中帧播(EnemyControllerBase.PlayHurtSfx)。
-        info.hurtSfxHandled = !target.IsBoss;
+        // 背刺命中音效(2026-09-21 saika 定稿):背刺不出敌人受击音(hurtSfx),这一刀的音效 = attack_VFX 背刺槽那个音,
+        // 由 PlayerBackstabState 排到本刀标点播(AttackVFXAnchor.PlayBackstab/PlayBackstabSingle 的 dspTime 参数)。
+        // 恒置位:非 Boss 与 Boss 一视同仁都不播受击音(不再走命中帧立即播),否则一拍响两声。
+        info.hurtSfxHandled = true;
         CombatResolver.Resolve(info.source, target, info);
 
         // [2026-09-07 AttackVFXAnchor 收敛暂停] 背刺命中特效由被刺槽(PlayBackstab)统一承担

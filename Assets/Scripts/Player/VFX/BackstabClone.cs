@@ -74,6 +74,9 @@ public class BackstabClone : MonoBehaviour
     [Tooltip("启动时就建好池(推荐):避免第一刀当场 Instantiate 造成卡顿;关掉则首次 PlayAt 懒建池")]
     [SerializeField] private bool prewarmOnStart = true;
 
+    [Tooltip("clone 透明度系数(1 = 与本体同透明,越小替身越虚)。建池时乘到各 SpriteRenderer 的 alpha 上,不覆盖原素材 alpha")]
+    [SerializeField, Range(0f, 1f)] private float cloneAlpha = 0.85f;
+
     // ============================================================
     // 运行时
     // ============================================================
@@ -94,6 +97,50 @@ public class BackstabClone : MonoBehaviour
         public long serial;                        // 启动序号(池满时按序号找最早那只)
         public float startTime;                    // 本刀开始时间(缩放时间)
         public float recycleAt = -1f;              // >=0 = 已收到结束事件,到点回收
+        public int alignStep = -1;                 // [对位 debug] 本槽待补报的刀序(-1 = 不用报)
+        public float alignPoint = -1f;             // [对位 debug] 本槽待补报的标点
+    }
+
+    // ============================================================
+    // [2026-09-21 对位 debug] 只记「这一刀的动画起始在音乐轴上的时刻」,退出时打一次汇总;诊断完整块删
+    // ============================================================
+    private struct AlignRow { public int step; public float point; public float diffMs; }
+    private readonly List<AlignRow> _alignRows = new List<AlignRow>();
+    private int _alignNeverShown;   // 没进 Backstab 状态、动画没演的刀数
+
+    /// <summary>[2026-09-21 对位 debug] 一行:这一刀的动画起始(音乐轴)与标点的差。诊断完删。</summary>
+    private void LogAlignAnim(int step, float point, bool sameFrame)
+    {
+        var mgr = MusicPointManager.Instance;
+        if (mgr == null) return;
+        float music = mgr.TrackTime;
+        string pointLabel = point >= 0f ? $"{point:F3}" : "无";
+        string diffLabel = point >= 0f ? $"差={(music - point) * 1000f:+0.0;-0.0}ms" : "差=-";
+        Debug.Log($"[对位] 动画 刀序={step} 标点={pointLabel} 动画起始={music:F3} {diffLabel} 进状态={(sameFrame ? "同帧" : "迟了")}");
+        if (point >= 0f) _alignRows.Add(new AlignRow { step = step, point = point, diffMs = (music - point) * 1000f });
+    }
+
+    /// <summary>[2026-09-21 对位 debug] 打一次动画侧汇总(PlayerBackstabState.OnExit 调);诊断完删。</summary>
+    public void FlushBackstabAlignSummary()
+    {
+        if (_alignRows.Count == 0 && _alignNeverShown == 0) return;
+        int n = _alignRows.Count, inRange = 0;
+        float min = float.MaxValue, max = float.MinValue, sum = 0f;
+        var sb = new System.Text.StringBuilder();
+        foreach (var r in _alignRows)
+        {
+            if (Mathf.Abs(r.diffMs) <= 20f) inRange++;
+            if (r.diffMs < min) min = r.diffMs;
+            if (r.diffMs > max) max = r.diffMs;
+            sum += r.diffMs;
+            sb.Append($"{r.step}:{r.diffMs:+0;-0} ");
+        }
+        string stat = n > 0
+            ? $"落在±20ms内={inRange}/{n} 最小差={min:+0.0;-0.0}ms 最大差={max:+0.0;-0.0}ms 平均差={(sum / n):+0.0;-0.0}ms 未演={_alignNeverShown} 逐刀(ms)={sb}"
+            : $"没有演出动画的刀 未演={_alignNeverShown}";
+        Debug.Log($"[对位] 汇总动画 刀数={n} {stat}");
+        _alignRows.Clear();
+        _alignNeverShown = 0;
     }
 
     private readonly List<CloneSlot> _pool = new List<CloneSlot>();
@@ -155,6 +202,11 @@ public class BackstabClone : MonoBehaviour
                 if (IsPlayingBackstab(s.animator))
                 {
                     SetSlotRenderersVisible(s, true);
+                    if (s.alignStep >= 0)   // [2026-09-21 对位 debug] 迟了若干帧才显示的动画:这里补一行
+                    {
+                        LogAlignAnim(s.alignStep, s.alignPoint, false);
+                        s.alignStep = -1;
+                    }
                 }
                 else if (s.animator != null)
                 {
@@ -168,7 +220,16 @@ public class BackstabClone : MonoBehaviour
             // ② 回收:动画结束事件已收到 → 立即收(与本体原行为一致:结束事件即动画结束);
             //    事件丢失 → recycleTimeout 兜底,防 clone 卡在落点
             float deadline = s.recycleAt >= 0f ? s.recycleAt : s.startTime + recycleTimeout;
-            if (Time.time >= deadline) RecycleSlot(s, holdVisible: true);   // 事件丢失兜底;本体还在等下一刀则保留末帧
+            if (Time.time >= deadline)
+            {
+                if (s.alignStep >= 0)   // [2026-09-21 对位 debug] 到回收都没进 Backstab 状态 = 这一刀没动画
+                {
+                    Debug.Log($"[对位] 动画 刀序={s.alignStep} 标点={(s.alignPoint >= 0f ? s.alignPoint.ToString("F3") : "无")} 动画起始=未演(到回收都没进 Backstab 状态) 差=-");
+                    _alignNeverShown++;
+                    s.alignStep = -1;
+                }
+                RecycleSlot(s, holdVisible: true);   // 事件丢失兜底;本体还在等下一刀则保留末帧
+            }
         }
 
         // ③ 收尾:画面上还有 clone(在播 或 停在末帧当替身)时本体继续隐藏,禁止双影;
@@ -213,7 +274,7 @@ public class BackstabClone : MonoBehaviour
     /// </summary>
     /// <param name="position">落点(玩家根的世界坐标:clone 视觉根带自身局部偏移,这里传玩家根位置即可对齐)</param>
     /// <param name="faceLeft">true = 朝左(与 CharacterBase.UpdateFacing:根 scale.x 取负)</param>
-    public void PlayAt(Vector3 position, bool faceLeft)
+    public void PlayAt(Vector3 position, bool faceLeft, int diagStep = -1, float diagPoint = -1f)
     {
         if (visualRoot == null)
         {
@@ -227,6 +288,8 @@ public class BackstabClone : MonoBehaviour
         CloneSlot slot = TakeSlot();
         slot.active = true;
         slot.idleHold = false;   // 该槽若正停在末帧当替身:本次接管,重新播这一刀
+        slot.alignStep = -1;     // [2026-09-21 对位 debug] 清掉上一位残留
+        slot.alignPoint = -1f;
         slot.serial = ++_serial;
         slot.startTime = Time.time;
         slot.recycleAt = -1f;
@@ -240,6 +303,13 @@ public class BackstabClone : MonoBehaviour
         StartBackstab(slot);
         bool shownNow = IsPlayingBackstab(slot.animator);
         if (shownNow) SetSlotRenderersVisible(slot, true);
+
+        // [2026-09-21 对位 debug] 这一帧就进 Backstab 状态 = 动画起始就是这一帧;没进则挂在本槽上,等 Update 真显示时补报
+        if (diagStep >= 0)
+        {
+            if (shownNow) LogAlignAnim(diagStep, diagPoint, true);
+            else { slot.alignStep = diagStep; slot.alignPoint = diagPoint; }
+        }
 
         HideBase();                     // 本体隐藏 + 冻结(与 clone 不同时显示,也不重复触发事件)
         _latest = slot;                 // 残影取"最新活跃 clone"
@@ -336,6 +406,8 @@ public class BackstabClone : MonoBehaviour
 
             if (slot.animator == null || slot.animator.runtimeAnimatorController == null)
                 WarnOnce("[BackstabClone] visualRoot 上取不到 Animator/AnimatorController → clone 不会有动画表现。");
+
+            ApplyCloneAlpha(slot);   // 替身整体压半透明(乘,不覆盖原素材 alpha)
 
             _pool.Add(slot);
 
@@ -529,6 +601,21 @@ public class BackstabClone : MonoBehaviour
         float ry = Mathf.Abs(ls.y) > ScaleEpsilon ? ws.y / ls.y : ws.y;
         float rz = Mathf.Abs(ls.z) > ScaleEpsilon ? ws.z / ls.z : ws.z;
         return new Vector3(faceLeft ? -Mathf.Abs(rx) : Mathf.Abs(rx), ry, rz);
+    }
+
+    /// <summary>建池时一次性把 cloneAlpha 乘到各渲染器的 alpha 上(乘,不覆盖原本就半透明的部件)。
+    /// 之后显示/回收只改 enabled,不动 color,系数不会被清掉。</summary>
+    private void ApplyCloneAlpha(CloneSlot slot)
+    {
+        if (slot.renderers == null || Mathf.Approximately(cloneAlpha, 1f)) return;
+        for (int i = 0; i < slot.renderers.Length; i++)
+        {
+            SpriteRenderer sr = slot.renderers[i];
+            if (sr == null) continue;
+            Color c = sr.color;
+            c.a *= cloneAlpha;
+            sr.color = c;
+        }
     }
 
     /// <summary>按构建时的 enabled 恢复每个渲染器的可见性(显示时不强行打开原本关掉的渲染器)</summary>

@@ -11,10 +11,10 @@ using UnityEngine;
 ///   本组件负责一次快照:屏幕内敌人 → 与玩家距离升序 → 按点索引分配 → 缓存;
 ///   P6(PlayerBackstabState)按点索引 GetTargetForPoint(index) 取目标。
 ///
-/// 分配规则(规格 §P3,已由 saika 拍板):
+/// 分配规则(2026-09-21 saika 变更:整组同目标):
 ///   候选 = 视口内(外扩 viewportMargin)Enemy 层、存活、非 Boss 的敌人;
-///   点 0 取最近;点 N 先排除点 N-1 已分配的目标,取剩下最近的;排除后无候选则回退到全部候选(允许重复);
-///   实测口径:3 敌人 + 3 连音 = A、B、A;只有 1 只敌人时 3 点都指向它。
+///   整组所有点都取候选里离玩家最近的那一只(= 出第 1 个环的那只),组内不换人;
+///   旧口径(3 敌人 + 3 连音 = A、B、A 轮流分配)已废:后续刀跳去别的敌人,画面上像漏刀。
 ///
 /// 性能与稳定性:
 ///   扫描只发生在 PrepareChain(每组一次),Update 内不做任何场景遍历、不调 Camera.main、不用 FindObjectsOfType;
@@ -98,7 +98,7 @@ public class BackstabChainPlanner : MonoBehaviour
     // ============================================================
 
     /// <summary>
-    /// 连音组首点前 snapshotLeadSeconds 由 P5 调用「一次」:扫一次屏幕内敌人 → 按与玩家距离升序 → 按点分配 → 缓存。
+    /// 连音组首点前 snapshotLeadSeconds 由 P5 调用「一次」:扫一次屏幕内敌人 → 按与玩家距离升序 → 整组同目标 → 缓存。
     /// chainPoints 为当前组的点时刻数组(升序,来自 MusicPointManager.CurrentChainPoints),只用其 Length 决定分配几个点。
     /// 组内禁止重复调用(重复调用 = 按当帧状态重排,违反「组内不重排」);组结束/切曲调 ClearChain()。
     /// </summary>
@@ -118,20 +118,12 @@ public class BackstabChainPlanner : MonoBehaviour
         GatherCandidates(_candidates, _candidateSqrDist, true);   // 整组只在这里扫一次(口径不变:排除 Boss)
         if (_candidates.Count == 0) return; // 屏内无可用敌人 → 全 null(P6 自行兜底)
 
-        // 点 0 取最近;点 N 先排除点 N-1 的目标,取剩下最近的;全被排除(单敌人)→ 回退到最近候选,允许重复。
-        for (int i = 0; i < n; i++)
-        {
-            EnemyControllerBase prev = i > 0 ? _targets[i - 1] : null;
-            EnemyControllerBase pick = null;
-            for (int c = 0; c < _candidates.Count; c++)   // _candidates 已按距离升序
-            {
-                if (_candidates[c] == prev) continue;
-                pick = _candidates[c];
-                break;
-            }
-            if (pick == null) pick = _candidates[0];
-            _targets[i] = pick;
-        }
+        // [2026-09-21 saika 变更] 一组连音只打「第 1 个环判定的那一只」:整组同目标,组内不换人。
+        // 旧口径(点 N 先排除点 N-1 的目标、取剩余最近 → 3 敌 3 点 = A/B/A)会让后续刀跳到别的敌人身上,
+        // 画面上表现为「漏刀」,已废。点表全部指向 _candidates[0] = 出第 1 个环的那只
+        // (视口内离玩家最近的非 Boss 敌人,与出圈选目标同一套距离口径)。
+        EnemyControllerBase pick = _candidates[0];
+        for (int i = 0; i < n; i++) _targets[i] = pick;
     }
 
     /// <summary>组结束/切曲时清空分配(清空后 GetTargetForPoint / HasAssignment 一律返回 null / false)。
@@ -274,7 +266,7 @@ public class BackstabChainPlanner : MonoBehaviour
     // ============================================================
 
     /// <summary>
-    /// 把每个点分配到的敌人画连线并「标序号」,供 saika 目视验证(3 敌人 3 连音 = A、B、A;单敌人 = 三点同指)。
+    /// 把每个点分配到的敌人画连线并「标序号」,供 saika 目视验证(整组同目标:所有连线收在同一只敌人身上)。
     /// 序号编码:同点一条线,颜色按点索引区分(HSV 轮转),并在敌人侧沿线摆「序号+1」个小球
     /// (点 0 = 1 个、点 1 = 2 个、点 2 = 3 个)。
     /// 规格要求只用 Gizmos.DrawLine、不引入额外依赖,故不用 Handles.Label 绘文字。
