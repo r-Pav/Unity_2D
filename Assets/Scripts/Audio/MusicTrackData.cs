@@ -28,7 +28,8 @@ public class MusicTrackData : ScriptableObject
     [Tooltip("0 = 普通循环(场景曲);>0 = 交叠循环(Boss 曲):循环内容 0→loopPoint,结尾段与开头段交叠")]
     public float loopPoint;
 
-    [Tooltip("音乐点时间秒,升序手工标。场景曲整曲范围;Boss 曲 0→loopPoint 内")]
+    [Tooltip("音乐点时间,升序手工标。场景曲整曲范围;Boss 曲 0→loopPoint 内。界面按 秒.帧@30 显示与输入(9.08 = 9 秒 08 帧),资产内部存的是秒")]
+    [SecondsAsFrames]
     public float[] points;
 
     [Header("自动重音(普通场景曲)")]
@@ -42,7 +43,8 @@ public class MusicTrackData : ScriptableObject
     [Tooltip("第一首切到第二首的秒数(两位小数);introClip 非空时生效,同时是转阶段点")]
     public float introSwitchTime;
 
-    [Tooltip("第一首的音乐点时间秒,升序,两位小数")]
+    [Tooltip("第一首的音乐点时间,升序。界面按 秒.帧@30 显示与输入,资产内部存秒")]
+    [SecondsAsFrames]
     public float[] introPoints;
 
     [Header("标点组(命名多数组)")]
@@ -80,7 +82,8 @@ public class MusicPointGroup
     [Tooltip("组名(代码按名查,固定约定:BossHeavy/BossOrb1~5/PlayerCombo/BossHeavySound/PlayerBackstab)")]
     public string groupName;
 
-    [Tooltip("标点时间秒,升序,两位小数")]
+    [Tooltip("标点时间,升序。界面按 秒.帧@30 显示与输入,资产内部存秒")]
+    [SecondsAsFrames]
     public float[] points;
 }
 
@@ -89,6 +92,7 @@ public class MusicPointGroup
 [Serializable]
 public class MusicChainGroup
 {
-    [Tooltip("本组连音标点时刻(秒,升序,两位小数)")]
+    [Tooltip("本组连音标点时刻(升序)。界面按 秒.帧@30 显示与输入,资产内部存秒")]
+    [SecondsAsFrames]
     public float[] points;
 }

@@ -17060,6 +17060,7 @@ MonoBehaviour:
   triggerLead: 0.033
   previewLead: 0.3
   crossFadeDuration: 1
+  visualLatencyOffsetMs: 0
 --- !u!1 &337140642
 GameObject:
   m_ObjectHideFlags: 0
@@ -80764,7 +80765,6 @@ GameObject:
   - component: {fileID: 1427529668}
   - component: {fileID: 1427529669}
   - component: {fileID: 1427529670}
-  - component: {fileID: 1427529671}
   - component: {fileID: 1427529672}
   - component: {fileID: 1427529673}
   m_Layer: 6
@@ -81494,26 +81494,6 @@ MonoBehaviour:
   fadeDuration: 0.5
   tint: {r: 1, g: 1, b: 1, a: 1}
   tailDuration: 0.3
---- !u!114 &1427529671
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1427529632}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3cd849b8673e13d419263a1a232dad02, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  visualRoot: {fileID: 1523805910}
-  baseSprite: {fileID: 1523805912}
-  baseAnimator: {fileID: 1523805911}
-  ghostTrail: {fileID: 1427529670}
-  poolSize: 5
-  recycleTimeout: 1.2
-  prewarmOnStart: 1
-  cloneAlpha: 0.85
 --- !u!114 &1427529672
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -105613,8 +105593,8 @@ MonoBehaviour:
   bgmSources: []
   sfxSources: []
   sfxPoolSize: 6
-  scheduledSfxPoolSize: 3
-  scheduledSfxPoolMax: 12
+  scheduledSfxPoolSize: 20
+  scheduledSfxPoolMax: 20
   library: {fileID: 11400000, guid: e9fda8a510f74bc428e03e4f7bbd61bf, type: 2}
 --- !u!4 &1901683436
 Transform:

@@ -66,6 +66,9 @@ public static class MusicSheetCsv
 
         /// <summary>main 段 + 有组名 → 命名标点组(按首次出现顺序)</summary>
         public List<ParsedGroup> groups = new List<ParsedGroup>();
+
+        /// <summary>chain 段 → 连音组(资产里没有组名,group 列 = 1、2、3… 编号,按首次出现顺序)</summary>
+        public List<ParsedGroup> chainGroups = new List<ParsedGroup>();
     }
 
     /// <summary>该组名是否在项目约定名单内(仅用于警告)</summary>
@@ -120,6 +123,23 @@ public static class MusicSheetCsv
         // ③ intro 段:前奏点(无分组结构,组名列必须留空)
         foreach (float p in SortedCopy(track.introPoints))
             sb.Append("intro,,").Append(FormatTime(p)).Append(",\n");
+
+        // ④ chain 段:连音组(MusicChainGroup 没有组名 → group 列写 1、2、3… 编号;组内升序;空组只留编号行)
+        if (track.chainGroups != null)
+        {
+            for (int i = 0; i < track.chainGroups.Length; i++)
+            {
+                MusicChainGroup cg = track.chainGroups[i];
+                string label = (i + 1).ToString(CultureInfo.InvariantCulture);
+                if (cg == null || cg.points == null || cg.points.Length == 0)
+                {
+                    sb.Append("chain,").Append(label).Append(",,\n");
+                    continue;
+                }
+                foreach (float p in SortedCopy(cg.points))
+                    sb.Append("chain,").Append(label).Append(',').Append(FormatTime(p)).Append(",\n");
+            }
+        }
 
         return sb.ToString();
     }
@@ -188,6 +208,8 @@ public static class MusicSheetCsv
         HashSet<string> warnedUnknownGroups = new HashSet<string>();
         int dataLines = 0;      // 表头之后的非空非注释行数
         int validSectionLines = 0;
+        List<string> chainLabels = new List<string>();        // chain 段:连音组编号(1、2、3…),按首次出现顺序
+        List<List<float>> chainPoints = new List<List<float>>();
 
         for (int i = headerIndex + 1; i < lines.Length; i++)
         {
@@ -202,10 +224,10 @@ public static class MusicSheetCsv
             string timeText = GetField(fields, colTime).Trim();
             // note 列 / 多余的列一律忽略(纯备注)
 
-            // ① section 只认 main / intro
-            if (section != "main" && section != "intro")
+            // ① section 只认 main / intro / chain
+            if (section != "main" && section != "intro" && section != "chain")
             {
-                warnings.Add(string.Format("第 {0} 行:section 非法(\"{1}\"),该行已忽略(只允许 main / intro)。",
+                warnings.Add(string.Format("第 {0} 行:section 非法(\"{1}\"),该行已忽略(只允许 main / intro / chain)。",
                     lineNo, GetField(fields, colSection).Trim()));
                 continue;
             }
@@ -225,14 +247,11 @@ public static class MusicSheetCsv
                 if (!TryParseSeconds(timeText, out time))
                 {
                     // 致命:整表不导入,调用方不写资产
-                    fatalError = string.Format("第 {0} 行 time 不是有效秒数:\"{1}\"(需为非负数字,允许 1~2 位小数)。整表未导入。",
+                    fatalError = string.Format("第 {0} 行 time 不是有效时间:\"{1}\"。格式 = 秒.帧(30 帧制):8.24 = 8 秒 24 帧;帧号 00~29,最多两位小数。整表未导入。",
                         lineNo, timeText);
                     sheet = null;
                     return false;
                 }
-                int decimals = CountDecimals(timeText);
-                if (decimals > 2)
-                    warnings.Add(string.Format("第 {0} 行:time 小数超过两位(\"{1}\"),已按原值导入。", lineNo, timeText));
             }
             else if (groupName.Length == 0)
             {
@@ -241,8 +260,18 @@ public static class MusicSheetCsv
                 continue;
             }
 
-            // ③ 分流:main → 整曲 points / 命名组;intro → introPoints
-            if (section == "main")
+            // ③ 分流:main → 整曲 points / 命名组;intro → introPoints;chain → 连音组
+            if (section == "chain")
+            {
+                if (groupName.Length == 0)
+                {
+                    warnings.Add(string.Format("第 {0} 行:chain 段缺连音组编号(group 列),该行已忽略。", lineNo));
+                    continue;
+                }
+                int ci = EnsureGroup(chainLabels, chainPoints, groupName);
+                if (hasTime) chainPoints[ci].Add(time);
+            }
+            else if (section == "main")
             {
                 if (groupName.Length == 0)
                 {
@@ -266,11 +295,11 @@ public static class MusicSheetCsv
         // section 列全非法 = 致命(避免"以为导入了其实整表被忽略")
         if (dataLines > 0 && validSectionLines == 0)
         {
-            fatalError = "表格没有任何合法数据行:section 列只允许 main / intro。整表未导入。";
+            fatalError = "表格没有任何合法数据行:section 列只允许 main / intro / chain。整表未导入。";
             return false;
         }
         if (dataLines == 0)
-            warnings.Add("表格没有数据行:导入后该曲的 points / introPoints / pointGroups 会被清空。");
+            warnings.Add("表格没有数据行:导入后该曲的 points / introPoints / pointGroups / chainGroups 会被清空。");
 
         // ── 收尾:每段每组升序 + 容差去重 ──
         sheet = new ParsedSheet();
@@ -283,6 +312,14 @@ public static class MusicSheetCsv
             g.placeholderOnly = groupPoints[i].Count == 0;   // 全是占位行 → 空组(仍要建出来,组名不能丢)
             g.points = SortAndDedupe(groupPoints[i], "组 " + groupNames[i], warnings);
             sheet.groups.Add(g);
+        }
+        for (int i = 0; i < chainLabels.Count; i++)
+        {
+            ParsedGroup g = new ParsedGroup();
+            g.groupName = chainLabels[i];
+            g.placeholderOnly = chainPoints[i].Count == 0;
+            g.points = SortAndDedupe(chainPoints[i], "连音组 " + chainLabels[i], warnings);
+            sheet.chainGroups.Add(g);
         }
         return true;
     }
@@ -325,10 +362,16 @@ public static class MusicSheetCsv
         File.WriteAllText(path, normalized, new UTF8Encoding(true));
     }
 
-    /// <summary>把时间秒格式化成两位小数(InvariantCulture,不吃本地化小数点)</summary>
+    /// <summary>秒 → 表格文本:按「秒.帧@30」写出(9.2667 → "9.08"),与解析口径一致,往返稳定</summary>
     public static string FormatTime(float seconds)
     {
-        return seconds.ToString("F2", CultureInfo.InvariantCulture);
+        return MusicTimeText.ToFramesText(seconds);
+    }
+
+    /// <summary>秒 → 帧写法文本(30 帧制):9.2667 → "9.08"(与 MusicTimeText 同一份实现)</summary>
+    public static string SecondsToFrameText(float seconds)
+    {
+        return MusicTimeText.ToFramesText(seconds);
     }
 
     // ============================================================
@@ -405,29 +448,18 @@ public static class MusicSheetCsv
         return "\"" + field.Replace("\"", "\"\"") + "\"";
     }
 
-    /// <summary>严格按 InvariantCulture 解析秒数:拒绝千分位、指数写法、NaN / 无穷 / 负数</summary>
+    /// <summary>每秒帧数(标点时间记法 = 秒.帧,与动画/音乐制作口径一致:8.24 = 8 秒 24 帧)</summary>
+    public const int FramesPerSecond = 30;
+
+    /// <summary>
+    /// 解析时间:表格里的写法是 **「秒.帧@30」**(2026-09-21 定稿,saika 手写这个格式):
+    /// 9.08 = 9 秒 08 帧 = 9.2667 秒;一位小数按两位读(Excel 吃尾零:12.1 = 12 秒 10 帧)。
+    /// 帧号 0~29;换算交给 MusicTimeText(与 Inspector 绘制器同一份口径)。
+    /// 资产里存的一律是秒 —— 换算只发生在「表格这一层」。
+    /// </summary>
     private static bool TryParseSeconds(string text, out float seconds)
     {
-        seconds = 0f;
-        const NumberStyles style = (NumberStyles.Float & ~NumberStyles.AllowExponent) | NumberStyles.AllowLeadingSign;
-        if (!float.TryParse(text, style, CultureInfo.InvariantCulture, out float value)) return false;
-        if (float.IsNaN(value) || float.IsInfinity(value) || value < 0f) return false;
-        seconds = value;
-        return true;
-    }
-
-    /// <summary>小数点后的位数(用于「超过两位」警告)</summary>
-    private static int CountDecimals(string text)
-    {
-        int dot = text.IndexOf('.');
-        if (dot < 0) return 0;
-        int count = 0;
-        for (int i = dot + 1; i < text.Length; i++)
-        {
-            if (text[i] < '0' || text[i] > '9') break;
-            count++;
-        }
-        return count;
+        return MusicTimeText.TryParseFramesText(text, out seconds);
     }
 
     /// <summary>升序排序 + 容差 0.001 去重(与 MusicPointManager 的点表去重口径一致)</summary>
@@ -628,7 +660,12 @@ public class MusicSheetEditorWindow : EditorWindow
         if (GUILayout.Button("刷新", GUILayout.Width(70))) RefreshTracks();
         GUILayout.EndHorizontal();
 
-        GUILayout.Label("导入为整表覆盖:该曲 points / introPoints / pointGroups 全部按表格重建。以后标点只在表格里改。",
+        GUILayout.Label("导入为整表覆盖:该曲 points / introPoints / pointGroups / chainGroups(连音组)全部按表格重建。以后标点只在表格里改。",
+            EditorStyles.miniLabel);
+        GUILayout.Label("连音组写法:section 填 chain,group 列填连音组编号(1、2、3…),一行一个点。",
+            EditorStyles.miniLabel);
+        GUILayout.Label("时间写法 = 秒.帧@30(9.08 = 9 秒 08 帧 = 9.2667 秒;帧号 00~29;64.1 = 64 秒 10 帧)。" +
+                        "表格里就这么写,导入/导出脚本负责换算,资产内部存的是秒。",
             EditorStyles.miniLabel);
         GUILayout.Space(6);
 
@@ -648,6 +685,13 @@ public class MusicSheetEditorWindow : EditorWindow
             }
             GUILayout.Space(6);
         }
+
+        // ── 首个点对照(表格写法 / 真实秒值) ──
+        if (track.points != null && track.points.Length > 0)
+            GUILayout.Label(string.Format("首个点: {0}(表格写法)= {1:F3} 秒",
+                MusicSheetCsv.SecondsToFrameText(track.points[0]), track.points[0]),
+                EditorStyles.miniLabel);
+        GUILayout.Space(4);
 
         // ── Inspector 对照区(复用默认 Inspector,看导入后的数组) ──
         GUILayout.Label("Inspector 对照区", EditorStyles.boldLabel);
@@ -701,8 +745,9 @@ public class MusicSheetEditorWindow : EditorWindow
         MusicSheetCsv.WriteFileText(sheetPath, MusicSheetCsv.Build(track));
         AssetDatabase.Refresh();
 
-        resultSummary = string.Format("已导出到 {0}\npoints {1} 个 / introPoints {2} 个 / 命名组 {3} 个。",
-            sheetPath, Count(track.points), Count(track.introPoints), track.pointGroups == null ? 0 : track.pointGroups.Length);
+        resultSummary = string.Format("已导出到 {0}\npoints {1} 个 / introPoints {2} 个 / 命名组 {3} 个 / 连音组 {4} 个。",
+            sheetPath, Count(track.points), Count(track.introPoints), track.pointGroups == null ? 0 : track.pointGroups.Length,
+            track.chainGroups == null ? 0 : track.chainGroups.Length);
         resultWarnings.Clear();
     }
 
@@ -731,14 +776,24 @@ public class MusicSheetEditorWindow : EditorWindow
             return;
         }
 
+        // 表格里没有 chain 行 = 这次导入会清空连音组:先让 saika 确认(连音组只能靠这张表维护)
+        int chainCountInAsset = track.chainGroups == null ? 0 : track.chainGroups.Length;
+        if (sheet.chainGroups.Count == 0 && chainCountInAsset > 0)
+        {
+            if (!EditorUtility.DisplayDialog("音乐标点表 — 导入",
+                    string.Format("表格里没有 chain 行(连音组),而该曲资产里有 {0} 个连音组。\n\n继续导入会清空这些连音组。\n先点「导出到表格」可以把它们写进表格。\n\n仍要导入?", chainCountInAsset),
+                    "继续导入", "取消"))
+                return;
+        }
+
         ApplySheet(track, sheet);
 
         int groupPointTotal = 0;
         for (int i = 0; i < sheet.groups.Count; i++) groupPointTotal += Count(sheet.groups[i].points);
 
         resultSummary = string.Format(
-            "已从 {0} 导入(整表覆盖):points {1} 个 / introPoints {2} 个 / 命名组 {3} 个(共 {4} 点)。",
-            sheetPath, Count(sheet.points), Count(sheet.introPoints), sheet.groups.Count, groupPointTotal);
+            "已从 {0} 导入(整表覆盖):points {1} 个 / introPoints {2} 个 / 命名组 {3} 个(共 {4} 点)/ 连音组 {5} 个。",
+            sheetPath, Count(sheet.points), Count(sheet.introPoints), sheet.groups.Count, groupPointTotal, sheet.chainGroups.Count);
 
         resultWarnings.Clear();
         resultWarnings.AddRange(warnings);
@@ -760,6 +815,14 @@ public class MusicSheetEditorWindow : EditorWindow
             groups[i].points = sheet.groups[i].points != null ? sheet.groups[i].points : new float[0];
         }
         track.pointGroups = groups;
+
+        MusicChainGroup[] chains = new MusicChainGroup[sheet.chainGroups.Count];
+        for (int i = 0; i < sheet.chainGroups.Count; i++)
+        {
+            chains[i] = new MusicChainGroup();
+            chains[i].points = sheet.chainGroups[i].points != null ? sheet.chainGroups[i].points : new float[0];
+        }
+        track.chainGroups = chains;
 
         EditorUtility.SetDirty(track);
         AssetDatabase.SaveAssets();

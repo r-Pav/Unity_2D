@@ -53,6 +53,9 @@ public class MusicPointManager : MonoBehaviour
     [Tooltip("缓入缓出时长(秒):管道/Boss 切换")]
     [SerializeField] private float crossFadeDuration = 1f;
 
+    [Header("时基")]
+    [Tooltip("音频输出延迟补偿(秒):>0 = 把“当前音乐时刻”整体往后挪这么多(补偿音箱/耳机输出延迟)。默认 0")]
+
     // [2026-09-18] 调试显示已关闭:恢复时去掉本块与 OnGUI 的注释即可
 //     [Header("调试")]
 //     [Tooltip("屏幕显示当前音频时间/距下一点(标点验证用)")]
@@ -92,6 +95,8 @@ public class MusicPointManager : MonoBehaviour
     private bool _inIntroPhase;          // 两段式:当前是否处于前奏段(恢复/仲裁用)
     private MusicTrackData _sceneTrack;  // 进 Boss 前保存的场景曲(退 Boss 时切回)
     private float _savedTrackTime;       // 应用失焦/切后台时保存的音频位置(恢复时重定位)
+    private double _dspAnchor;           // 时基:dsp 锚点(本段音乐时刻 0 对应的 AudioSettings.dspTime)
+    private bool _clockPending = true;   // 时基:待校正(起播后第一次读到源真实位置时对齐一次)
 
     /// <summary>窗口开启(参数=点时刻)</summary>
     public event Action<float> OnWindowEnter;
@@ -122,8 +127,61 @@ public class MusicPointManager : MonoBehaviour
     /// <summary>预告提前量(预告圆环激活判定用)</summary>
     public float PreviewLead => previewLead;
 
-    /// <summary>当前主源音频时间(唯一时钟;P5 Boss 模式跟随当前主源)</summary>
-    public float TrackTime => _activeSource != null ? _activeSource.time : 0f;
+    /// <summary>设备输出延迟校准(毫秒):把「表现 / 判定」用的时钟整体推后这么多。
+    /// 排程音效不受它影响(音效与 BGM 同一条音频管线,排在标点上就与音乐同刻出声);
+    /// 表现(动画/指示器/判定窗口)是当帧立刻出的,会比听感早一个「输出延迟」。
+    /// 业界(Unity 官方 / Rhythm Quest / osu / DJMAX)都给玩家一个这样的校准值。0 = 不校准。</summary>
+    [SerializeField, Range(-100f, 100f)] private float visualLatencyOffsetMs = 0f;
+
+    /// <summary>
+    /// 当前音乐时刻(唯一时钟;P5 Boss 模式跟随当前主源)。
+    /// 2026-09-21 改 dsp 时基:不再直接读 AudioSource.time —— 那个值按音频缓冲跳(实测步长 3.3ms、极端 20ms+),
+    /// 判定与表现都建在它上面就天然带缓冲级抖动。改成「AudioSettings.dspTime − 锚点」推算:音频时钟是采样级精度,
+    /// 读到的音乐时刻平滑、不跳变,帧内任意时刻取都准。
+    /// 锚点在每次起播/换源/切段/恢复前台时重记(MarkClockPending);起播后第一次读到源真的走了( time > 0 )时,
+    /// 用当时的 dspTime 与源位置再对齐一次,消掉「Play() 到真正出声」之间不到一个缓冲的差(留给音频输出延迟补偿字段)。
+    /// 兜底:推算值与源位置差得离谱(> 0.25s,例如设备重置/被外部暂停)时重新锚定,防止时钟跑飞。
+    /// </summary>
+    public float TrackTime => RawTrackTime + visualLatencyOffsetMs * 0.001f;
+
+    /// <summary>未经校准偏移的原始音乐位置(排程音效用它:音效与 BGM 走同一条音频管线,
+    /// 排在标点上就一定和音乐同刻出声,不需要也不应该被设备延迟校准影响)。</summary>
+    public float RawTrackTime
+    {
+        get
+        {
+            if (_activeSource == null) return 0f;
+
+            if (_clockPending && _activeSource.time > 0f)
+            {
+                _dspAnchor = AudioSettings.dspTime - _activeSource.time;   // 源真的走起来了:以真实位置对齐
+                _clockPending = false;
+            }
+
+            float t = (float)(AudioSettings.dspTime - _dspAnchor);
+            if (t < 0f) t = 0f;
+
+            // 兜底:推算值与源位置差得离谱 → 重新锚定。循环曲（loop=true）回绕时源位置跳回 0、推算值还在往前,
+            // 差值一步就超过阈值,下一帧即自动对齐(这是回绕的正常路径,不打日志,注释里留一行备用)。
+            if (!_clockPending && Mathf.Abs(t - _activeSource.time) > 0.12f)
+            {
+                // [2026-09-21 时基] 排查时钟用:Debug.Log($"[时基] 重新锚定(dsp {t:F3} vs 源 {_activeSource.time:F3})");
+                _dspAnchor = AudioSettings.dspTime - _activeSource.time;
+                t = (float)(AudioSettings.dspTime - _dspAnchor);
+                if (t < 0f) t = 0f;
+            }
+
+            return t;
+        }
+    }
+
+    /// <summary>重记 dsp 锚点:起播 / 换源 / 切段 / 恢复前台后必须调用。
+    /// 先按当前源位置给一个临时锚点(立刻可用),再把 _clockPending 置真,等源真的走起来( time > 0 )校正一次(幂等)。</summary>
+    private void MarkClockPending()
+    {
+        _dspAnchor = AudioSettings.dspTime - (_activeSource != null ? _activeSource.time : 0.0);
+        _clockPending = true;
+    }
 
     /// <summary>自动重音路径当前/最近一次窗口的拍点时刻(秒;-1 = 该曲没有自动重音或还没开过窗)。
     /// 供卡点音效排程取"这一拍是几点"(非连音的背刺走这条路)。</summary>
@@ -136,7 +194,7 @@ public class MusicPointManager : MonoBehaviour
     /// 返回时刻已过 = 音立刻播,调用方不用特判。
     /// </summary>
     public double DspTimeForPoint(float pointTime)
-        => AudioSettings.dspTime + (pointTime - TrackTime);
+        => AudioSettings.dspTime + (pointTime - RawTrackTime);
 
     // ── 自动重音预告查询(供 EnemyBeatIndicator 轮询;公式与 AutoBarRoutine 的 next 对齐,纯只读)──
     // 注意:禁止为复用这些 getter 去重构 AutoBarRoutine 内部计算(AutoBarRoutine 在排程协程内自己算即可,改它有回归风险)。
@@ -703,6 +761,8 @@ public class MusicPointManager : MonoBehaviour
                     _bossLoopRoutine = StartCoroutine(BossLoopRoutine());
             }
         }
+
+        MarkClockPending();   // 时基:恢复前台(源已重定位/续播)后重记锚点
     }
 
     /// <summary>切曲重播:换 clip 从头播,主源 = A(场景模式,普通循环),点表重新排程</summary>
@@ -717,6 +777,7 @@ public class MusicPointManager : MonoBehaviour
         audioSourceA.loop = true;          // 场景模式:播完重复
         audioSourceA.time = 0f;
         audioSourceA.Play();
+        MarkClockPending();   // 时基:新曲起播,重记 dsp 锚点
 
         StopSource(audioSourceB);          // 副源清空,防残留
         StopAutoBar();                     // 切曲:停旧自动重音协程
@@ -971,6 +1032,7 @@ public class MusicPointManager : MonoBehaviour
 
         _activeSource = fadeIn;          // 时钟立即切到新曲
         _currentTrack = track;
+        MarkClockPending();              // 时基:换主源,重记锚点
 
         float elapsed = 0f;
         while (elapsed < crossFadeDuration)
@@ -1020,6 +1082,7 @@ public class MusicPointManager : MonoBehaviour
             _activeSource = fadeIn;
             _currentTrack = bossTrack;
             _inIntroPhase = true;
+            MarkClockPending();          // 时基:换主源(前奏段),重记锚点
             StartScheduleWith(bossTrack.introPoints);   // 前奏段点表
             _introRoutine = StartCoroutine(IntroRoutine(bossTrack));
         }
@@ -1034,6 +1097,7 @@ public class MusicPointManager : MonoBehaviour
             fadeIn.Play();
             _activeSource = fadeIn;
             _currentTrack = bossTrack;
+            MarkClockPending();          // 时基:换主源(Boss 单曲),重记锚点
             RestartSchedule();
             _bossLoopRoutine = StartCoroutine(BossLoopRoutine());
         }
@@ -1079,6 +1143,7 @@ public class MusicPointManager : MonoBehaviour
         mainSource.time = 0f;
         mainSource.Play();
         _activeSource = mainSource;      // 时钟切到主体
+        MarkClockPending();              // 时基:换主源(前奏→主体),重记锚点
         _inIntroPhase = false;
         RestartSchedule();               // 排主体 points
         _bossLoopRoutine = StartCoroutine(BossLoopRoutine());
@@ -1138,6 +1203,7 @@ public class MusicPointManager : MonoBehaviour
             newSource.time = 0f;
             newSource.Play();
             _activeSource = newSource;         // 时钟切到新圈
+            MarkClockPending();                // 时基:换主源(交叠新圈),重记锚点
             RestartSchedule();
 
             // 旧源(交叠尾巴)播到自然结束停用

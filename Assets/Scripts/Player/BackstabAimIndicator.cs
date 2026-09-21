@@ -89,6 +89,7 @@ public class BackstabAimIndicator : MonoBehaviour
         if (poolCount == 0) return;                       // 环引用全空:只有内外圈,不报错
 
         int count = secondsToPoints != null ? secondsToPoints.Length : 0;
+
         for (int i = 0; i < count; i++)
         {
             int slot = i % poolCount;                     // 超出池大小 → 轮转回"最早分配的那只"复用(并发恒 ≤ 池大小)
@@ -99,15 +100,21 @@ public class BackstabAimIndicator : MonoBehaviour
             }
             ParticleSystem ps = _pool[slot];
             ResetAndPlay(ps);
+            // 串行出场:下一只环最早也要等「上一个点」到了才出现(上一个点 = 上一只环碰到外环那一刻),
+            // 所以密集点(0.1s 间隔)不会几只一起冒出来;空档够大时按正常提前量出场,起点半径还是 3。
+            float prevPoint = i > 0 ? Mathf.Max(0f, secondsToPoints[i - 1]) : 0f;
             _poolRoutines[slot] = StartCoroutine(
-                ShrinkRoutine(ps, slot, Mathf.Max(0f, secondsToPoints[i]), inner));
+                ShrinkRoutine(ps, slot, Mathf.Max(0f, secondsToPoints[i]), inner, prevPoint));
         }
     }
 
-    /// <summary>匀速收缩对齐该点窗口起点:剩余 ≥ lead 时该环先隐着,到 (点-lead) 再以固定起点开缩;
-    /// 晚触发(剩余 &lt; lead)则从当前剩余反推起点立即缩。环到判定外环(outerRadius)的时刻恒 = Show 时刻 + secondsToPoint;
-    /// 窗口期内缩到内环,之后继续缩到 0 收尾(结束显式置 0,防残留)。</summary>
-    private IEnumerator ShrinkRoutine(ParticleSystem ps, int slot, float secondsToPoint, float innerRadius)
+    /// <summary>匀速收缩对齐该点窗口起点:环到判定外环(outerRadius)的时刻恒 = Show 时刻 + secondsToPoint;
+    /// 窗口期内缩到内环,之后继续缩到 0 收尾(结束显式置 0,防残留)。
+    /// 出场时刻 = max(本点 - lead, 上一个点的时刻) —— 串行出场(2026-09-21):上一只环碰到外环(= 上个点到了)
+    /// 之前,这一只不出现,所以同一簇里的点也是一只接一只出,不会几只同时冒;
+    /// 起点半径按「出场时离本点还剩多少」反推(外环 + 速度 × 剩余),保证碰到外环那一瞬恒等于本点 ——
+    /// 正常提前量出场时正好等于设计起点 ringStartRadius;密集点则从更小的半径起步;晚触发(剩余 &lt; lead)同样适用。</summary>
+    private IEnumerator ShrinkRoutine(ParticleSystem ps, int slot, float secondsToPoint, float innerRadius, float secondsToPrevPoint)
     {
         if (ps == null)
         {
@@ -118,10 +125,11 @@ public class BackstabAimIndicator : MonoBehaviour
         float speed = shrinkSpeed;
         float lead = LeadSeconds;
 
-        float wait = secondsToPoint - lead;
+        // 出场时刻:正常 = 本点 - lead;串行约束 = 不早于上一个点(两者取晚的那个)
+        float wait = Mathf.Max(secondsToPoint - lead, secondsToPrevPoint);
         if (wait > 0f)
         {
-            // 提前量充足:金色环先不显示,到 next-lead 再以固定起点开始(环带此时已可见)
+            // 先不显示(scale 0),到出场时刻再以反推出来的起点开始缩
             SetScale(ps, 0f);
             float waited = 0f;
             while (waited < wait)
@@ -131,9 +139,10 @@ public class BackstabAimIndicator : MonoBehaviour
             }
         }
 
-        // 起点:正常 = ringStartRadius;晚触发(剩余<lead)反推起点保证仍精确到点
-        float startRadius = wait > 0f ? ringStartRadius : outerRadius + speed * secondsToPoint;
-        startRadius = Mathf.Max(startRadius, innerRadius);   // 极端晚触发兜底:不从内环以内起(否则 total<0 会卡住不缩)
+        // 起点半径:按出场时离本点还剩多少反推,保证碰到外环那一刻恒 = 本点
+        float startRadius = outerRadius + speed * Mathf.Max(0f, secondsToPoint - wait);
+        startRadius = Mathf.Min(startRadius, ringStartRadius);   // 不超设计起点(正常提前量出场时正好等于它)
+        startRadius = Mathf.Max(startRadius, innerRadius);       // 极端晚触发兜底:不从内环以内起(否则 total<0 会卡住不缩)
         float total = (startRadius - innerRadius) / speed;   // 缩到内环的时间(内环之后继续缩到 0)
         float t = 0f;
         while (t < total)

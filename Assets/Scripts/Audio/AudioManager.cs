@@ -59,10 +59,10 @@ public class AudioManager : MonoBehaviour
 
     [Header("SFX 排程池(卡点音排程用,运行时自建)")]
     [Tooltip("排程音效并发音源数量:PlayScheduled 把音排到指定 dspTime(拍点)播,一个源同一时刻只能占一个排程,连音密集时需要多个")]
-    [SerializeField] private int scheduledSfxPoolSize = 3;
+    [SerializeField] private int scheduledSfxPoolSize = 20;   // 2026-09-21:预建够(连音 11 刀 + 素材 1.088s → 同刻多声),避免按需扩源时当场 AddComponent 造成一帧抖动
 
     [Tooltip("排程音源上限:全忙时按需扩新源,扩到这个上限才顶掉最早结束的那一发(连音密集时保证每个音独立走完)")]
-    [SerializeField] private int scheduledSfxPoolMax = 12;
+    [SerializeField] private int scheduledSfxPoolMax = 20;   // 扩张上限(跟着池大小走;到上限才顶掉最早结束的那一发)
 
     [Header("音频库")]
     [Tooltip("全局音效配置资产(AudioLibrary);为空则音效静默")]
@@ -311,7 +311,9 @@ public class AudioManager : MonoBehaviour
         bool expanded = false;
         bool stole = false;
 
-        // ① 空闲槽:自记占用截止已过(不问 isPlaying)
+        // ① 空闲槽:这一发是「现在还没被占」的源(判据必须是 now,不能用未来目标时刻:
+        //    用未来时刻会把正在响的源判成空闲,换 clip 会当场掐掉正在响的那一声)。
+        //    整组提前排时靠池子够大(两个场景都是 12),并发数不够才走 ② 扩源。
         for (int i = 0; i < _scheduledSfxPool.Length; i++)
         {
             if (_scheduledSfxPool[i] != null && _scheduledBusyUntil[i] <= now) { slot = i; break; }
@@ -351,6 +353,7 @@ public class AudioManager : MonoBehaviour
 
         // 占用截止 = 真正开始播的时刻 + 实际播放时长(clip 时长 ÷ pitch,pitch 是重采样)+ 一点缓冲
         double start = dspTime > now ? dspTime : now;
+
         _scheduledBusyUntil[slot] = start + clip.length / p + 0.05;
 
         // [2026-09-21 背刺卡点比对 debug] 快照给调用方打日志用(同一帧读)
@@ -388,6 +391,37 @@ public class AudioManager : MonoBehaviour
             for (int i = 0; i < _scheduledBusyUntil.Length; i++) _scheduledBusyUntil[i] = 0.0;
         }
     }
+
+    /// <summary>
+    /// 取消「已经排进去、但还没开始响」的音:连音组是进组时整组排的,中途断链 / 状态退出要把没到的收掉。
+    /// 正在响的不动(否则会把刚响的那一声掐掉);同时把这些槽的占用清零,立即可复用。
+    /// </summary>
+    public void CancelPendingScheduledSfx()
+    {
+        if (_scheduledSfxPool == null) return;
+        double now = AudioSettings.dspTime;
+        for (int i = 0; i < _scheduledSfxPool.Length; i++)
+        {
+            AudioSource s = _scheduledSfxPool[i];
+            if (s == null || s.time > 0f) continue;   // 已经开响的保持(armed 的源 isPlaying 不可靠,按 time 判)
+
+            // 马上就开响的也保持:最后一个标点的音常常和「状态退出」落在同一帧,
+            // 一刀切掉就会出现「命中那一下偶尔没声」(2026-09-21 saika 报)。
+            // 排程起点 = busyUntil − 本段时长 − 余量(PlaySfxScheduled 里就是按这个算的)。
+            if (_scheduledBusyUntil != null && s.clip != null)
+            {
+                double len = s.clip.length / Mathf.Max(0.01f, s.pitch);
+                double start = _scheduledBusyUntil[i] - len - 0.05;
+                if (now < start + KeepPendingWindowSeconds) continue;
+            }
+
+            s.Stop();
+            if (_scheduledBusyUntil != null) _scheduledBusyUntil[i] = 0.0;
+        }
+    }
+
+    /// <summary>取消待播排程音效时,起点还没到但在这个窗口内的照旧播放(秒)</summary>
+    private const double KeepPendingWindowSeconds = 0.3;
 
     /// <summary>
     /// 播放 UI 音效(全局 4 个音效位:悬停/点击/关闭/打开),clip 从 library(AudioLibrary)取。

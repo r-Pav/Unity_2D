@@ -43,6 +43,9 @@ public class BackstabClone : MonoBehaviour
     /// <summary>隐影兜底(秒):无活跃 clone 却因异常仍没恢复显示时,强制恢复(本体状态自身 2.5s 超时更早,正常不会走到)</summary>
     private const float StuckBaseRecoverSeconds = 3f;
 
+    /// <summary>clone 池上限:单组最大连音点数可能远大于 6(实测 11 点组),池不够时前面的刀会被复用顶掉、动画被截断</summary>
+    private const int MaxClonePool = 16;
+
     // ============================================================
     // 引用(编辑器拖)
     // ============================================================
@@ -65,8 +68,8 @@ public class BackstabClone : MonoBehaviour
     // ============================================================
 
     [Header("clone 池")]
-    [Tooltip("池大小 2~6;数量 = 单组最大连音点数(与 BackstabAimIndicator 环池同口径)。不够时复用最早启动的那只,不新建")]
-    [SerializeField, Range(2, 6)] private int poolSize = 3;
+    [Tooltip("池大小 2~16;数量 = 单组最大连音点数(与 BackstabAimIndicator 环池同口径)。不够时复用最早启动的那只,不新建")]
+    [SerializeField, Range(2, MaxClonePool)] private int poolSize = 3;
 
     [Tooltip("兜底回收时长(秒,缩放时间):动画结束事件丢失时按此超时回收,防 clone 卡在落点不回收")]
     [SerializeField] private float recycleTimeout = 1.2f;
@@ -76,6 +79,9 @@ public class BackstabClone : MonoBehaviour
 
     [Tooltip("clone 透明度系数(1 = 与本体同透明,越小替身越虚)。建池时乘到各 SpriteRenderer 的 alpha 上,不覆盖原素材 alpha")]
     [SerializeField, Range(0f, 1f)] private float cloneAlpha = 0.85f;
+
+    [Tooltip("视觉延迟补偿(秒,默认 0):>0 = 画面整体往后挪这么多(动画内容与动画事件一起挪),用于补偿显示器/输出链路的固定延迟。动画位置按音乐时钟锁定后再减此值")]
+    [SerializeField, Range(-0.2f, 0.2f)] private float visualLatencyOffset = 0f;
 
     // ============================================================
     // 运行时
@@ -99,7 +105,16 @@ public class BackstabClone : MonoBehaviour
         public float recycleAt = -1f;              // >=0 = 已收到结束事件,到点回收
         public int alignStep = -1;                 // [对位 debug] 本槽待补报的刀序(-1 = 不用报)
         public float alignPoint = -1f;             // [对位 debug] 本槽待补报的标点
+        public float clockStart = -1f;             // 本刀起播的音乐时刻(<0 = 不按音乐时钟驱动,交给 Animator 自己走)
     }
+
+    /// <summary>
+    /// 本刀动画的「打击帧」时刻(秒)= Assets/Anim/Player/Backstab.anim 里动画事件 OnBackstabHitFrame 的时间
+    /// (m_SampleRate 12、m_StopTime 0.5 → 1/12 = 0.0833s)。起播提前量、刀光延迟、诊断都以它为准:
+    /// 起播 = 标点 − 本值 → 打击帧(视觉重音)与命中结算正好落在标点上。
+    /// 改动画片段的打击帧时刻时这里同步改。
+    /// </summary>
+    public const float HitFrameSeconds = 1f / 12f;
 
     // ============================================================
     // [2026-09-21 对位 debug] 只记「这一刀的动画起始在音乐轴上的时刻」,退出时打一次汇总;诊断完整块删
@@ -114,10 +129,13 @@ public class BackstabClone : MonoBehaviour
         var mgr = MusicPointManager.Instance;
         if (mgr == null) return;
         float music = mgr.TrackTime;
+        // 2026-09-21 档 B:起播已提前一个打击帧(StrikeLeadSeconds),所以真正要对标点的是「打击帧」时刻;
+        // 差 = 打击帧 − 标点(这才是耳朵/眼睛感知的重音偏差),起播单列出来便于核对提前量。
+        float hitAt = music + HitFrameSeconds;
         string pointLabel = point >= 0f ? $"{point:F3}" : "无";
-        string diffLabel = point >= 0f ? $"差={(music - point) * 1000f:+0.0;-0.0}ms" : "差=-";
-        Debug.Log($"[对位] 动画 刀序={step} 标点={pointLabel} 动画起始={music:F3} {diffLabel} 进状态={(sameFrame ? "同帧" : "迟了")}");
-        if (point >= 0f) _alignRows.Add(new AlignRow { step = step, point = point, diffMs = (music - point) * 1000f });
+        string diffLabel = point >= 0f ? $"差={(hitAt - point) * 1000f:+0.0;-0.0}ms" : "差=-";
+        Debug.Log($"[对位] 动画 刀序={step} 标点={pointLabel} 起播={music:F3} 打击帧={hitAt:F3} {diffLabel} 进状态={(sameFrame ? "同帧" : "迟了")}");
+        if (point >= 0f) _alignRows.Add(new AlignRow { step = step, point = point, diffMs = (hitAt - point) * 1000f });
     }
 
     /// <summary>[2026-09-21 对位 debug] 打一次动画侧汇总(PlayerBackstabState.OnExit 调);诊断完删。</summary>
@@ -138,7 +156,7 @@ public class BackstabClone : MonoBehaviour
         string stat = n > 0
             ? $"落在±20ms内={inRange}/{n} 最小差={min:+0.0;-0.0}ms 最大差={max:+0.0;-0.0}ms 平均差={(sum / n):+0.0;-0.0}ms 未演={_alignNeverShown} 逐刀(ms)={sb}"
             : $"没有演出动画的刀 未演={_alignNeverShown}";
-        Debug.Log($"[对位] 汇总动画 刀数={n} {stat}");
+        Debug.Log($"[对位] 汇总动画(差 = 打击帧 − 标点) 刀数={n} {stat}");
         _alignRows.Clear();
         _alignNeverShown = 0;
     }
@@ -189,6 +207,8 @@ public class BackstabClone : MonoBehaviour
 
     private void Update()
     {
+        MusicPointManager clockMgr = MusicPointManager.Instance;   // 时基调取一次,循环内不再查
+
         for (int i = 0; i < _pool.Count; i++)
         {
             CloneSlot s = _pool[i];
@@ -217,6 +237,19 @@ public class BackstabClone : MonoBehaviour
                 }
             }
 
+            // ①.5 动画位置按音乐时钟锁定(2026-09-21 档 B / S3):
+            //   目标位置 = 当前音乐时刻 − 本刀起播时刻 − 视觉延迟补偿,每帧把差值补进 Animator。
+            //   只补正、不回退:动画贴不上时钟(掉帧、状态机迟一帧、瞬移那帧开销大)会被下一帧补回来,
+            //   不靠自增 deltaTime 累;也不产生反向跨越,所以动画事件(命中帧/结束)不会被补发。
+            //   clockStart < 0(拿不到音乐管理器的降级路径)= 不驱动,交回 Animator 自己走。
+            if (s.clockStart >= 0f && clockMgr != null && s.animator != null && IsPlayingBackstab(s.animator))
+            {
+                float posTarget = Mathf.Max(0f, clockMgr.TrackTime - s.clockStart - visualLatencyOffset);
+                AnimatorStateInfo info = s.animator.GetCurrentAnimatorStateInfo(0);
+                float fix = posTarget - info.normalizedTime * info.length;
+                if (fix > 0.0005f) s.animator.Update(fix);
+            }
+
             // ② 回收:动画结束事件已收到 → 立即收(与本体原行为一致:结束事件即动画结束);
             //    事件丢失 → recycleTimeout 兜底,防 clone 卡在落点
             float deadline = s.recycleAt >= 0f ? s.recycleAt : s.startTime + recycleTimeout;
@@ -224,7 +257,7 @@ public class BackstabClone : MonoBehaviour
             {
                 if (s.alignStep >= 0)   // [2026-09-21 对位 debug] 到回收都没进 Backstab 状态 = 这一刀没动画
                 {
-                    Debug.Log($"[对位] 动画 刀序={s.alignStep} 标点={(s.alignPoint >= 0f ? s.alignPoint.ToString("F3") : "无")} 动画起始=未演(到回收都没进 Backstab 状态) 差=-");
+                    Debug.Log($"[对位] 动画 刀序={s.alignStep} 标点={(s.alignPoint >= 0f ? s.alignPoint.ToString("F3") : "无")} 起播=未演(到回收都没进 Backstab 状态) 打击帧=- 差=-");
                     _alignNeverShown++;
                     s.alignStep = -1;
                 }
@@ -274,7 +307,8 @@ public class BackstabClone : MonoBehaviour
     /// </summary>
     /// <param name="position">落点(玩家根的世界坐标:clone 视觉根带自身局部偏移,这里传玩家根位置即可对齐)</param>
     /// <param name="faceLeft">true = 朝左(与 CharacterBase.UpdateFacing:根 scale.x 取负)</param>
-    public void PlayAt(Vector3 position, bool faceLeft, int diagStep = -1, float diagPoint = -1f)
+    /// <param name="clockStartMusic">本刀动画「位置 0」对应的音乐时刻(&lt; 0 = 拿当前音乐时刻当起播,即按键那刀)</param>
+    public void PlayAt(Vector3 position, bool faceLeft, int diagStep = -1, float diagPoint = -1f, float clockStartMusic = -1f)
     {
         if (visualRoot == null)
         {
@@ -286,10 +320,24 @@ public class BackstabClone : MonoBehaviour
         if (_pool.Count == 0) return;
 
         CloneSlot slot = TakeSlot();
+
+        // 2026-09-21 一刀一个:新一刀起播时,把其它还亮着的替身在播的收掉、停末帧的也一并释放 ——
+        // 连音密集点(0.1s 间隔)下不再几只替身叠着演。空档里没有下一刀,所以"最后一刀"的末帧替身照旧保留
+        // (防玩家在整个空档里消失)。
+        for (int i = 0; i < _pool.Count; i++)
+        {
+            CloneSlot other = _pool[i];
+            if (other != slot && other.active) RecycleSlot(other);
+        }
+        ReleaseAllHolds();
+
         slot.active = true;
         slot.idleHold = false;   // 该槽若正停在末帧当替身:本次接管,重新播这一刀
         slot.alignStep = -1;     // [2026-09-21 对位 debug] 清掉上一位残留
         slot.alignPoint = -1f;
+        MusicPointManager mgrClock = MusicPointManager.Instance;
+        slot.clockStart = clockStartMusic >= 0f ? clockStartMusic
+                       : (mgrClock != null ? mgrClock.TrackTime : -1f);   // 按键那刀:以当前音乐时刻为起点
         slot.serial = ++_serial;
         slot.startTime = Time.time;
         slot.recycleAt = -1f;
@@ -369,7 +417,7 @@ public class BackstabClone : MonoBehaviour
         _poolBuilt = true;
         if (visualRoot == null) return;
 
-        int size = Mathf.Clamp(poolSize, 2, 6);
+        int size = Mathf.Clamp(poolSize, 2, MaxClonePool);
         for (int i = 0; i < size; i++)
         {
             // clone 根放世界根(不 SetParent):clone 必须留在自己的落点,不能随玩家移动

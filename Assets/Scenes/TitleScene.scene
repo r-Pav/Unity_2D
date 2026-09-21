@@ -11522,7 +11522,7 @@ MonoBehaviour:
   bgmSources: []
   sfxSources: []
   sfxPoolSize: 6
-  scheduledSfxPoolSize: 3
+  scheduledSfxPoolSize: 20
   library: {fileID: 11400000, guid: e9fda8a510f74bc428e03e4f7bbd61bf, type: 2}
 --- !u!4 &1881736057
 Transform:

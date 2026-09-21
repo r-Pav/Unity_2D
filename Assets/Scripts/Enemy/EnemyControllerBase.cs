@@ -1,1778 +1,3583 @@
 using UnityEngine;
+
 using System.Collections;
 
+
+
 /// <summary>
+
 /// 受击 VFX 变体条目 — 按攻击类型标签匹配不同特效。
+
 /// attackType 后续可用于驱动受击音效、伤害类型（物理/元素）、弱点匹配、Buff 触发等。
+
 /// </summary>
+
 [System.Serializable]
+
 public struct HitVFXVariant
+
 {
+
     [Tooltip("攻击类型标签，如 Sword/Bow/Hammer/Fire/Ice 等")]
+
     public string attackType;
+
     [Tooltip("该攻击类型对应的受击 VFX（未配置时回退 hitVFXPrefab）")]
+
     public GameObject vfxPrefab;
+
 }
 
+
+
 /// <summary>
+
 /// 敌人控制器抽象基类 — 继承 CharacterBase，管理共享的 AI、FSM 生命周期、受伤/死亡逻辑。
+
 /// 子类（EnemyMeleeController / EnemyRangedController）负责实现具体的 FSM 状态。
+
 /// </summary>
+
 public abstract class EnemyControllerBase : CharacterBase, ICombatant
+
 {
+
     // ============================================================
+
     // 配置参数
+
     // ============================================================
+
+
 
     [Header("数值配置 SO")]
+
     [Tooltip("敌人数值配置 ScriptableObject（Lv 收敛：内含 Lv1/2/3 三档；为空时仅用 Inspector/内置默认）")]
+
     [SerializeField] protected EnemyConfigSO config;
 
+
+
     [Header("等级")]
+
     [Tooltip("敌人等级 1~3，决定 EnemyConfigSO 取哪一档数值（Lv 收敛）")]
+
     [SerializeField] protected int level = 1;
+
     /// <summary>当前等级（消费组件/面板读取）</summary>
+
     public int Level => level;
 
+
+
     /// <summary>当前配置 SO（Inspector 运行时调试显示用）</summary>
+
     public EnemyConfigSO Config => config;
 
+
+
     /// <summary>当前移速（管线终值；Inspector 运行时调试显示用）</summary>
+
     public float CurrentMoveSpeed => MoveSpeed;
 
+
+
     [Header("属性")]
+
     [Tooltip("最大血量（0 = 未设置，用 SO 对应 Lv 档 / 内置默认兜底）")]
+
     [SerializeField] protected float maxHealth = 0f;
 
+
+
     [Header("受伤反馈")]
+
     [SerializeField] protected Color hitColor = Color.white;  // 白色闪白更明显
+
     [SerializeField] protected float hitFlashDuration = 0.1f;
+
     [Tooltip("受击停顿(秒):当前受击 enemy 在全局卡帧结束后,自己再冻结受击动画的时长。0/空 = 不启用")]
+
     [SerializeField] private float enemyHitPause = 0f;   // 显式 0 与"不设默认值"行为等价（0 = 不启用），避免 CS0649
 
+
+
     [Header("蓄力反馈")]
+
     [Tooltip("蓄力色 — 蓄力帧(OnCharge)开始闪烁、发射帧(OnFire)结束；灭相位恢复原始材质色")]
+
     [SerializeField] protected Color chargeColor = new Color(1f, 0.3f, 0f);
+
     [Tooltip("蓄力闪烁起始频率（每秒亮灭次数），随蓄力时间加速")]
+
     [SerializeField] protected float chargeFlashBaseFreq = 4f;
+
     [Tooltip("蓄力闪烁频率加速度（每秒增加的频率），蓄力越长闪得越快")]
+
     [SerializeField] protected float chargeFlashAccel = 6f;
+
     [Tooltip("蓄力闪烁频率上限（防长蓄力闪成震动）")]
+
     [SerializeField] protected float chargeFlashMaxFreq = 20f;
 
+
+
     // [预留] Boss 蓄力色独立配置：未来在 BossControllerBase 新增独立字段（与普通 enemy 分开设置），
+
     //       在 BossSkillSlots 各 Execute* 协程 windupTime 前摇段调 BeginChargeFlash()、判定帧调 EndChargeFlash()，
+
     //       Interrupt() 里兜底 EndChargeFlash()（协程被 Stop 后体内清理不会执行）。当前 Boss 不启用。
 
+
+
     [Header("VFX")]
+
     [Tooltip("受击 VFX 预制体 — 受伤时 Instantiate")]
+
     [SerializeField] protected GameObject hitVFXPrefab;
+
     [Tooltip("方向受击 VFX 预制体 — 有朝向的受击特效，朝向为攻击反方向（仅在 TakeDamageFrom 中额外生成）")]
+
     [SerializeField] protected GameObject directionalHitVFXPrefab;
+
     [Tooltip("死亡 VFX 预制体 — 死亡时 Instantiate")]
+
     [SerializeField] protected GameObject deathVFXPrefab;
+
     [Tooltip("背刺受击 VFX 预制体 — 被玩家背刺终结命中时生成(伤害结算同一帧,挂 enemy 下跟随击飞);空 = 不播")]
+
     [SerializeField] protected GameObject backstabHitVFX;
 
+
+
     [Header("受击音效(命中音归被击中的这一只)")]
+
     [Tooltip("受击音(空 = 不播)。背刺非 Boss 那一刀由攻击方排到音乐拍点播;其余命中在本组件命中帧播")]
+
     [SerializeField] protected AudioClip hurtSfx;
+
     [Tooltip("受击音相对音量(最终响度 = 设置面板 SFX 音量 × 此值)")]
+
     [Range(0f, 1f)] [SerializeField] protected float hurtSfxVolume = 1f;
+
     [Tooltip("受击音基准变调(半音):0 = 原调,4 = 大三度,7 = 纯五度,12 = 八度。作用在本组件命中帧播的那一声(普攻/技能等);背刺那一刀的音高在 attack_VFX 上调")]
+
     [Range(-12, 12)] [SerializeField] protected int hurtSemitone = 0;
+
     [Tooltip("每命中一次递增半音(连击/连音升调):0 = 不递增,4 = do/mi/sol,7 = do/sol/do'")]
+
     [Range(0, 12)] [SerializeField] protected int hurtRisePerHit = 0;
 
 
+
+
+
     [Header("VFX 变体")]
+
     [Tooltip("按攻击类型匹配的受击 VFX 列表（匹配到时覆盖 hitVFXPrefab）")]
+
     [SerializeField] private HitVFXVariant[] hitVFXVariants;
 
+
+
     [Header("攻击范围 — 矩形")]
+
     [Tooltip("攻击矩形半宽（X 轴；0 = 未设置）")]
+
     [SerializeField] protected float attackWidth = 0f;
+
     [Tooltip("攻击矩形半高（Y 轴；0 = 未设置）")]
+
     [SerializeField] protected float attackHeight = 0f;
 
+
+
     [Header("攻击冷却")]
+
     [Tooltip("攻击冷却时间（秒；0 = 未设置）")]
+
     [SerializeField] protected float attackCooldownDuration = 0f;
+
     public float AttackCooldownDuration => attackCooldownDuration;
 
+
+
     [Header("击退")]
+
     [Tooltip("远程攻击击退力度（近战击退由 PoiseComponent 控制；0 = 未设置）")]
+
     [SerializeField] protected float rangedKnockbackForce = 0f;
 
+
+
     [Tooltip("最高击飞上升速度上限(米/秒):空中多次击退叠加(普攻第三击+背刺等,ApplyKnockback 速度累加)后\n向上速度钳到该值,防敌人飞太高;只限上升(y 分量>0),向下/落地不限,不影响落地冲击")]
+
     [SerializeField] protected float maxLaunchUpSpeed = 10f;
+
     public float MaxLaunchUpSpeed => maxLaunchUpSpeed;
 
+
+
     [Tooltip("靠墙检测半宽(米):以 enemy 为中心左右各此距离的水平带,带内有墙/地面/管道 = 该侧堵(空中闪/背刺落点检测用)")]
+
     [SerializeField] protected float wallCheckHalfWidth = 2.5f;
+
     public float WallCheckHalfWidth => wallCheckHalfWidth;
 
+
+
     [Header("空中受击")]
+
     [Tooltip("空中受击滞空时长(秒):击飞中再受击停住后继续击退轨迹;0 = 关闭")]
+
     [SerializeField] protected float airHitHangDuration = 0.3f;
+
     [Tooltip("空中滞空重力倍率(缓慢下落):滞空期间 gravityScale = 此值,敌人缓缓飘落而不是定身停住(0.3 ≈ 玩家空中攻击悬停;0 = 关重力完全定身)")]
+
     [SerializeField] protected float airHangGravityScale = 0.3f;
+
     [Tooltip("空中受击吸附玩家速度(向玩家前方拉 x,保持连段距离;0 = 关闭)")]
+
     [SerializeField] protected float airHitPullSpeed = 8f;
+
     [Tooltip("空中吸附偏移(玩家前方距离,编辑器可调;目标 x = 玩家位置 + 朝向 × 此值)")]
+
     [SerializeField] protected float airHitPullOffset = 1.5f;
 
+
+
     [Header("落地冲击")]
+
     [Tooltip("落地冲击触发速度阈值(y 速度低于此值触发,负值;如 -8。自然落地/走路不触发)")]
+
     [SerializeField] protected float groundImpactSpeedThreshold = -8f;
+
     [Tooltip("落地尘土/冲击特效 prefab(留空 = 无)")]
+
     [SerializeField] protected GameObject groundImpactVFX;
+
     [Tooltip("落地卡帧时长(秒;0 = 无)")]
+
     [SerializeField] protected float groundImpactHitStop = 0.05f;
+
     [Tooltip("落地震屏时长(秒;0 = 无)")]
+
     [SerializeField] protected float groundImpactShakeDuration = 0.1f;
+
     [Tooltip("落地震屏幅度(0 = 无;参考 0.1)")]
+
     [SerializeField] protected float groundImpactShakeMagnitude = 0.1f;
+
     [Tooltip("落地硬直时长(秒;0 = 关闭,落地直接恢复行动)")]
+
     [SerializeField] protected float groundImpactStun = 0.3f;
+
     [Tooltip("落地弹跳力度(沿击退方向弹出去;0 = 不弹)")]
+
     [SerializeField] protected float groundBounceForce = 3f;
+
     [Tooltip("落地形变强度(动漫挤压拉伸,0.3 = 压扁30%;0 = 关闭)")]
+
     [SerializeField] protected float groundImpactSquash = 0.3f;
 
+
+
     [Header("巡逻悬崖检测")]
+
     [Tooltip("前方偏移（X 轴）：前方多远处探脚下地面（0.8 = 角色前方约一个身位）")]
+
     [SerializeField] private float cliffCheckForward = 0.8f;
+
     [Tooltip("下探距离（Y 轴）：从脚底向下探多深，探不到 = 悬崖/空洞")]
+
     [SerializeField] private float cliffCheckDown = 0.8f;
 
+
+
     [Header("巡逻管道检测")]
+
     [Tooltip("管道检测层(Channel):巡逻边界用")]
+
     [SerializeField] private LayerMask channelLayer = 0;
 
+
+
     [Tooltip("管道检测射线长度(前方)")]
+
     [SerializeField] private float channelCheckForward = 1.5f;
 
+
+
     [Tooltip("射线发射高度偏移(腰部)")]
+
     [SerializeField] private float channelRayHeightOffset = 0.5f;
 
+
+
     [Header("巡逻墙检测")]
+
     [Tooltip("巡逻边界短距检测长度(米):前方此距离内命中实心墙(Ground/Wall)或管道 trigger = 边界转身。比管道长线短,贴墙才转(2026-09-07 敌人顶墙卡住修复)")]
+
     [SerializeField] private float patrolBoundaryDistance = 0.8f;
 
+
+
     [Tooltip("战斗态垂直容差(Y 轴):战斗中有仇恨时任意方向检测玩家,垂直差在此范围内算可见(玩家绕后/跳起不丢仇恨)")]
+
     [SerializeField] private float combatSightHeight = 3f;
 
+
+
     [Tooltip("战斗态墙遮挡垂直容差(Y 轴,米):战斗中有仇恨时,垂直差在此范围内才做墙遮挡检测(隔墙丢仇恨);超过此值跳过检测(玩家跳跃中/站高台上不因墙丢仇恨)")]
+
     [SerializeField] private float wallCheckHeightTolerance = 1f;
 
+
+
     [Tooltip("朝向死区(X 轴):玩家水平距离小于此值时视为重合(如玩家在头顶),DirectionToPlayer 返回 0 = 停住不转身,防左右疯狂抖动")]
+
     [SerializeField] private float facingDeadZone = 0.3f;
 
+
+
     /// <summary>管道检测射线命中缓冲（团结引擎 ContactFilter2D 重载需结果数组；静态复用防每帧 GC）</summary>
+
     private static readonly RaycastHit2D[] channelCheckHits = new RaycastHit2D[1];
 
+
+
     /// <summary>暴露攻击矩形半宽给攻击组件读取</summary>
+
     public float AttackWidth => attackWidth;
+
     /// <summary>暴露攻击矩形半高给攻击组件读取</summary>
+
     public float AttackHeight => attackHeight;
 
+
+
     /// <summary>
+
     /// 嘲讽目标抽象层（B11）— 所有 AI 读取目标位置统一走此属性：
+
     /// 嘲讽期间返回 OverrideTarget（幻象等实体），否则返回真实玩家。
+
     /// 追击/攻击/朝向/LOS/检测矩形全部跟随，enemy 追幻象即被牵引。
+
     /// </summary>
+
     public Transform PlayerTarget => OverrideTarget != null ? OverrideTarget : player;
+
+
 
     // ── 嘲讽状态（B11/阶段 4：SetTaunt 把仇恨拉到幻象）──
 
+
+
     /// <summary>嘲讽覆盖目标（SetTaunt 设置；null = 正常追玩家）</summary>
+
     public Transform OverrideTarget { get; private set; }
 
+
+
     /// <summary>嘲讽剩余时长（秒；>0 期间 OverrideTarget 生效，Update 归零自动 ClearTaunt）</summary>
+
     private float tauntTimer;
 
+
+
     /// <summary>
+
     /// 施加嘲讽 — 仇恨转移到 source 实体（幻象等）持续 duration 秒。
+
     /// Boss 嘲讽时长减半（决策：先做减半，免疫与否入数值调优清单）。
+
     /// 重复嘲讽：取当前剩余与本次时长较大者（防连续刷新导致提前结束），目标指向最新 source。
+
     /// </summary>
+
     public void SetTaunt(Transform source, float duration)
+
     {
+
         if (source == null || isDead || duration <= 0f) return;
+
         OverrideTarget = source;
+
         tauntTimer = Mathf.Max(tauntTimer, IsBoss ? duration * 0.5f : duration);
+
     }
+
+
 
     /// <summary>解除嘲讽 — 仇恨回到真实玩家（tauntTimer 归零时自动调用）</summary>
+
     public void ClearTaunt()
+
     {
+
         tauntTimer = 0f;
+
         OverrideTarget = null;
+
     }
 
+
+
     // ============================================================
+
     // 运行时状态
+
     // ============================================================
+
+
 
     protected float currentHealth;
+
     protected bool isDead;
 
+
+
     /// <summary>按 level 解析出的 SO 档（Awake 赋值；config 为空时为 null）— 子类/攻击组件读取</summary>
+
     protected EnemyLvStats lvStats;
+
     public EnemyLvStats LvStats => lvStats;
 
+
+
     /// <summary>管线前基础血量（Awake 存；装备修饰器变化时重算 maxHealth 用）</summary>
+
     private float _baseMaxHealth;
 
+
+
     /// <summary>公开死亡状态（供外部组件读取）</summary>
+
     public bool IsDead => isDead;
 
+
+
     /// <summary>是否为 Boss（BossControllerBase 重写为 true；普通怪默认 false）</summary>
+
     public virtual bool IsBoss => false;
 
+
+
     /// <summary>当前血量（供 HealthBar 等读取）</summary>
+
     public float CurrentHealth => currentHealth;
+
     /// <summary>最大血量</summary>
+
     public float MaxHealth => maxHealth;
 
+
+
     private Renderer[] renderers;
+
     private Color stateColor;         // 当前状态色，hit 恢复时用此值
+
     private float hitFlashTimer;
+
     private bool isChargeFlashing;       // 蓄力闪烁中（BeginChargeFlash 置位，EndChargeFlash 复位）
+
     private float chargeFlashStartTime;  // 蓄力闪烁开始时间（Time.time），驱动频率加速
+
     private float hitKnockbackWindow;    // 受击击退滑行窗口（>0 时 OnFixedUpdate 不 Move(0)，保留击退速度滑行；对齐 stun 豁免）
+
     private float hitPauseTimer;         // 受击停顿倒计时（>0 冻结受击动画；ApplyDamage 置 enemyHitPause，OnUpdate 倒数）
 
+
+
     // ── FSM ──
+
     protected StateMachine fsm;
+
     public StateMachine Fsm => fsm;
+
     protected Transform player;
 
+
+
     /// <summary>缓存的 PassiveEquipManager 引用（通过 FindObjectOfType 获取）</summary>
+
     protected PassiveEquipManager passiveEquipManager;
+
     /// <summary>缓存的 PoiseComponent 引用（霸体/击退组件）</summary>
+
     private PoiseComponent _poise;
+
     /// <summary>当前敌人是否处于战斗状态（Chase/Attack），防止重复触发 SetCombatState</summary>
+
     private bool isInCombatState;
 
+
+
     /// <summary>是否处于战斗状态（进入过 Chase/Attack；Patrol/Idle 时 OnExitCombatState 清 false）— 供状态类判断仇恨是否存在</summary>
+
     public bool IsInCombatState => isInCombatState;
 
+
+
     /// <summary>FSM 状态设置的移动输入（1 / -1 / 0），OnFixedUpdate 应用</summary>
+
     public float moveInput;
 
+
+
     /// <summary>攻击冷却计时器，攻击后一段时间内不进攻击（防止循环）</summary>
+
     public float attackCooldownTimer;
 
+
+
     /// <summary>是否处于攻击判定帧内 (供弹反系统查询)。当前由 PerformAttack 临时置位，后续由 AnimationEvent 驱动。</summary>
+
     public bool IsInAttackFrame { get; set; }
 
+
+
     /// <summary>当前攻击标签（敌人攻击时设置，弹反/结算用；P4c 由攻击组件写入）</summary>
+
     public string CurrentAttackLabel { get; set; }
 
+
+
     protected EnemyStunState stunState;
+
     private float stunCooldownTimer;
 
+
+
     // ── 命中本地冻结（独立卡帧）──
+
     /// <summary>本地冻结剩余时长（秒；>0 = 冻结中）。用 deltaTime 倒数 → 全局卡肉(timeScale=0)期间不倒数，天然叠加</summary>
+
     private float _localFreezeRemaining;
+
     /// <summary>冻结前暂存的速度（解除时恢复，保证击退速度不在冻结期间衰减）</summary>
+
     private Vector2 _localFreezeSavedVelocity;
+
     /// <summary>空中滞空冻结模式：结束恢复击退速度(正常击退轨迹),重力恢复</summary>
+
     private bool _airHangFreeze;
+
     /// <summary>上一帧是否在地面(落地上升沿检测用)</summary>
+
     private bool _wasGrounded;
+
     /// <summary>上一帧 y 速度(真正落地判定:下落快→落地瞬间速度归零)</summary>
+
     private float _lastFrameVy;
+
     /// <summary>落地弹跳滑行计时(弹跳后短暂滑行,到时停住,防持续滑动)</summary>
+
     private float _bounceSlideTimer;
+
     /// <summary>形变协程句柄(防重:新形变停旧的,避免多个协程抢 localScale 停在压扁态)</summary>
+
     private Coroutine _squashRoutine;
+
     /// <summary>原始 localScale(Awake 记录,形变中断/禁用时恢复,防停在压扁态)</summary>
+
     private Vector3 _originalLocalScale = Vector3.one;
+
     /// <summary>最后击退的水平方向(落地弹跳方向;0 = 无记录)</summary>
+
     private float _lastKnockbackDirX;
+
     /// <summary>受击标记:被空中第三段(下砸)命中,落地时必触发落地冲击(不依赖速度阈值)</summary>
+
     private bool _pendingGroundImpact;
+
     /// <summary>空中击退中:移动系统完全让位(不清 x),让斜向击退速度自由飞,落地才恢复</summary>
+
     private bool _airKnockbackActive;
+
     /// <summary>空中吸附玩家中:向玩家检测矩形中心拉 x,保持连段距离(落地/死亡清除)</summary>
+
     private bool _pullToPlayer;
 
+
+
     /// <summary>是否正在本地冻结中</summary>
+
     public bool IsLocallyFrozen => _localFreezeRemaining > 0f;
 
+
+
     // ── 连打定格(节拍辅助 2026-09-17)──
+
     /// <summary>是否处于连打运动锁定中(后续连音刀的击退被吞掉,运动只由第一击决定)</summary>
+
     public bool IsComboHeld => _comboHold;
+
     private bool _comboHold;
 
+
+
     /// <summary>当前速度大小(连打"飞完"判定用)</summary>
+
     public float CurrentSpeed => rb != null ? rb.velocity.magnitude : 0f;
 
+
+
     /// <summary>当前垂直速度(连打"最高点"判定用:由正转负那一刻就是击飞的最高点)</summary>
+
     public float VerticalVelocity => rb != null ? rb.velocity.y : 0f;
 
+
+
     /// <summary>
+
     /// 连打运动锁定(第一击命中结算那一刻起,直到连音结束):从这一刻起后续连音刀的击退一律吞掉,
+
     /// 它的运动只由第一击那一次的击退决定,不再被后面的刀改动。
+
     /// 这里**不清速度、不关重力** —— 第一击给的击飞轨迹要照常飞完,停住由 FreezeComboAtApex 在最高点做。
+
     /// 同时 FSM 停更新、移动系统让位(位置只由第一击的物理轨迹决定,不被 AI/移动覆盖)。
+
     /// </summary>
+
     public void BeginComboHold()
+
     {
+
         if (isDead || _comboHold) return;
+
         _comboHold = true;
+
         if (rb != null && rb.gravityScale > 0f) _comboSavedGravity = rb.gravityScale;
+
         _pullToPlayer = false;          // 解除空中吸附(位置不再跟着玩家)
+
         _bounceSlideTimer = 0f;         // 停掉落地弹跳滑行(它会改速度,不属于第一击的轨迹)
+
     }
+
+
 
     /// <summary>连打锁定前的重力倍率(解除锁定/停住时用它恢复原值,不写死 1)</summary>
+
     private float _comboSavedGravity = 1f;
 
+
+
     /// <summary>刚体真实位置:瞬移(rb.position 赋值)后同帧 transform 还没同步,要即时读到新位置必须用它</summary>
+
     public Vector2 BodyPosition => rb != null ? rb.position : (Vector2)transform.position;
+
     /// <summary>刚体当前速度向量(连打阶梯算顶点用)</summary>
+
     public Vector2 BodyVelocity => rb != null ? rb.velocity : Vector2.zero;
+
     /// <summary>刚体当前重力倍率(连打阶梯算顶点用;至少 0.01 防除零)</summary>
+
     public float BodyGravityScale => rb != null ? Mathf.Max(0.01f, rb.gravityScale) : 1f;
 
+
+
     /// <summary>敌人当前重力倍率原值(不夹下限;0 = 重力被关,如连打悬停 SnapComboTo / FreezeComboAtApex)。
+
     /// 算击飞顶点必须用这个:BodyGravityScale 夹了 0.01 下限,拿它当"悬停时还有 0.01 重力"会把顶点放大上百倍</summary>
+
     public float BodyGravityScaleRaw => rb != null ? rb.gravityScale : 1f;
 
+
+
     /// <summary>
+
     /// 该点能不能站住(探针圆不与墙/地形层重叠)。探针半径口径与 ForceSetPosition 的落点钳制一致。
+
     /// 连打阶梯推点时用:某一阶落在墙/管道里就不推,停在上一阶。
+
     /// </summary>
+
     public bool IsPositionFree(Vector2 pos)
+
     {
+
         float probeR = col != null ? Mathf.Max(0.1f, col.bounds.extents.x * 0.9f) : 0.3f;
+
         return Physics2D.OverlapCircle(pos, probeR, ForcePushWallMask) == null;
+
     }
 
+
+
     /// <summary>
+
     /// 连打阶梯:把本体直接放到这一阶的位置(不走物理)。含落点贴墙钳制(共用 ForceSetPosition),
+
     /// 清速度 + 关重力 = 直接停在那一阶。
+
     /// 必须把刚体位置同时写回 transform:设 rb.position 不会在同一帧反映到 transform(要等下一次物理步),
+
     /// 而玩家落点/墙检测都是读 transform 的,不同步就会读到上一阶的位置(2026-09-17 复现"永远差一节",
+
     /// y 差正好等于一阶高度)。注意 Physics2D.SyncTransforms() 方向是 transform→物理,不能用来做这件事。
+
     /// 只作用于连打靶子,结束由 EndComboHold 恢复重力。
+
     /// </summary>
+
     public void SnapComboTo(Vector2 pos)
+
     {
+
         if (isDead) return;
+
         Vector2 final = ForceSetPosition(pos);                  // 内部已含 ClampToWallSafe + 清速度
+
         if (rb != null)
+
         {
+
             rb.gravityScale = 0f;                               // 停在那一阶不下落
+
             transform.position = new Vector3(final.x, final.y, transform.position.z);   // 同帧双写
+
         }
+
     }
 
+
+
     /// <summary>
+
     /// 到达击飞最高点时停住:清速度 + 关重力,悬在最高点直到 EndComboHold(连音结束)</summary>
+
     public void FreezeComboAtApex()
+
     {
+
         if (isDead) return;
+
         if (rb != null)
+
         {
+
             rb.velocity = Vector2.zero;
+
             rb.angularVelocity = 0f;
+
             rb.gravityScale = 0f;
+
         }
+
         _airKnockbackActive = false;
+
     }
 
+
+
     /// <summary>
+
     /// 退出/禁用/回收时的清理:解除连打锁定并恢复重力(幂等)。
+
     /// 注意:连音正常结束时也走这里 —— 停在最高点的敌人会恢复重力落回地面。
+
     /// </summary>
+
     public void EndComboHold()
     {
         if (!_comboHold) return;
         _comboHold = false;
-        if (rb != null && !isDead) rb.gravityScale = _comboSavedGravity;   // 恢复锁定前记录的重力(加速会把它放大过)
+        // 死亡也要恢复:死亡/回收路径同样会调到这里,不恢复 = 「被刺把敌人推到空中不下来 / 尸体悬在半空」。
+        if (rb != null) rb.gravityScale = _comboSavedGravity > 0f ? _comboSavedGravity : 1f;   // 恢复锁定前记录的重力(加速会把它放大过)
+        if (PlayerBackstabState.BackstabDebug)
+        {
+            string dbgG = rb != null ? rb.gravityScale.ToString("0.00") : "-";
+            string dbgV = rb != null ? rb.velocity.ToString() : "-";
+            Debug.Log($"[背刺Dbg] 定格解除 {name} 重力→{dbgG} 地面={IsGrounded} 速度={dbgV} isDead={isDead}");
+        }
     }
 
+
     /// <summary>
+
     /// 命中本地冻结 — 只冻结本敌人自身：FSM 停更新、移动停止、动画停播。
+
     /// duration ≤ 0 忽略；冻结中再次调用取更长的剩余时长；已死亡忽略（死亡动画正常播放）。
+
     /// 敌人体感总冻结 = 全局卡肉时长（timeScale=0 使 deltaTime 停走）+ 本时长。
+
     /// </summary>
+
     public void ApplyLocalFreeze(float duration)
+
     {
+
         if (isDead || duration <= 0f) return;
+
         if (_localFreezeRemaining > 0f)
+
         {
+
             if (duration > _localFreezeRemaining) _localFreezeRemaining = duration;
+
             return;
+
         }
+
         _localFreezeRemaining = duration;
+
         if (_animator != null) _animator.speed = 0f;
+
         if (rb != null)
+
         {
+
             _localFreezeSavedVelocity = rb.velocity;
+
             rb.velocity = Vector2.zero;
+
         }
+
     }
+
+
 
     /// <summary>解除本地冻结：恢复动画速度与暂存的击退速度</summary>
+
     private void EndLocalFreeze()
+
     {
+
         if (_animator != null) _animator.speed = 1f;
+
         if (_airHangFreeze)
+
         {
+
             // 滞空模式:恢复重力(缓慢下落期间速度从未清零,不恢复保存速度,避免速度倒退到滞空开始)
+
             if (rb != null) rb.gravityScale = 1f;
+
             _airHangFreeze = false;
+
         }
+
         else
+
         {
+
             // 普通冻结:恢复击退速度
+
             if (rb != null) rb.velocity = _localFreezeSavedVelocity;
+
         }
+
         _localFreezeSavedVelocity = Vector2.zero;
+
     }
 
+
+
     /// <summary>
+
     /// 空中滞空 — 击飞中的敌人再受击:改为缓慢下落(小重力+保留水平速度,不再定身停住),
+
     /// 结束恢复原重力。避免定身停住与二次击飞的冲突(速度从 0 累加/视觉定格)。
+
     /// 只对空中生效;地面受击走原硬直逻辑。滞空中再次调用取更长的剩余时长(空中连段滞空)。
+
     /// </summary>
+
     public void ApplyAirHangFreeze(float duration)
+
     {
+
         if (isDead || duration <= 0f || IsGrounded) return;
+
         if (_localFreezeRemaining > 0f)
+
         {
+
             if (duration > _localFreezeRemaining) _localFreezeRemaining = duration;
+
             // 滞空中再次受击:ApplyKnockback 已在保留速度上累加,无需额外处理
+
             return;
+
         }
+
         _localFreezeRemaining = duration;
+
         _airHangFreeze = true;
+
         _pullToPlayer = true;   // 空中受击:吸附玩家检测矩形中心,保持连段距离
+
         if (_animator != null) _animator.speed = 0f;   // 受击动画冻结(保持受击姿态缓慢飘落)
+
         if (rb != null)
+
         {
+
             _localFreezeSavedVelocity = rb.velocity;   // 存档(普通冻结路径用;滞空缓慢下落不清速度)
+
             // 下落中被命中(背刺追击/空中连段):若不清 y,enemy 会带着下落速度"穿过"滞空继续下坠,
+
             // 玩家三段闪击落点 y 对齐 enemy → 越打越靠下(2026-09-03 saika 复现)。
+
             // 把负 y 清零:滞空从当前高度开始缓落,enemy 段间基本停住;
+
             // 保留 x(击退水平),正 vy(上升中/二次上挑)保留累加不打断。
+
             if (rb.velocity.y < 0f)
+
                 rb.velocity = new Vector2(rb.velocity.x, 0f);
+
             rb.gravityScale = airHangGravityScale;     // 小重力:缓慢下落,不清速度(二次击飞从当前速度累加,不冲突)
+
         }
+
     }
+
+
 
     /// <summary>强制解除本地冻结 — 子类覆写 Die() 等场景调用，保证死亡动画/结算不被冻结卡住</summary>
+
     protected void ForceEndLocalFreeze()
+
     {
+
         _localFreezeRemaining = 0f;
+
         EndLocalFreeze();
+
     }
 
-    // ============================================================
-    // 靠墙检测(WallCheck)公共 API — 空中闪击/背刺等瞬移技能落点前实时判定"某侧是否有堵"
+
+
     // ============================================================
 
+    // 靠墙检测(WallCheck)公共 API — 空中闪击/背刺等瞬移技能落点前实时判定"某侧是否有堵"
+
+    // ============================================================
+
+
+
     /// <summary>
+
     /// 指定方向(±1)的水平半带内是否有堵(实心墙/管道 trigger)。
+
     /// 带 = 以 enemy 中心为原点、朝 side 一侧宽度 wallCheckHalfWidth、高覆盖 enemy 碰撞体"中上段"的矩形
+
     /// (side=1 覆盖 x∈[enemy.x, enemy.x+wallCheckHalfWidth];side=-1 同理)。返回 true = 该方向不能落点。
+
     /// 规则:实心碰撞(墙/实体)一律算堵;管道 trigger(AreaChannelTrigger)算堵;带内其它 enemy/玩家不算墙;
+
     /// 普通 trigger(门/攻击判定框等)不算。不缓存、不每帧调用,由调用方在需要判定的瞬间(空中闪每段/背刺)调一次。
+
     /// </summary>
+
     public bool IsWallBlockedOnSide(int side)
+
     {
+
         side = side >= 0 ? 1 : -1;
+
         // 检测矩形:中心 x = enemy.x 朝 side 平移半宽的一半(覆盖 [enemy.x, enemy.x+side×halfWidth])。
+
         // y 只测碰撞体"中上段"(中心到中心上方半高):带底抬高到地面之上——若带取整高,地面 enemy 的带底边
+
         // 与脚下地面重叠,开阔地也会把"地面"判成墙 → 普通背刺误触发换位(2026-09-03 用户复现);
+
         // 真墙/管道从地面向上延伸,中上段必然命中,不受影响。空中 enemy 同样适用。
+
         float bandH = col != null ? col.bounds.size.y * 0.5f : 1f;
+
         float bandY = col != null ? col.bounds.center.y + col.bounds.size.y * 0.25f : transform.position.y + 0.75f;
+
         Vector2 center = new Vector2(transform.position.x + side * wallCheckHalfWidth * 0.5f, bandY);
+
         Vector2 size = new Vector2(wallCheckHalfWidth, bandH);
 
+
+
         Collider2D[] hits = Physics2D.OverlapBoxAll(center, size, 0f);
+
         foreach (Collider2D hit in hits)
+
         {
+
             if (hit == null) continue;
+
             if (hit.transform == transform || hit.transform.IsChildOf(transform)) continue;   // 自身/子物体不算墙
+
             if (hit.GetComponentInParent<EnemyControllerBase>() != null) continue;             // 其它 enemy 不算墙
+
             if (hit.GetComponentInParent<PlayerController>() != null) continue;                // 玩家不算墙
+
             if (!hit.isTrigger) return true;                                                   // 实心(墙/地面/实体)= 堵
+
             if (hit.GetComponentInParent<AreaChannelTrigger>() != null) return true;           // 管道 trigger = 堵
+
             // 普通 trigger(门/攻击判定框等)不算挡
+
         }
+
         return false;
+
     }
 
+
+
     /// <summary>
+
     /// 强制瞬移本体位置并清零速度(空中闪击"占位推敌"/背刺换位用):玩家占 enemy 原位时把 enemy 沿推开方向硬挪,
+
     /// 清速度防旧击退把它拉回墙边。只动物理体位 + 速度,不动状态机/动画/滞空冻结(后续命中结算接管)。
+
     /// 落点安全钳制:目标点若与墙/地形(Ground=3 + Wall=11,同 PlayerTeleport)重叠 —— 调用方算的落点
+
     /// (玩家面前攻击框中心)在玩家贴墙时可能探进墙内,裸瞬移会把 enemy 放进墙里,随后命中击退沿墙内方向
+
     /// 施加,已重叠的刚体 CCD 失效 → enemy 被挤穿到墙另一侧(2026-09-07 saika 复现"背刺穿墙")。
+
     /// 钳制:沿水平左右再上方步进找最近空点,修正后 enemy 落在墙外侧,击退方向自然远离墙。
+
     /// 返回实际落点(钳制后):调用方必须用返回值算朝向/后续位置,不能再用传入的 pos。
+
     /// 注意:空中滞空冻结(_airHangFreeze)结束时不会恢复保存速度,清零在此模式下持久有效。
+
     /// </summary>
+
     public Vector2 ForceSetPosition(Vector2 pos)
+
     {
+
         pos = ClampToWallSafe(pos);
+
         if (rb != null)
+
         {
+
             rb.position = pos;
+
             rb.velocity = Vector2.zero;
+
         }
+
         else
+
         {
+
             transform.position = pos;
+
         }
+
         return pos;
+
     }
+
+
 
     /// <summary>ForceSetPosition 落点钳制用的墙/地形层(Ground=3 + Wall=11,与 PlayerTeleport.wallMask 一致)</summary>
+
     private const int ForcePushWallMask = (1 << 3) | (1 << 11);
 
+
+
     /// <summary>
+
     /// 落点贴墙钳制:pos 与墙/地形层体重叠 → 优先沿"来路"(enemy 原位方向)水平退回,再兜底右/左/上;
+
     /// 步进递增找最近空点;全堵(罕见厚地形)返回原值。
+
     /// 来路优先的原因:落点(攻击框中心)探进薄墙时,若盲目向右/左找最近空点,可能把 enemy 推到墙另一侧
+
     /// (= 穿墙)。enemy 原位那侧是它站得住的开阔侧,向来路退只会回到墙外侧。
+
     /// 探针半径按自身碰撞体半宽取,防修正后 collider 仍与墙擦边。
+
     /// </summary>
+
     private Vector2 ClampToWallSafe(Vector2 pos)
+
     {
+
         float probeR = col != null ? Mathf.Max(0.1f, col.bounds.extents.x * 0.9f) : 0.3f;
+
         if (Physics2D.OverlapCircle(pos, probeR, ForcePushWallMask) == null)
+
             return pos;
+
         float step = Mathf.Max(0.25f, probeR * 0.6f);
+
         const float maxDist = 2f;
+
         // 优先沿来路退回(enemy 原在墙外侧,落点探进墙 → 向来路水平方向退,防误穿到墙另一侧)
+
         Vector2 fromEnemy = (Vector2)transform.position - pos;
+
         if (Mathf.Abs(fromEnemy.x) > 0.01f)
+
         {
+
             Vector2 back = new Vector2(Mathf.Sign(fromEnemy.x), 0f);
+
             for (float d = step; d <= maxDist; d += step)
+
             {
+
                 Vector2 candidate = pos + back * d;
+
                 if (Physics2D.OverlapCircle(candidate, probeR, ForcePushWallMask) == null)
+
                     return candidate;
+
             }
+
         }
+
         Vector2[] dirs = { Vector2.right, Vector2.left, Vector2.up };
+
         for (float d = step; d <= maxDist; d += step)
+
         {
+
             foreach (Vector2 dir in dirs)
+
             {
+
                 Vector2 candidate = pos + dir * d;
+
                 if (Physics2D.OverlapCircle(candidate, probeR, ForcePushWallMask) == null)
+
                     return candidate;
+
             }
+
         }
+
         return pos;
+
     }
 
+
+
     // ============================================================
+
     // 抽象方法 — 子类必须实现
+
     // ============================================================
+
+
 
     /// <summary>返回初始 FSM 状态（子类返回各自的 IdleState）</summary>
+
     protected abstract IState GetInitialState();
 
+
+
     /// <summary>创建追击状态（子类返回各自的 ChaseState 实现）</summary>
+
     public abstract IState CreateChaseState();
 
+
+
     /// <summary>
+
     /// 创建攻击入口状态（受击/追击后按 player 所在框选攻击动画；默认返回 CreateChaseState()）。
+
     /// 远程 override CreateChaseState() 返回 RangedAttackState（判框入口），无需再覆盖本方法。
+
     /// </summary>
+
     public virtual IState CreateAttackEntryState() => CreateChaseState();
 
+
+
     /// <summary>创建晕眩结束的后备状态（近战→Patrol，远程→Idle）</summary>
+
     public abstract IState CreateFallbackState();
 
+
+
     // ============================================================
+
     // 生命周期
+
     // ============================================================
+
+
 
     // ── 内置默认值（Inspector 与 SO 均未设置时的兜底，与原代码默认值一致）──
+
     protected const float DefaultMaxHealth = 3f;
+
     protected const float DefaultAttackWidth = 1.5f;
+
     protected const float DefaultAttackHeight = 1.5f;
+
     protected const float DefaultAttackCooldown = 1f;
+
     protected const float DefaultRangedKnockback = 5f;
 
+
+
     /// <summary>
+
     /// 数值解析：Inspector 手填(>0) → SO 对应 Lv 档(>0) → 内置默认。
+
     /// 0 = 未设置（Lv 收敛取值链，子类/攻击组件复用）。
+
     /// </summary>
+
     protected float Resolve(float inspector, float soValue, float fallback)
+
         => inspector > 0f ? inspector : (soValue > 0f ? soValue : fallback);
 
+
+
     protected override void Awake()
+
     {
+
         base.Awake();
+
+
 
         _originalLocalScale = transform.localScale;   // 形变中断/禁用时恢复用
 
+
+
         // [Lv 收敛] 按 level 取 SO 对应档（config 为空 → 全 null → 全走 Inspector/内置默认）
+
         lvStats = config != null ? config.GetLvStats(level) : null;
 
+
+
         // 取值链：Inspector 手填(>0) → SO 对应 Lv 档(>0) → 内置默认（0 = 未设置）
+
         maxHealth = Resolve(maxHealth, lvStats?.maxHealth ?? 0f, DefaultMaxHealth);
+
         attackWidth = Resolve(attackWidth, lvStats?.attackWidth ?? 0f, DefaultAttackWidth);
+
         attackHeight = Resolve(attackHeight, lvStats?.attackHeight ?? 0f, DefaultAttackHeight);
+
         attackCooldownDuration = Resolve(attackCooldownDuration, lvStats?.attackCooldownDuration ?? 0f, DefaultAttackCooldown);
+
         rangedKnockbackForce = Resolve(rangedKnockbackForce, lvStats?.rangedKnockbackForce ?? 0f, DefaultRangedKnockback);
 
+
+
         // maxHealth 终值走管线（无 manager 回退 baseValue，对齐 CharacterBase.MoveSpeed 写法）
+
         // 注意：必须在 FirstBoss 的 maxHealth *= hpMultiplier 之前完成，保证 Boss 最终 = 基础值 × 倍率
+
         _baseMaxHealth = maxHealth;   // 存管线前基础值（装备修饰器变化时重算用）
+
         maxHealth = statModManager != null ? statModManager.GetFinalValue(_baseMaxHealth, StatId.MaxHealth) : _baseMaxHealth;
+
         currentHealth = maxHealth;
 
+
+
         renderers = GetComponentsInChildren<Renderer>();
+
         Color firstColor = renderers.Length > 0 ? renderers[0].material.color : Color.white;
+
         stateColor = firstColor;
 
+
+
         fsm = new StateMachine();
+
         player = PlayerController.Instance?.transform;
+
         passiveEquipManager = PassiveEquipManager.Instance;
+
         _poise = GetComponent<PoiseComponent>();
+
     }
+
+
 
 #if UNITY_EDITOR
+
     protected override void OnValidate()
+
     {
+
         base.OnValidate();  // 基类：自动补齐 rb/col
+
     }
+
 #endif
 
+
+
     protected virtual void OnEnable()
+
     {
+
         EventBus.Subscribe<GroundPoundEvent>(OnGroundPound);
+
         // [2026-08-10] 捡装备/卸下注入修饰器时重算 maxHealth（对齐玩家侧 PlayerHealth）
+
         EventBus.Subscribe<StatModifiersChangedEvent>(OnStatModifiersChanged);
+
     }
+
+
 
     protected virtual void OnDisable()
+
     {
+
         EventBus.Unsubscribe<GroundPoundEvent>(OnGroundPound);
+
         EventBus.Unsubscribe<StatModifiersChangedEvent>(OnStatModifiersChanged);
+
         OnExitCombatState();  // 场景卸载/对象池回收时确保退出战斗计数
 
+
+
         // 本地冻结清理：禁用/回收时强制解除，防止 animator.speed=0 残留
+
         if (_localFreezeRemaining > 0f)
+
         {
+
             _localFreezeRemaining = 0f;
+
             EndLocalFreeze();
+
         }
+
         EndComboHold();   // 连打定格清理(禁用/回收):恢复重力,防残留
 
+
+
         // 受击停顿清理：禁用/回收时恢复动画速度，防止 animator.speed=0 残留冻结
+
         if (hitPauseTimer > 0f)
+
         {
+
             hitPauseTimer = 0f;
+
             if (_animator != null) _animator.speed = 1f;
+
         }
+
+
 
         // 形变清理：禁用/回收时停形变协程并恢复 localScale,防停在压扁态
+
         if (_squashRoutine != null)
+
         {
+
             StopCoroutine(_squashRoutine);
+
             _squashRoutine = null;
+
             transform.localScale = _originalLocalScale;
+
         }
+
     }
+
+
 
     /// <summary>销毁兜底：恢复动画速度，防场景切换/销毁时 animator.speed=0 残留冻结</summary>
+
     protected virtual void OnDestroy()
+
     {
+
         if (_animator != null) _animator.speed = 1f;
+
     }
+
+
 
     protected void Start()
+
     {
+
         fsm.ChangeState(GetInitialState());
+
     }
+
+
 
     protected override void Update()
+
     {
+
         base.Update();
 
+
+
         // 命中本地冻结计时（deltaTime 倒数：全局卡肉 timeScale=0 期间不倒数 → 与全局冻结时长叠加）
+
         if (_localFreezeRemaining > 0f)
+
         {
+
             _localFreezeRemaining -= Time.deltaTime;
+
             if (_localFreezeRemaining <= 0f)
+
             {
+
                 _localFreezeRemaining = 0f;
+
                 EndLocalFreeze();
+
             }
+
         }
+
+
 
         // 空中受击状态:落地冲击检测 / 弹跳滑行衰减 / 吸附玩家
+
         UpdateAirHitState();
 
+
+
         if (hitFlashTimer > 0f)
+
         {
+
             hitFlashTimer -= Time.deltaTime;
+
             if (hitFlashTimer <= 0f)
+
                 RestoreColors();
+
         }
+
+
 
         // 受击击退滑行窗口递减（归零后 OnFixedUpdate 恢复 Move(0) 正常停住）
+
         if (hitKnockbackWindow > 0f)
+
             hitKnockbackWindow -= Time.deltaTime;
 
+
+
         // 蓄力闪烁驱动：受击闪白期间(hitFlashTimer>0)让位，闪白优先
+
         if (isChargeFlashing && hitFlashTimer <= 0f)
+
             UpdateChargeFlash();
 
+
+
         if (attackCooldownTimer > 0f)
+
             attackCooldownTimer -= Time.deltaTime;
 
+
+
         if (stunCooldownTimer > 0f)
+
             stunCooldownTimer -= Time.deltaTime;
 
+
+
         // 嘲讽计时递减：归零自动解除（仇恨回到真实玩家；幻象销毁后 OverrideTarget 判空自动回退玩家）
+
         if (tauntTimer > 0f)
+
         {
+
             tauntTimer -= Time.deltaTime;
+
             if (tauntTimer <= 0f)
+
                 ClearTaunt();
+
         }
+
     }
 
+
+
     /// <summary>
+
     /// 空中受击状态每帧更新:落地冲击检测(真正落地判定:grounded + vy 接近 0,基类射线会提前命中,
+
     /// 直接用它会在下落中途误触发)/ 落地弹跳滑行衰减 / 空中吸附玩家。
+
     /// </summary>
+
     private void UpdateAirHitState()
+
     {
+
         bool groundedNow = IsGrounded;
+
         float curVy = rb != null ? rb.velocity.y : 0f;
+
         bool landed = groundedNow && !IsLocallyFrozen && curVy > -1.5f;
 
+
+
         if (landed && _airKnockbackActive)
+
             _airKnockbackActive = false;   // 落地:移动系统接管(空中击退结束)
+
         if (landed)
+
             _pullToPlayer = false;         // 落地:空中吸附解除
 
+
+
         if (!isDead && _pendingGroundImpact && landed)
+
         {
+
             _pendingGroundImpact = false;
+
             TriggerGroundImpact();
+
         }
+
         else if (!isDead && groundedNow && !_wasGrounded && _lastFrameVy < groundImpactSpeedThreshold && curVy > -1.5f)
+
         {
+
             TriggerGroundImpact();
+
         }
+
         _lastFrameVy = curVy;
+
         _wasGrounded = groundedNow;
 
+
+
         // 落地弹跳滑行计时:速度逐渐衰减(不硬停),到时归零,防持续滑动也防突然急停
+
         if (_bounceSlideTimer > 0f)
+
         {
+
             _bounceSlideTimer -= Time.deltaTime;
+
             if (rb != null)
+
             {
+
                 float vx = rb.velocity.x;
+
                 if (Mathf.Abs(vx) > 0.05f)
+
                     rb.velocity = new Vector2(vx * 0.85f, rb.velocity.y);   // 每帧衰减
+
                 else
+
                     rb.velocity = new Vector2(0f, rb.velocity.y);
+
             }
+
         }
+
+
 
         // 空中吸附:玩家空中连段时把敌人往玩家前方拉 x + 吊住 y(目标 = 玩家位置 + 朝向 × airHitPullOffset;
+
         // x 防玩家前冲错位,y 向玩家攻击高度缓慢靠拢,敌人不掉出连段范围;仅空中)。落地/死亡自动解除。
+
         if (_pullToPlayer && airHitPullSpeed > 0f && !isDead && rb != null && !IsGrounded)
+
         {
+
             var pc = PlayerController.Instance;
+
             if (pc != null)
+
             {
+
                 float targetX = pc.transform.position.x + pc.GetFacing() * airHitPullOffset;
+
                 Vector2 pos = rb.position;
+
                 pos.x = Mathf.Lerp(pos.x, targetX, airHitPullSpeed * Time.deltaTime);
+
                 // 吊住 y:向玩家当前高度缓慢靠拢(系数减半,连段期间 enemy 不掉出攻击范围)
+
                 pos.y = Mathf.Lerp(pos.y, pc.transform.position.y, airHitPullSpeed * Time.deltaTime * 0.5f);
+
                 rb.position = pos;
+
             }
+
         }
+
     }
 
+
+
     /// <summary>
+
     /// 敌人动画参数更新 — 每帧聚合 Locomotion 双参数（IsIdle/IsMove 互斥）。
+
     /// busy（死亡/攻击/受击）时两者全 false → 当前 Locomotion 状态 Exit → Entry 重判命中 IsDead/IsAttacking/IsHurt。
+
     /// stun 期间驱动 IsHurt → Animator Entry 路由 Hurt(非循环,播完定末帧直到 stun 结束)。
+
     /// </summary>
+
     protected override void UpdateAnimation()
+
     {
+
         if (_animator == null) return;
 
+
+
         // 注：不设 Speed——melee controller 只有 Bool 参数（IsIdle/IsMove/IsAttacking/IsDead），无 Speed 参数，
+
         //      SetFloat 不存在的参数会每帧报错。需要速度档位的类型（如 ranged 的 Run）override 本方法自行设置。
+
         bool moving = Mathf.Abs(moveInput) > 0.01f;
+
         bool busy = isDead
+
             || _animator.GetBool(AnimParams.IsAttacking)
+
             || _animator.GetBool(AnimParams.IsHurt);
+
         _animator.SetBool(AnimParams.IsIdle, !moving && !busy);
+
         _animator.SetBool(AnimParams.IsMove, moving && !busy);
+
     }
+
+
 
     protected override void OnUpdate()
+
     {
+
         if (isDead) return;
+
         if (_localFreezeRemaining > 0f || _comboHold) return;   // 本地冻结 / 连打定格：FSM 停更，AI/攻击全部暂停
 
+
+
         // 受击停顿：卡帧结束后的自身小冻结（不移动 + 冻结受击动画，只影响本 enemy）。
+
         // 用 Time.deltaTime 倒数 → 全局卡帧(timeScale=0)期间不走，卡帧结束后才开始计 = 总卡顿 = 卡帧 + 停顿
+
         if (hitPauseTimer > 0f)
+
         {
+
             hitPauseTimer -= Time.deltaTime;
+
             moveInput = 0f;                        // 停顿期间不移动
+
             if (_animator != null) _animator.speed = 0f;   // 冻结受击动画（停在当前帧）
+
             if (hitPauseTimer <= 0f && _animator != null) _animator.speed = 1f;   // 停顿结束恢复
+
             return;                                // 短路其余逻辑（攻击/状态切换等）
+
         }
+
+
 
         fsm?.Update();
+
     }
+
+
 
     protected override void OnFixedUpdate()
+
     {
+
+        DbgCheckFloating();   // [背刺Dbg] 悬空异常自检(每秒最多一条;查完删)
         // 命中本地冻结 / 连打定格：跳过全部移动 — moveInput 残留旧值，不拦会继续 Move() 滑步
+
         if (_localFreezeRemaining > 0f || _comboHold) return;
 
+
+
         // 空中击退中:移动系统完全让位,不清 x,让斜向击退速度自由飞(落地时清标志恢复)
+
         if (_airKnockbackActive) return;
 
+
+
+        // 重力被关 + 不在地面 = 脚本控制的空中态(连打阶梯 SnapComboTo / 最高点定格 / Boss 冻结):
+
+        // AI 一律不得驱动移动。不拦的话会出现「悬在半空、y 速度恒 0 却横向跑起来」
+
+        // (2026-09-21 saika 报)。阶梯本身的位移是直接写位置,不经过这里,不受影响。
+
+        if (!IsGrounded && BodyGravityScaleRaw <= 0.01f) return;
+
+
+
         // FSM 状态已经设好 moveInput，这里统一执行物理移动
+
         if (Mathf.Abs(moveInput) > 0.01f)
+
         {
+
             Move(moveInput);
+
             UpdateFacing(moveInput);
+
         }
+
         else if (fsm?.CurrentState != stunState && hitKnockbackWindow <= 0f)
+
         {
+
             // 硬直中/击退滑行窗口内不零速，让击退自然衰减
+
             Move(0f);
+
         }
+
+    }
+
+
+
+    // [背刺Dbg 2026-09-21] 悬空自检:重力被关 + 不在地面 + 身上没有任何定格标记 = 有人漏了恢复重力。
+    // 每秒最多一条,专为判断「被刺把敌人推到空中不下来」;查完连同上面的调用一起删。
+    private float _dbgFloatTimer;
+    private void DbgCheckFloating()
+    {
+        if (!PlayerBackstabState.BackstabDebug || rb == null) return;
+        _dbgFloatTimer += Time.fixedDeltaTime;
+        if (_dbgFloatTimer < 1f) return;
+        _dbgFloatTimer = 0f;
+        if (IsGrounded || rb.gravityScale > 0.01f) return;
+        if (_comboHold || _localFreezeRemaining > 0f || _airKnockbackActive || _airHangFreeze) return;
+        Debug.Log($"[背刺Dbg] 悬空异常 {name} isDead={isDead} 重力={rb.gravityScale:F2} 速度={rb.velocity} 位置={rb.position} " +
+                  "(comboHold / 本地冻结 / 空中击退 / 滞空 都不在身 → 重力被关了没还)");
     }
 
     // ============================================================
+
     // 事件订阅
+
     // ============================================================
 
+
+
     /// <summary>
+
     /// 砸地攻击标签 — 复用重击近战标签（与 PlayerCombat.meleeFinisherAttackType 值一致，不跨类引用）。
+
     /// 命中 PoiseComponent.meleeAttackLabels 白名单 → OnHitBy 走近战 stun 路径（保留原晕眩行为）+ 计入霸体计数器。
+
     /// 禁止改空串：空串会走远程分支（不晕 + rangedKnockbackForce 击退 + 立即追击，行为变化）。
+
     /// </summary>
+
     private const string GroundPoundAttackLabel = "Sword_Heavy";
+
     /// <summary>空中第三段(下砸)攻击标签 — 玩家 PlayerCombat.airFinisherAttackType 默认同名,收到即标记落地冲击</summary>
+
     private const string AirSlamLabel = "AirSlam_Heavy";
+
     private void OnGroundPound(GroundPoundEvent e)
+
     {
+
         if (isDead) return;
+
+
 
         int selfLayer = 1 << gameObject.layer;
+
         if ((e.targetLayers & selfLayer) == 0) return;
 
+
+
         Vector2 toCenter = (Vector2)transform.position - e.center;
+
         toCenter.y = 0f;
+
         float dist = toCenter.magnitude;
+
         if (dist > e.radius) return;
 
+
+
         // P2a: 统一走 CombatResolver — 攻击标签用重击近战标签：
+
         //   掉血/闪白/VFX 由 ApplyDamage，晕眩由 OnHitBy(IsMelee=true)→EnterStunState，击退走 Poise 霸体判定
+
         Vector2 knockDir = toCenter.normalized;
+
         knockDir.y = 0f;
+
         if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
 
+
+
         CombatResolver.Resolve(null, this, new DamageInfo
+
         {
+
             amount = e.damage,
+
             source = null,                       // GroundPoundEvent 无攻击者字段，保持 null（defender 是 enemy，source 不影响结算）
+
             sourcePosition = e.center,
+
             attackLabel = GroundPoundAttackLabel,
+
             knockback = new Knockback
+
             {
+
                 direction = knockDir,
+
                 force = e.knockbackForce * (rb != null ? rb.mass : 1f),  // 原实现直接设 velocity=knockbackForce，改 Impulse 后乘 mass 等价保持手感
+
                 duration = 0f,
+
                 ignoreResistance = false
+
             }
+
         });
+
     }
 
+
+
     /// <summary>
+
     /// 修饰器变化（enemy 捡装备注入 / 卸下）时：MaxHealth 受影响则重算终值 + 等比缩放 currentHealth。
+
     /// 对齐玩家侧 PlayerHealth.OnStatModifiersChanged（保持当前血量百分比不变）。
+
     /// </summary>
+
     private void OnStatModifiersChanged(StatModifiersChangedEvent e)
+
     {
+
         if (isDead) return;
+
         foreach (var statId in e.affectedStatIds)
+
         {
+
             if (statId == StatId.MaxHealth)
+
             {
+
                 float newMax = statModManager != null
+
                     ? statModManager.GetFinalValue(_baseMaxHealth, StatId.MaxHealth)
+
                     : _baseMaxHealth;
+
                 // 等比缩放：保持当前血量百分比不变
+
                 float ratio = maxHealth > 0f ? currentHealth / maxHealth : 1f;
+
                 currentHealth = Mathf.Clamp(ratio * newMax, 0f, newMax);
+
                 maxHealth = newMax;
+
                 break;
+
             }
+
         }
+
     }
 
-    // ============================================================
-    // 受伤 / 死亡
+
+
     // ============================================================
 
+    // 受伤 / 死亡
+
+    // ============================================================
+
+
+
     /// <summary>
+
     /// 造成伤害。attackType 可选，匹配到 hitVFXVariants 中的条目时使用对应 VFX，否则用默认 hitVFXPrefab。
+
     /// P4b:内部转 ApplyDamage(DamageInfo)，保留 EnterStunState 前置，外部调用方不受影响。
+
     /// </summary>
+
     public virtual void TakeDamage(float amount, string attackType = "")
+
     {
+
         if (isDead) return;
+
+
 
         EnterStunState();
+
         ApplyDamage(new DamageInfo
+
         {
+
             amount = amount,
+
             source = null,
+
             sourcePosition = transform.position,
+
             attackLabel = attackType,
+
             knockback = Knockback.None
+
         });
+
     }
 
+
+
     /// <summary>
+
     /// 造成伤害（含攻击来源）。attackType 匹配 VFX 变体。
+
     /// P4b:内部转 ApplyDamage(DamageInfo) + OnHitBy（扣血/闪白/VFX → 近战 stun / 远程击退+追击），外部调用方不受影响。
+
     /// </summary>
+
     public virtual void TakeDamageFrom(float amount, Vector2 attackSource, string attackType = "")
+
     {
+
         if (isDead) return;
 
+
+
         DamageInfo info = new DamageInfo
+
         {
+
             amount = amount,
+
             source = null,
+
             sourcePosition = attackSource,
+
             attackLabel = attackType,
+
             knockback = Knockback.None
+
         };
 
+
+
         // 扣血 + 受击 VFX（复用原 TakeDamageFrom 核心段）
+
         ApplyDamage(info);
 
+
+
         // 受击状态分流：近战 stun 硬直 / 远程击退 + 立即追击
+
         OnHitBy(info);
+
     }
 
+
+
     /// <summary>
+
     /// 扣血 + 受击闪白 + 受击 VFX（普通 + 可选方向）的公共段。返回是否死亡。
+
     /// </summary>
+
     /// <param name="vfxPos">VFX 生成位置；null 时用自身 transform.position（TakeDamage 路径）</param>
+
     /// <param name="hitDir">攻击来源方向；传入时额外生成方向受击 VFX（TakeDamageFrom 路径）</param>
+
     private bool ApplyDamage(float amount, string attackType, Vector2? vfxPos = null, Vector2? hitDir = null)
+
     {
+
         currentHealth -= amount;
+
         FlashHit();
+
         hitPauseTimer = enemyHitPause;   // 受击停顿：近战/远程受击都生效（0/空 = 不启用，行为不变）
+
+
 
         Vector2 pos = vfxPos ?? (Vector2)transform.position;
 
+
+
         // 普通受击 VFX（带 ±3° 随机旋转），挂到 Enemy 下跟随移动
+
         GameObject vfx = GetHitVFX(attackType);
+
         if (vfx != null)
+
         {
+
             float randomAngle = Random.Range(-3f, 3f);
+
             GameObject instance = VFXSpawner.Spawn(VFXCategory.EnemyVFX, vfx, pos, Quaternion.Euler(0, 0, randomAngle));
+
             if (instance != null) instance.transform.SetParent(transform);
+
         }
+
+
 
         // 方向受击 VFX — 朝向攻击反方向（通过翻转 scale.x），挂到 Enemy 下跟随移动
+
         if (hitDir.HasValue && directionalHitVFXPrefab != null)
+
         {
+
             GameObject instance = VFXSpawner.Spawn(VFXCategory.EnemyVFX, directionalHitVFXPrefab, pos, Quaternion.identity);
+
             if (instance != null)
+
             {
+
                 Vector3 scale = instance.transform.localScale;
+
                 scale.x = hitDir.Value.x < 0 ? -Mathf.Abs(scale.x) : Mathf.Abs(scale.x);
+
                 instance.transform.localScale = scale;
+
                 instance.transform.SetParent(transform);
+
             }
+
         }
+
+
 
         return currentHealth <= 0f;
+
     }
+
+
 
     /// <summary>
+
     /// 按 attackType 匹配受击 VFX。命中变体列表中的条目则返回对应 VFX，否则回退 hitVFXPrefab。
+
     /// </summary>
+
     private GameObject GetHitVFX(string attackType)
+
     {
+
         if (!string.IsNullOrEmpty(attackType))
+
         {
+
             foreach (var v in hitVFXVariants)
+
             {
+
                 if (v.attackType == attackType && v.vfxPrefab != null)
+
                     return v.vfxPrefab;
+
             }
+
         }
+
         return hitVFXPrefab;
+
     }
 
+
+
     // ============================================================
+
     // 通用动画事件（AnimationRelay 转发入口）
+
     // ============================================================
+
+
 
     /// <summary>攻击命中帧事件 — 转发给当前攻击状态（IEnemyAttackState），ranged/boss 后续攻击状态实现同一接口</summary>
+
     public virtual void OnAttackHitFrame() => (fsm.CurrentState as IEnemyAttackState)?.OnHitFrame();
 
+
+
     /// <summary>攻击动画结束事件 — 转发给当前攻击状态</summary>
+
     public virtual void OnAttackAnimationEnd() => (fsm.CurrentState as IEnemyAttackState)?.OnAnimEnd();
 
+
+
     /// <summary>远程攻击蓄力事件（attack2 蓄力帧）— 转发给当前攻击状态</summary>
+
     public virtual void OnRangedCharge() => (fsm.CurrentState as IEnemyAttackState)?.OnCharge();
 
+
+
     /// <summary>远程攻击发射事件（attack2 发射帧）— 转发给当前攻击状态</summary>
+
     public virtual void OnRangedFire() => (fsm.CurrentState as IEnemyAttackState)?.OnFire();
 
+
+
     /// <summary>
+
     /// 死亡播放入口 — 置死亡标记 + 切死亡状态（旧状态 OnExit 自动清 IsAttacking）+ 启动超时兜底。
+
     /// 原 Die() 的结算内容（VFX/掉落/事件/Destroy）全部移到 OnDeathAnimationEnd()，由 Death 动画末帧事件触发。
+
     /// </summary>
+
     protected virtual void Die()
+
     {
+
         if (isDead) return;
+
         isDead = true;
+
         EndChargeFlash();  // 蓄力中死亡：结束蓄力闪烁（幂等）
 
+
+
         // 本地冻结中死亡 → 立即解除（死亡动画必须正常播放，死亡结算依赖动画末帧事件）
+
         if (_localFreezeRemaining > 0f)
+
         {
+
             _localFreezeRemaining = 0f;
+
             EndLocalFreeze();
+
         }
+
+
 
         // 受击停顿中死亡 → 立即解除（同上：animator.speed=0 会卡死死亡动画及其末帧事件）
+
         if (hitPauseTimer > 0f)
+
         {
+
             hitPauseTimer = 0f;
+
             if (_animator != null) _animator.speed = 1f;
+
         }
+
         EndComboHold();   // 连打定格中死亡 → 解除（否则死亡动画期间悬在半空:重力被关掉了）
 
+
+
         // 死亡停住：清移动输入 + 水平速度（移动中被杀时 moveInput 残留 → 死亡动画期间会继续滑动）
+
         moveInput = 0f;
+
         if (rb != null) rb.velocity = new Vector2(0f, rb.velocity.y);
+
+
 
         fsm.ChangeState(new EnemyDeadState(this, fsm, _animator));
 
+
+
         // 死亡超时兜底：Death clip 时长 + 0.5s，事件链路断时强制 OnDeathAnimationEnd 防卡死
+
         StartCoroutine(DeathFallbackRoutine());
+
     }
 
+
+
     /// <summary>
+
     /// 死亡动画播完 — 执行原 Die() 全部结算内容（退出战斗计数 + 死亡 VFX + 掉落 + 事件 + 销毁）。
+
     /// 由 Death.anim 末帧事件 OnEnemyDeathEnd → AnimationRelay 转发，或死亡超时兜底触发。
+
     /// </summary>
+
     public virtual void OnDeathAnimationEnd()
+
     {
+
         // 守卫：只有 Die() 置过 isDead 才允许死亡结算。
+
         // 防误触发（如事件误挂到 Attack.anim / 重复触发）导致 enemy 无理由销毁。
+
         if (!isDead) return;
+
+
 
         OnExitCombatState();  // 死亡时退出战斗计数
 
+
+
         // 死亡 VFX
+
         if (deathVFXPrefab != null)
+
             VFXSpawner.SpawnOnEnemy(deathVFXPrefab, transform.position);
 
+
+
         // [Phase3] 死亡时装备生成掉落物（在 EnemyDeathEvent 和 Destroy 之前）
+
         GetComponent<EnemyEquipment>()?.DropOnDeath();
 
+
+
         EventBus.Trigger(new EnemyDeathEvent(this, (Vector2)transform.position));
+
         Destroy(gameObject);
+
     }
 
+
+
     /// <summary>
+
     /// 死亡超时兜底协程 — 采样死亡 clip 时长（+0.5s）作为兜底基准；采样失败（无 Animator / 未命名 Death）回退 1.0s。
+
     /// 动画事件正常时 OnEnemyDeathEnd 在 clip 末帧先到并销毁，本协程随物体销毁终止。
+
     /// </summary>
+
     private IEnumerator DeathFallbackRoutine()
+
     {
+
         // 等 Animator 过渡到死亡状态（最多 waitMax 秒），采样死亡 clip 时长
+
         float elapsed = 0f;
+
         float clipLen = 0f;
+
         const float waitMax = 0.4f;
+
         while (elapsed < waitMax)
+
         {
+
             elapsed += Time.deltaTime;
+
             if (_animator != null)
+
             {
+
                 var clips = _animator.GetCurrentAnimatorClipInfo(0);
+
                 if (clips.Length > 0 && clips[0].clip != null &&
+
                     clips[0].clip.name.IndexOf("Death", System.StringComparison.OrdinalIgnoreCase) >= 0)
+
                 {
+
                     clipLen = clips[0].clip.length;
+
                     break;
+
                 }
+
             }
+
             yield return null;
+
         }
 
+
+
         float duration = clipLen > 0f ? clipLen + 0.5f : 1.0f;
+
         yield return new WaitForSeconds(duration);
+
         if (isDead)
+
             OnDeathAnimationEnd();
+
     }
 
+
+
     // ============================================================
+
     // ICombatant 接口实现（P4b 玩家→敌人结算统一）
+
     // ============================================================
+
+
 
     // ── 身份 ──
+
     public GameObject GameObject => gameObject;
+
     public Transform Transform => transform;
 
+
+
     // ── 受击方 ──
+
     public PoiseComponent Poise => _poise;
+
     public virtual bool CanBeDamaged => !isDead;
 
+
+
     /// <summary>
+
     /// 承受伤害（含击退信息），返回实际造成伤害量。
+
     /// 复用原 TakeDamageFrom 核心段：受击 VFX（普通+方向）+ 扣血 + 闪白，死亡时 Die()。
+
     /// 近战 stun 硬直 / 远程追击由 OnHitBy 推送（霸体累计已由 CombatResolver 调 RegisterHit 完成，此处不重复计数）。
+
     /// </summary>
+
     public float ApplyDamage(DamageInfo info)
+
     {
+
         if (isDead) return 0f;
 
+
+
         // 受击 VFX — 朝攻击来源方向偏移，更真实（与原 TakeDamageFrom 一致）
+
         Vector2 fromSource = (Vector2)transform.position - info.sourcePosition;
+
         bool hasDirection = fromSource.sqrMagnitude > 0.0001f;
+
         Vector2 hitOffset = hasDirection ? fromSource.normalized * -0.15f : Vector2.zero;
+
         Vector2 vfxPos = (Vector2)transform.position + hitOffset;
+
         Vector2? hitDir = hasDirection ? (Vector2?)fromSource.normalized : null;
+
+
 
         if (ApplyDamage(info.amount, info.attackLabel, vfxPos, hitDir)) Die();
 
+
+
         // 受击音(2026-09-18 解耦):命中音归被击中的这一只,在本组件命中帧播 —— 所有伤害入口(近战/背刺/技能/元素)
+
         // 都汇到 ApplyDamage,一处接全。背刺不播受击音(2026-09-21 saika 定稿:背刺音效 = attack_VFX 背刺槽那只音,
+
         // 由攻击方排到标点播,info.hurtSfxHandled 恒置位),这里不重复播,否则一拍响两声。
+
         if (!info.hurtSfxHandled) PlayHurtSfx(info.hitStep);
 
+
+
         // 背刺受击 VFX(伤害结算同一帧、同一点):挂 enemy 下跟随被击飞,特效不会留在原地。
+
         // 标记由 PlayerCombat.ExecuteBackstab 置位(背刺标签与普通重击共用 Sword_Heavy,不能只按标签区分)。
+
         if (info.isBackstabFinisher && backstabHitVFX != null)
+
         {
+
             GameObject burst = VFXSpawner.Spawn(VFXCategory.EnemyVFX, backstabHitVFX, vfxPos, Quaternion.identity);
+
             if (burst != null) burst.transform.SetParent(transform);
+
         }
+
         return info.amount;
+
     }
+
+
 
     /// <summary>受击音素材(供攻击方排程播背刺卡点音时读取:素材与变调都取被击中的这一只)</summary>
+
     public AudioClip HurtSfx => hurtSfx;
 
+
+
     /// <summary>受击音相对音量(同上,攻击方排程时读)</summary>
+
     public float HurtSfxVolume => hurtSfxVolume;
 
+
+
     /// <summary>
+
     /// 受击音音高倍率 = 基准半音 + 每次命中递增 × 命中序号(hitStep,0 起;≤ 0 当第 1 击)。
+
     /// 基准 0 + 递增 4 → 第1击 do / 第2击 mi / 第3击 sol(大三和弦);倍率换算见 AudioManager.PitchFromSemitone。
+
     /// </summary>
+
     public float HurtSfxPitch(int hitStep)
+
     {
+
         int step = hitStep > 0 ? hitStep : 0;
+
         return AudioManager.PitchFromSemitone(hurtSemitone + hurtRisePerHit * step);
+
     }
 
+
+
     /// <summary>命中帧播受击音(素材空 = 静默跳过)。已由攻击方排程的命中(DamageInfo.hurtSfxHandled)不走这里。</summary>
+
     public void PlayHurtSfx(int hitStep)
+
     {
+
         if (hurtSfx == null) return;
+
         AudioManager.Instance?.PlaySfx(hurtSfx, hurtSfxVolume, HurtSfxPitch(hitStep));
+
     }
+
+
 
     // ── 结算管线钩子（P4b 敌人侧简单实现保证行为一致；弹反/闪避判定在 P4c 玩家侧接入）──
 
+
+
     /// <summary>闪避判定 — 敌人无闪避</summary>
+
     public bool TryDodge(DamageInfo info) => false;
 
+
+
     /// <summary>格挡/弹反判定 — 敌人无格挡弹反</summary>
+
     public bool TryParry(ICombatant attacker, DamageInfo info) => false;
 
+
+
     /// <summary>
+
     /// 护甲减免 — 伤害 - 护甲，保底 1 点（与玩家 PlayerHealth.ApplyArmorReduction 公式一致）。
+
     /// 护甲基础值来自 EnemyLvStats.armor（每档，B13），经 StatModifierManager 管线读取
+
     /// （enemy 已挂 StatModifierManager，参照 EnemyEquipment 同款 GetComponent 方式；
+
     /// 组件缺失时直接用基础值）。基础值默认 0 → 返回原值，现有战斗数值不变（回归保障）。
+
     /// </summary>
+
     public float ApplyArmor(float amount)
+
     {
+
         float armor = GetArmorValue();
+
         if (armor <= 0f) return amount;
+
         return Mathf.Max(1f, amount - armor);
+
     }
+
+
 
     /// <summary>护甲终值 = EnemyLvStats.armor 基础值经修饰器管线（Boss/精英可注入修饰器差异化）</summary>
+
     private float GetArmorValue()
+
     {
+
         float baseArmor = lvStats != null ? lvStats.armor : 0f;
+
         if (statModManager == null) return baseArmor;
+
         return statModManager.GetFinalValue(baseArmor, StatId.Armor);
+
     }
+
+
 
     /// <summary>减伤 — 敌人无减伤</summary>
+
     public float ApplyReduction(float amount) => amount;
 
+
+
     /// <summary>施加击退（CombatResolver 在霸体判定通过后调用；方向/力度由攻击方构造进 Knockback）
+
     /// 2026-08-18：放开 y 水平化 — 敌人统一按攻击方构造的完整 x/y 向量击退（武器每击配置的 y 生效，可上挑/击飞）。
+
     /// 空中受击不特殊处理:正常击退,滞空冻结只做短暂停住,结束恢复击退速度继续轨迹。</summary>
+
     public virtual void ApplyKnockback(Knockback knockback)
+
     {
+
         if (rb == null || knockback.force <= 0f) return;
+
         if (_comboHold) return;   // 连打定格中:吞掉击退(位置被钉住,不能被后续的刀再打飞)
+
         Vector2 knockDir = knockback.direction;
+
         if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
+
         _lastKnockbackDirX = Mathf.Sign(knockDir.x);   // 记录击退水平方向(落地弹跳用)
+
         // 空中/下落中击退:直接赋值速度(替代 AddForce 物理步延迟),立即生效无静止帧。
+
         // 判断用"下落中"(velocity.y 明显为负)而非 IsGrounded——grounded 射线会提前命中,
+
         // 敌人离地还有距离时 IsGrounded 已 true,会误走地面分支导致间歇性 x 被清。
+
         // 移动系统让位(不清 x),斜向击退速度自由飞。
+
         if (!IsGrounded || rb.velocity.y < -0.5f)
+
         {
+
             float targetX = rb.velocity.x + knockDir.x * (knockback.force / Mathf.Max(0.01f, rb.mass));
+
             float targetY = rb.velocity.y + knockDir.y * (knockback.force / Mathf.Max(0.01f, rb.mass));
+
             // 击飞上限:多次击退叠加(普攻第三击+背刺等)的向上速度钳到 maxLaunchUpSpeed,防飞太高;
+
             // 只限上升(y 分量>0),向下不受限(落地冲击依赖高速下落)
+
             if (knockDir.y > 0f && targetY > maxLaunchUpSpeed)
+
                 targetY = maxLaunchUpSpeed;
+
             rb.velocity = new Vector2(targetX, targetY);
+
             _airKnockbackActive = true;
+
             return;
+
         }
+
         rb.AddForce(knockDir * knockback.force, ForceMode2D.Impulse);
+
     }
 
+
+
     /// <summary>
+
     /// 落地冲击 — 被击退高速落地:尘土 VFX + 短卡帧震屏 + 落地硬直 + 往击退方向轻微弹跳。
+
     /// </summary>
+
     private void TriggerGroundImpact()
+
     {
+
         if (groundImpactVFX != null)
+
         {
+
             // 尘土出现在 enemy 与地面的接触线:取所有碰撞体最低底边 y(敌人 pivot 通常在中心,
+
             // 直接用 transform.position 会让尘土从身体中间冒出来)
+
             Vector3 pos = transform.position;
+
             float minY = pos.y;
+
             foreach (var col in GetComponents<Collider2D>())
+
             {
+
                 if (col != null && col.bounds.min.y < minY)
+
                     minY = col.bounds.min.y;
+
             }
+
             pos.y = minY;
+
             VFXSpawner.SpawnInWorld(groundImpactVFX, pos);
+
         }
+
+
 
         if (groundImpactHitStop > 0f)
+
             HitStopController.Instance?.Trigger(groundImpactHitStop, groundImpactShakeDuration, groundImpactShakeMagnitude, Vector2.down);
 
+
+
         if (groundImpactStun > 0f && !isDead)
+
             EnterStunState();
+
+
 
         if (groundBounceForce > 0f && rb != null)
+
         {
+
             float dir = _lastKnockbackDirX != 0f ? _lastKnockbackDirX
+
                       : (rb.velocity.x >= 0f ? 1f : -1f);
+
             // 弹跳:沿击退方向水平弹出去(落地后垂直速度归零,y 交给重力),短暂滑行后停住
+
             rb.velocity = new Vector2(dir * groundBounceForce, 0f);
+
             _bounceSlideTimer = 0.2f;
+
         }
+
+
 
         // 动漫形变:落地压扁 → 恢复(player 快速落地同款 squash & stretch;防重,新形变停旧)
+
         if (groundImpactSquash > 0f)
+
         {
+
             if (_squashRoutine != null) StopCoroutine(_squashRoutine);
+
             _squashRoutine = StartCoroutine(GroundImpactSquashRoutine(transform, groundImpactSquash));
+
         }
+
     }
+
+
 
     /// <summary>落地形变:水平拉宽 + 垂直压扁,再恢复(参考 PlayerGroundPound.PoundSquash,动漫挤压拉伸)</summary>
+
     private System.Collections.IEnumerator GroundImpactSquashRoutine(Transform t, float amount)
+
     {
+
         // 基准用原始 scale(Awake 记录),不能用形变开始时的 localScale——
+
         // 连续触发/中断时开始值可能是压扁中间态,恢复会停在压扁
+
         Vector3 original = _originalLocalScale;
+
         int dir = t.localScale.x >= 0f ? 1 : -1;   // 保留当前朝向符号
+
         float duration = 0.15f;
+
         float half = duration * 0.5f;
 
+
+
         for (float timer = 0f; timer < half; timer += Time.deltaTime)
+
         {
+
             float p = timer / half;
+
             t.localScale = new Vector3(
+
                 Mathf.Abs(original.x) * dir * (1f + p * amount),
+
                 original.y * (1f - p * amount),
+
                 original.z);
+
             yield return null;
+
         }
+
         for (float timer = 0f; timer < half; timer += Time.deltaTime)
+
         {
+
             float p = timer / half;
+
             t.localScale = new Vector3(
+
                 Mathf.Abs(original.x) * dir * (1f + (1f - p) * amount),
+
                 original.y * (1f - (1f - p) * amount),
+
                 original.z);
+
             yield return null;
+
         }
+
         t.localScale = new Vector3(Mathf.Abs(original.x) * dir, original.y, original.z);
+
     }
 
+
+
     /// <summary>
+
     /// 受击状态推送 — 近战进 stun 硬直，远程击退+立即追击（原 TakeDamageFrom 分流逻辑）。
+
     /// 近战击退由 CombatResolver 统一在 ApplyKnockback 施加；RegisterHit 只做霸体累计/判定，不再叠加额外击退力。
+
     /// </summary>
+
     public virtual void OnHitBy(DamageInfo info)
+
     {
+
         if (isDead) return;
 
+
+
         // 空中第三段(下砸,AirSlam_Heavy)命中:只在敌人空中时标记落地冲击+吸附;
+
         // 地面敌人被砸走正常近战硬直,不触发落地冲击
+
         if (info.attackLabel == AirSlamLabel)
+
         {
+
             bool airSlamAirborne = !IsGrounded;
+
             _pendingGroundImpact = airSlamAirborne;
+
             _pullToPlayer = airSlamAirborne;
+
             // 结束进行中的滞空冻结(如空中第二击遗留):不恢复旧保存速度,
+
             // 第三击击退(已直接赋值 velocity)独立生效,直接砸向地面
+
             if (_airHangFreeze)
+
             {
+
                 _airHangFreeze = false;
+
                 _localFreezeRemaining = 0f;
+
                 _localFreezeSavedVelocity = Vector2.zero;
+
                 if (_animator != null) _animator.speed = 1f;
+
                 if (rb != null) rb.gravityScale = 1f;
+
             }
+
         }
+
+
 
         // 空中受击:普通攻击走滞空冻结(停住),结束恢复击退速度继续正常击退轨迹。
+
         // 空中第三击(下砸)例外:不走滞空,直接按击退设置砸向地面(速度与力度相关),
+
         // 落地冲击/形变/弹跳全部等落地后再执行(标记触发)。
+
         // suppressAirHang 命中(背刺等终结技):不走滞空吸附,enemy 按击退自然飞出落地。
+
         bool airborne = !IsGrounded;
+
         bool isAirSlam = info.attackLabel == AirSlamLabel;
+
         if (airborne && airHitHangDuration > 0f && !isAirSlam && !info.suppressAirHang)
+
             ApplyAirHangFreeze(airHitHangDuration);
 
+
+
         // 落雷（Thunder_Strike）：强制硬直，不区分近战/远程路径（决策 D8）。
+
         // 韧性判定已在 CombatResolver 跳过 Poise.RegisterHit → 霸体目标同样硬直。
+
         if (info.attackLabel == ThunderStrike.AttackLabel)
+
         {
+
             EnterStunState();
+
             return;
+
         }
+
+
 
         bool isMelee = _poise != null && _poise.IsMeleeAttack(info.attackLabel);
 
+
+
         if (isMelee)
+
         {
+
             // ── 近战路径：始终进入 stun 硬直（不受霸体影响）──
+
             //    注意：不立即 fsm.ChangeState(CreateChaseState())，让 stun 真正执行 0.5s
+
             //          EnemyStunState.OnUpdate 会在 timer 归零后自动转 Chase/Fallback
+
             // 受击即标记战斗仇恨:stun 结束 IsInCombatState=true → 转 Chase 追击(玩家在身后偷袭也能转身还手,不再回 idle 挨打)
+
             OnEnterCombatState();
+
             EnterStunState();
+
         }
+
         else
+
         {
+
             // ── 远程路径：进入攻击入口状态 ──
+
             //    击退统一由 CombatResolver.ApplyKnockback 施加（方向/力度由攻击方构造进 Knockback，
+
             //    与近战 enemy 一致）；仅当攻击无击退配置（force<=0，如子弹/普通攻击段）时用
+
             //    rangedKnockbackForce 兜底，防止与 ApplyKnockback 双重叠加导致方向/力度混乱（P4b 后遗留）。
+
             //    空中受击不施加兜底击退(不要 x),滞空冻结接管。
+
             if (!airborne && info.knockback.force <= 0f)
+
             {
+
                 Vector2 hitDir = ((Vector2)transform.position - info.sourcePosition).normalized;
+
                 Vector2 knockDir = hitDir;
+
                 knockDir.y = 0f;
+
                 if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
+
                 rb.AddForce(knockDir * rangedKnockbackForce, ForceMode2D.Impulse);
+
             }
 
+
+
             // 受击击退滑行窗口：攻击入口状态不再清速度，窗口内 OnFixedUpdate 不 Move(0)，
+
             // 让击退速度自然衰减（对齐近战 stun 路径的保留击退行为，否则远程 enemy 击退被吞）
+
             hitKnockbackWindow = 0.2f;
 
+
+
             fsm.ChangeState(CreateAttackEntryState());
+
         }
+
     }
 
+
+
     // ============================================================
+
     // 踩头硬直
+
     // ============================================================
+
+
 
     /// <summary>是否处于硬直保护中（踩头后的冷却期）</summary>
+
     public bool IsStunned => stunCooldownTimer > 0f;
 
+
+
     /// <summary>注入 EnemyStunState 实例（由子类在 Start() 中调用）</summary>
+
     public void SetStunState(EnemyStunState s) => stunState = s;
 
+
+
     /// <summary>进入硬直状态（由 PlayerCombat 弹反重击 / 外部调用）</summary>
+
     public void EnterStunState()
+
     {
+
         if (stunCooldownTimer > 0f || isDead) return;
+
         stunCooldownTimer = 0.5f;
+
         fsm.ChangeState(stunState);
+
     }
 
+
+
     // ============================================================
+
     // 战斗状态追踪（per-enemy guard，防止重复触发 PassiveEquipManager.SetCombatState）
+
     // ============================================================
+
+
 
     /// <summary>进入战斗状态（Chase/Attack）。仅首次进入时通知 PassiveEquipManager。</summary>
+
     public void OnEnterCombatState()
+
     {
+
         if (isInCombatState) return;
+
         isInCombatState = true;
+
         passiveEquipManager?.SetCombatState(true);
+
         AttackingStat.Instance?.Notify(true);   // 敌人仇恨 → 玩家 attackingStat(管道空气墙由它驱动)
+
     }
+
+
 
     /// <summary>退出战斗状态（回到 Idle/Patrol 或死亡）。仅首次退出时通知 PassiveEquipManager。</summary>
+
     public void OnExitCombatState()
+
     {
+
         if (!isInCombatState) return;
+
         isInCombatState = false;
+
         passiveEquipManager?.SetCombatState(false);
+
         AttackingStat.Instance?.Notify(false);  // 脱战/死亡 → attackingStat 减计数
 
+
+
         // 退出战斗时重置霸体计数器，确保每次战斗独立计算
+
         _poise?.ResetPoise();
+
     }
 
+
+
     // ============================================================
+
     // 受伤反馈
+
     // ============================================================
+
+
 
     private void FlashHit()
+
     {
+
         EndChargeFlash();  // 受击 = 中断蓄力闪烁（防止闪白结束后残留旧蓄力闪烁）
+
         hitFlashTimer = hitFlashDuration;
+
         foreach (Renderer r in renderers) r.material.color = hitColor;
+
     }
+
+
 
     /// <summary>蓄力闪烁开始（蓄力帧 OnCharge 调用；幂等，重复调用只重置开始时间）</summary>
+
     public void BeginChargeFlash()
+
     {
+
         isChargeFlashing = true;
+
         chargeFlashStartTime = Time.time;
+
     }
 
+
+
     /// <summary>
+
     /// 蓄力闪烁结束（发射帧 OnFire / 攻击状态 OnExit / 受击 / 死亡 调用；幂等）。
+
     /// 恢复原始材质色（状态色已注释后 stateColor = Awake 初始材质色）。
+
     /// </summary>
+
     public void EndChargeFlash()
+
     {
+
         if (!isChargeFlashing) return;
+
         isChargeFlashing = false;
+
         RestoreColors();
+
     }
+
+
 
     /// <summary>每帧闪烁：频率随蓄力时长线性加速（方波），灭相位=原始材质色</summary>
+
     private void UpdateChargeFlash()
+
     {
+
         float t = Time.time - chargeFlashStartTime;
+
         float freq = Mathf.Min(chargeFlashBaseFreq + chargeFlashAccel * t, chargeFlashMaxFreq);
+
         bool on = Mathf.Sin(t * freq * Mathf.PI) >= 0f;
+
         Color c = on ? chargeColor : stateColor;
+
         foreach (Renderer r in renderers)
+
             if (r != null)
+
                 r.material.color = c;
+
     }
+
+
 
     /// <summary>设置所有渲染器为当前状态色</summary>
+
     public void ApplyStateColor(Color color)
+
     {
+
         stateColor = color;
+
         foreach (Renderer r in renderers)
+
             if (r != null)
+
                 r.material.color = color;
+
     }
+
+
 
     /// <summary>短暂闪烁颜色后恢复状态色（用于攻击等瞬间反馈）</summary>
+
     public void FlashColor(Color color, float duration)
+
     {
+
         StopAllCoroutines();
+
         StartCoroutine(FlashRoutine(color, duration));
+
     }
+
+
 
     private System.Collections.IEnumerator FlashRoutine(Color color, float duration)
+
     {
+
         foreach (Renderer r in renderers)
+
             if (r != null) r.material.color = color;
+
         yield return new WaitForSeconds(duration);
+
         foreach (Renderer r in renderers)
+
             if (r != null) r.material.color = stateColor;
+
     }
+
+
 
     private void RestoreColors()
+
     {
+
         foreach (Renderer r in renderers)
+
             if (r != null)
+
                 r.material.color = stateColor;
+
     }
 
+
+
     // ============================================================
+
     // 辅助方法（FSM 状态使用）
+
     // ============================================================
+
+
 
     /// <summary>当前面朝方向（1=右, -1=左），供外部组件读取</summary>
+
     public int Facing => facing;
 
+
+
     /// <summary>
+
     /// 目标是否存活（死亡后 enemy 停止检测/追击/攻击）。
+
     /// B11 语义确认：统一走 PlayerTarget —— 嘲讽目标为幻象时无 PlayerHealth（ph==null → 返回存活），
+
     /// 即嘲讽期间玩家死亡幻象仍拉仇恨（接受该行为）；tauntTimer 归零 OverrideTarget=null 后恢复查真实玩家。
+
     /// </summary>
+
     private bool IsPlayerAlive()
+
     {
+
         if (PlayerTarget == null) return false;
+
         var ph = PlayerTarget.GetComponent<PlayerHealth>();
+
         return ph == null || !ph.IsDead;
+
     }
+
+
 
     public bool CanSeePlayer()
+
     {
+
         if (!IsPlayerAlive()) return false;
+
         if (PlayerTarget == null) return false;
+
         // 战斗态(有仇恨):任意方向距离检测 — 玩家绕后/跳起不丢仇恨(单向射线扫不到身后)
+
         // 2026-09-20:距离通过后再补一道墙遮挡检测(同一高度带里中间有墙 = 判不可见 → 走丢玩家计时);
+
         // 垂直差大(玩家跳跃/高台上)时该检测自动跳过,不影响绕后/跳跃不丢仇恨
+
         if (IsInCombatState)
+
             return PlayerInRange() && !IsWallBlockingPlayer();
+
         return PlayerInSightRay();
+
     }
+
+
 
     /// <summary>战斗态可见:任意方向,水平距离 <= channelCheckForward 且垂直差 <= combatSightHeight(绕后/跳起不丢仇恨)。
+
     /// 注意这只是距离口径,中间有没有墙由 IsWallBlockingPlayer 另判(2026-09-20)。</summary>
+
     private bool PlayerInRange()
+
     {
+
         float deltaX = Mathf.Abs(PlayerTarget.position.x - transform.position.x);
+
         float deltaY = Mathf.Abs(PlayerTarget.position.y - transform.position.y);
+
         return deltaX <= channelCheckForward && deltaY <= combatSightHeight;
+
     }
 
+
+
     /// <summary>
+
     /// 战斗态墙遮挡检测(2026-09-20 新增) — 修正「玩家攻击敌人后躲到墙后,敌人仍无限追击不脱战」。
+
     /// 口径:玩家与自身垂直差在 wallCheckHeightTolerance 内(基本同一高度带)时,从自身腰部朝玩家水平射一条射线,
+
     /// 到玩家位置为止;先命中的是实心墙/地形 = 中间有墙 → 判不可见(走丢玩家计时,现为 5 秒后回巡逻);
+
     /// 先命中玩家本身、或射线内无遮挡 = 可见。
+
     /// 射线指向玩家(与当前朝向无关),所以玩家绕后依然不掉仇恨;垂直差超过容差(玩家跳跃中/高台上)直接跳过检测,
+
     /// 不会因为跳跃而丢仇恨。
+
     /// 遮挡层口径 = Ground(3) + Wall(11),与 HasPatrolBoundaryAhead 的实心层一致(管道是 trigger,普通 Raycast 命中不到,故不含)。
+
     /// Boss(FirstBoss)不调用 CanSeePlayer,不受本改动影响。
+
     /// </summary>
+
     private bool IsWallBlockingPlayer()
+
     {
+
         if (PlayerTarget == null) return false;
 
+
+
         float deltaY = Mathf.Abs(PlayerTarget.position.y - transform.position.y);
+
         if (deltaY > wallCheckHeightTolerance) return false;   // 跳跃中/高台:不做墙检测(不因墙丢仇恨)
 
+
+
         float dx = PlayerTarget.position.x - transform.position.x;
+
         if (Mathf.Abs(dx) < 0.01f) return false;               // 水平重合:没有可查的遮挡
+
         int dir = dx > 0f ? 1 : -1;
 
+
+
         Vector2 origin = new Vector2(transform.position.x + dir * 0.1f, transform.position.y + channelRayHeightOffset);
+
         const int solidMask = (1 << 3) | (1 << 11);            // Ground=3 + Wall=11
+
         RaycastHit2D[] hits = Physics2D.RaycastAll(origin, Vector2.right * dir, Mathf.Abs(dx), solidMask);
+
         foreach (RaycastHit2D hit in hits)
+
         {
+
             if (hit.collider == null) continue;
+
             if (hit.transform == transform || hit.transform.IsChildOf(transform)) continue;   // 跳过自身
+
             if (hit.transform == PlayerTarget) return false;                                  // 先命中玩家 = 没被挡
+
             if (hit.collider.GetComponent<PlayerController>() != null) return false;
+
             return true;   // 第一个非自身障碍(墙/地形)挡住视线
+
         }
+
         return false;
+
     }
+
+
 
     /// <summary>水平射线检测玩家 — 与管道检测同一条射线(同起点/同高度/同长度 channelCheckForward,方向 = Facing)。
+
     /// 射线命中玩家/嘲讽幻象 = 看到;命中墙等其他物体 = 被挡没看到;射线内无玩家 = 没看到。
+
     /// 必须 RaycastAll 跳过自身 collider(origin 在自身 collider 内,普通 Raycast 会先命中自己 → 永远 false)。</summary>
+
     private bool PlayerInSightRay()
+
     {
+
         Vector2 origin = new Vector2(transform.position.x + Facing * 0.1f, transform.position.y + channelRayHeightOffset);
+
         RaycastHit2D[] hits = Physics2D.RaycastAll(origin, Vector2.right * Facing, channelCheckForward);
+
         foreach (RaycastHit2D hit in hits)
+
         {
+
             if (hit.collider == null) continue;
+
             if (hit.transform == transform || hit.transform.IsChildOf(transform)) continue;   // 跳过自身
+
             if (hit.transform == PlayerTarget) return true;
+
             if (hit.collider.GetComponent<PlayerController>() != null) return true;
+
             return false;   // 第一个非自身障碍(墙等)挡住视线
+
         }
+
         return false;
+
     }
+
+
 
     public bool PlayerInAttackRange()
+
     {
+
         if (!IsPlayerAlive()) return false;
+
         if (PlayerTarget == null) return false;
+
         float deltaX = PlayerTarget.position.x - transform.position.x;
+
         float deltaY = PlayerTarget.position.y - transform.position.y;
+
         return Mathf.Abs(deltaX) <= attackWidth * 0.5f && Mathf.Abs(deltaY) <= attackHeight * 0.5f;
+
     }
+
+
 
     public float DirectionToPlayer()
+
     {
+
         if (PlayerTarget == null) return 0f;
+
         float dx = PlayerTarget.position.x - transform.position.x;
+
         // 重合死区:玩家水平距离过小(头顶/重叠)时返回 0 → 停住不转身,防每帧 1/-1 翻转导致朝向疯狂抖动
+
         if (Mathf.Abs(dx) < facingDeadZone) return 0f;
+
         return dx > 0f ? 1f : -1f;
+
     }
+
+
 
     /// <summary>
+
     /// 巡逻悬崖检测 — 判断移动前方脚下是否还有地面（从脚底向下的探射线）。
+
     /// 前方无地面（悬崖/空洞）返回 false，巡逻状态应转向，防止敌人走下悬崖。
+
     /// 脚底优先用碰撞体底部 bounds.min.y（更贴合 pivot 偏移），无碰撞体时回退 transform 下方 0.5f。
+
     /// </summary>
+
     /// <param name="dir">巡逻方向（1=右, -1=左）</param>
+
     /// <returns>true = 前方脚下有地面（可继续走）</returns>
+
     public bool HasGroundAhead(int dir)
+
     {
+
         float footY = col != null ? col.bounds.min.y : transform.position.y - 0.5f;
+
         Vector2 origin = new Vector2(transform.position.x + dir * cliffCheckForward, footY);
+
         RaycastHit2D hit = Physics2D.Raycast(origin, Vector2.down, cliffCheckDown, groundLayer);
+
         return hit.collider != null;
+
     }
+
+
 
     /// <summary>巡逻管道检测 — 水平射线检测前方 Channel 层。命中返回 true，巡逻应转身。
+
     /// 注意:管道 collider 是 trigger,Physics2D.Raycast 默认忽略 trigger,必须用 ContactFilter2D useTriggers=true。
+
     /// 团结引擎的 ContactFilter2D 重载签名 = (origin, direction, filter, results[], distance),返回命中数。</summary>
+
     public bool HasChannelAhead(int dir)
+
     {
+
         Vector2 origin = new Vector2(transform.position.x + dir * 0.1f, transform.position.y + channelRayHeightOffset);
+
         // useLayerMask 必须显式 true:ContactFilter2D 默认 false 时 layerMask 被忽略(射线全层命中,
+
         // 会把 Player/墙等非 Channel 物体误判成管道,2026-09-05 saika 实测:追击把玩家当管道立即脱战)
+
         var filter = new ContactFilter2D { useTriggers = true, useLayerMask = true, layerMask = channelLayer };
+
         int count = Physics2D.Raycast(origin, Vector2.right * dir, filter, channelCheckHits, channelCheckForward);
+
         return count > 0;
+
     }
+
+
 
     /// <summary>巡逻边界检测(短距) — 前方 patrolBoundaryDistance 内命中 管道 trigger / 实心墙(Ground=3 + Wall=11)
+
     /// = 边界,巡逻应转身。复用管道水平射线写法(useTriggers+layerMask),但距离短(贴墙才转,不会老远就转身)。
+
     /// 悬崖另由 HasGroundAhead 负责;追击/玩家视线检测走各自方法,不受影响(2026-09-07 敌人初始朝墙顶住不巡逻修复)。</summary>
+
     public bool HasPatrolBoundaryAhead(int dir)
+
     {
+
         Vector2 origin = new Vector2(transform.position.x + dir * 0.1f, transform.position.y + channelRayHeightOffset);
+
         var filter = new ContactFilter2D { useTriggers = true, useLayerMask = true, layerMask = channelLayer | (1 << 3) | (1 << 11) };
+
         int count = Physics2D.Raycast(origin, Vector2.right * dir, filter, channelCheckHits, patrolBoundaryDistance);
+
         return count > 0;
+
     }
+
+
 
     /// <summary>是否可以对目标发起攻击（综合所有条件）。子类可覆盖以添加额外条件（如远程后退区）。
+
     /// B11：统一走 PlayerTarget —— 嘲讽幻象在攻击框内时正常出招（攻击打空=幻象不可被攻击）。</summary>
+
     public virtual bool CanAttack()
+
     {
+
         if (PlayerTarget == null) return false;
+
         if (!CanSeePlayer()) return false;
+
         if (attackCooldownTimer > 0f) return false;
 
+
+
         // 目标空中击飞时不攻击，避免无限连击（仅对真实玩家生效；幻象无 PlayerController 跳过）
+
         var pc = PlayerTarget.GetComponent<PlayerController>();
+
         if (pc != null)
+
         {
+
             var ph = pc.GetComponent<PlayerHealth>();
+
             if (ph != null && ph.IsAirHurt) return false;
+
         }
 
+
+
         float deltaX = PlayerTarget.position.x - transform.position.x;
+
         float deltaY = PlayerTarget.position.y - transform.position.y;
+
         return Mathf.Abs(deltaX) <= attackWidth * 0.5f && Mathf.Abs(deltaY) <= attackHeight * 0.5f;
+
     }
 
-    // ============================================================
-    // Gizmos
+
+
     // ============================================================
 
+    // Gizmos
+
+    // ============================================================
+
+
+
 #if UNITY_EDITOR
+
     protected override void OnDrawGizmosSelected()
+
     {
+
         base.OnDrawGizmosSelected();
+
+
 
         Vector3 pos = transform.position;
 
+
+
         // 攻击矩形（红色半透明填充 + 线框）
+
         DrawRectGizmo(pos, attackWidth, attackHeight,
+
             new Color(1f, 0f, 0f, 0.08f), new Color(1f, 0f, 0f, 0.5f));
 
+
+
         // 巡逻悬崖检测射线（绿色）
+
         float footY = col != null ? col.bounds.min.y : pos.y - 0.5f;
+
         Vector2 cliffOrigin = new Vector2(pos.x + Facing * cliffCheckForward, footY);
+
         Gizmos.color = new Color(0f, 1f, 0f, 0.9f);
+
         Gizmos.DrawLine(cliffOrigin, cliffOrigin + Vector2.down * cliffCheckDown);
+
         Gizmos.DrawSphere(cliffOrigin, 0.05f);
 
+
+
         // 巡逻/追击管道检测射线（绿色水平线；与 HasChannelAhead 同参数,同时兼玩家检测）
+
         Vector2 channelOrigin = new Vector2(pos.x + Facing * 0.1f, pos.y + channelRayHeightOffset);
+
         Gizmos.color = new Color(0f, 1f, 0f, 0.9f);
+
         Gizmos.DrawLine(channelOrigin, channelOrigin + Vector2.right * Facing * channelCheckForward);
+
         Gizmos.DrawSphere(channelOrigin, 0.05f);
 
+
+
         // 背刺落点检测射线(蓝色):enemy 背后方向,长度 = 玩家 WeaponThrow 的背刺偏移配置。
+
         // 命中墙/管道等 = 背刺会改到 enemy 正面(PlayerBackstabState.ResolveBackstabLanding)
+
         float backstabOffset = 1.5f;
+
         var backstabPlayer = PlayerController.Instance;
+
         var backstabWeapon = backstabPlayer != null ? backstabPlayer.GetComponentInChildren<WeaponThrow>() : null;
+
         if (backstabWeapon != null) backstabOffset = backstabWeapon.BackstabBehindOffset;
+
         Vector2 backstabOrigin = pos;
+
         Vector2 backstabTip = backstabOrigin + Vector2.right * (-Facing) * backstabOffset;
+
         Gizmos.color = Color.blue;
+
         Gizmos.DrawLine(backstabOrigin, backstabTip);
+
         Gizmos.DrawSphere(backstabTip, 0.08f);
+
     }
+
+
 
     /// <summary>绘制矩形 Gizmo：半透明填充 Cube + 四条边线框</summary>
+
     private static void DrawRectGizmo(Vector3 center, float width, float height, Color fillColor, Color wireColor)
+
     {
+
         // 填充：薄 Cube（z 忽略，2D 用）
+
         Gizmos.color = fillColor;
+
         Gizmos.DrawCube(center, new Vector3(width, height, 0.01f));
 
+
+
         // 线框：四条边
+
         Gizmos.color = wireColor;
+
         float hw = width * 0.5f;
+
         float hh = height * 0.5f;
+
         Vector3 tl = center + new Vector3(-hw,  hh, 0f);
+
         Vector3 tr = center + new Vector3( hw,  hh, 0f);
+
         Vector3 br = center + new Vector3( hw, -hh, 0f);
+
         Vector3 bl = center + new Vector3(-hw, -hh, 0f);
+
         Gizmos.DrawLine(tl, tr);
+
         Gizmos.DrawLine(tr, br);
+
         Gizmos.DrawLine(br, bl);
+
         Gizmos.DrawLine(bl, tl);
+
     }
+
 #endif
+
 }
+
