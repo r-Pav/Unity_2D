@@ -501,7 +501,13 @@ public class PlayerBackstabState : EntityState
         if (!pc.IsGrounded()) pc.FreezeTimer = ClingSuppressSeconds;   // 空中才需要;地面退出不会贴墙
         float h = Input.GetAxisRaw("Horizontal");
         if (pc.IsGrounded())
+        {
+            // 落地退出:直接切 Idle/Move,绕过了 FallState 的落地分支 → jumpsLeft 残留 0,
+            // 之后按空格跳不了(与 Dash / AirAttack / GroundPound / AirHurt 同款坑)。
+            // 手动补落地副作用(2026-09-22 saika 报「跳起进石碑范围按 F 被刺,落地后就跳不了了」)。
+            owner.GetComponent<PlayerJump>()?.ResetJumps();
             stateMachine.ChangeState(Mathf.Abs(h) > 0.1f ? pc.MoveState : pc.IdleState);
+        }
         else
             stateMachine.ChangeState(pc.FallState);
     }

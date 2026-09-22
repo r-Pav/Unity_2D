@@ -54,6 +54,10 @@ public class BackstabAimIndicator : MonoBehaviour
     [SerializeField] private float visualOuterInset = 0.5f;
 
     private readonly List<ParticleSystem> _pool = new List<ParticleSystem>();          // 本轮可用环(rings 过滤空引用,全空退回 ring)
+
+    /// <summary>本组槽起点:连音组(点数 &gt; 1)= 1 —— 跳过第 0 只(金色,只给单点背刺用),
+    /// 从池里第 1 只起按点分配(粉色);单点背刺 = 0(就用金色那只)。HideRing 收环时同口径。</summary>
+    private int _slotOffset;
     private readonly List<Coroutine> _poolRoutines = new List<Coroutine>();            // 与 _pool 同下标的在跑协程(每槽至多 1 个)
 
     /// <summary>派生:环从起点缩到判定外环的用时 = 出现提前量(秒)。
@@ -90,9 +94,14 @@ public class BackstabAimIndicator : MonoBehaviour
 
         int count = secondsToPoints != null ? secondsToPoints.Length : 0;
 
+        // 槽起点:连音组(点数 > 1)跳过第 0 只(金色留给单点背刺),从第 1 只(粉色)起分配;
+        // 单点背刺(点数 = 1)才用第 0 只。池里只有 1 只时退化为 0(不然没环可用)。
+        _slotOffset = (count > 1 && poolCount > 1) ? 1 : 0;
+        int usable = poolCount - _slotOffset;
+
         for (int i = 0; i < count; i++)
         {
-            int slot = i % poolCount;                     // 超出池大小 → 轮转回"最早分配的那只"复用(并发恒 ≤ 池大小)
+            int slot = _slotOffset + (i % usable);        // 超出可用只数 → 轮转回"最早分配的那只"复用(并发恒 ≤ 池大小)
             if (_poolRoutines[slot] != null)              // 被复用的环:先打断它的旧协程,再重新收缩
             {
                 StopCoroutine(_poolRoutines[slot]);
@@ -164,14 +173,21 @@ public class BackstabAimIndicator : MonoBehaviour
     public void HideRing(int index)
     {
         BuildPool();
-        if (index < 0 || index >= _pool.Count) return;
-        if (_poolRoutines[index] != null)
+        if (index < 0) return;
+
+        // 与 ShowChain 同口径:index = 组内第几个环(0 起) → 实际槽 = 槽起点 + 组内序号取模。
+        // 不按套用同一起点会收错环(连音组的第 1 个环实际占的是池里第 1 只,不是第 0 只)。
+        int usable = Mathf.Max(1, _pool.Count - _slotOffset);
+        int slot = _slotOffset + (index % usable);
+        if (slot < 0 || slot >= _pool.Count) return;
+
+        if (_poolRoutines[slot] != null)
         {
-            StopCoroutine(_poolRoutines[index]);
-            _poolRoutines[index] = null;
+            StopCoroutine(_poolRoutines[slot]);
+            _poolRoutines[slot] = null;
         }
-        SetScale(_pool[index], 0f);      // 缩到 0 收干净(与 ShrinkRoutine 收尾同口径),再停粒子
-        StopAndClear(_pool[index]);
+        SetScale(_pool[slot], 0f);       // 缩到 0 收干净(与 ShrinkRoutine 收尾同口径),再停粒子
+        StopAndClear(_pool[slot]);
     }
 
     /// <summary>隐藏(窗口正常结束 / 背刺命中帧调用)。幂等:连按两轮再 Hide 也不会留环。</summary>

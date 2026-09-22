@@ -197,6 +197,12 @@ public class SceneTransition : MonoBehaviour
         yield return null;   // 先把"全黑"这一帧提交出去再加载,否则同步 LoadScene 在同一帧完成卸载+加载,
                              // 加载卡顿期间屏幕停留的是加载前那一帧(还没全黑)→ 看起来"卡一下能看到页面 UI"
 
+        // 切场景前先取消管道接管:AreaChannelTrigger 的移动/缩放协程是挂在 VCam 上的(场景根对象,
+        // 不在任何区域下),LoadScene 会把 VCam 连同协程宿主一起销毁 → 协程在 yield 后无法继续,
+        // Unity 打印 "Coroutine continue failure"(2026-09-22 saika 报)。先停掉,
+        // 顺带恢复玩家输入/速度,不把管道接管状态留到下一个场景。
+        AreaChannelTrigger.CancelMove();
+
         SceneManager.LoadScene(sceneName);   // 切场景（本组件 DontDestroyOnLoad，跨场景存活继续渐显）
 
         yield return null;   // 等新场景第一帧（幕布此时仍全黑）

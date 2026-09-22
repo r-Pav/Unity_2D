@@ -556,6 +556,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
     private float _localFreezeRemaining;
 
+
     /// <summary>冻结前暂存的速度（解除时恢复，保证击退速度不在冻结期间衰减）</summary>
 
     private Vector2 _localFreezeSavedVelocity;
@@ -1513,6 +1514,16 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
     /// </summary>
 
+    /// <summary>玩家是否正在攻击(= 空中吸附 / 滞空的唯一合法时机:空中攻击或普攻连段)。
+    /// 冲刺 / 下落 / 走位 / 落地 / 待机都算连段已结束。PlayerController 不在场 = false。</summary>
+    private static bool IsPlayerAttacking()
+    {
+        var pc = PlayerController.Instance;
+        if (pc == null || pc.PlayerFsm == null) return false;
+        var st = pc.PlayerFsm.CurrentState;
+        return st is PlayerAirAttackState || st is PlayerComboState;
+    }
+
     private void UpdateAirHitState()
 
     {
@@ -1532,6 +1543,28 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
         if (landed)
 
             _pullToPlayer = false;         // 落地:空中吸附解除
+
+        // [2026-09-22 断连段死锁] 「落地」判据要求 vy > -1.5(防下落中途误判),从高处砸下来的那一帧不成立;
+        // 而空中吸附本身会把敌人吊在玩家高度(见本文件空中吸附段)→ 它落不了地 → 吸附永远挂着,
+        // 玩家一冲刺/跳跃敌人就被一路吸着走(2026-09-22 saika 报「被刺后普攻,冲刺或跳跃 enemy 跟着走」)。
+        // 兜底出口:① 敌人在地面上(不看 vy);② 玩家已落地(空中连段结束)。
+        if (groundedNow && _airKnockbackActive) _airKnockbackActive = false;
+        if (groundedNow && _pullToPlayer) _pullToPlayer = false;
+        // [2026-09-22 连段收口] 吸附和滞空都只为「玩家攻击中」服务(把敌人拉进攻击范围、吊住高度)。
+        // 玩家一离开攻击(冲刺 / 下落 / 走位 / 落地)→ 两个一起收。只收吸附不够:滞空会把重力压到
+        // airHangGravityScale(场景 0.2)并**保留水平击退速度**(ApplyAirHangFreeze 只清负 y),
+        // 敌人带着 -6 的水平速度在空中飘满 airHitHangDuration(场景 0.7s,每次再受击又续)
+        // —— 看着就是被玩家拖着飞(saika 报「被刺后普攻,冲刺或跳跃时 enemy 被吸着走」)。
+        // 敌人自己贴地同样收。
+        if (groundedNow || !IsPlayerAttacking())
+        {
+            if (_pullToPlayer) _pullToPlayer = false;
+            if (_airHangFreeze)
+            {
+                EndLocalFreeze();            // 恢复 gravityScale / 动画速度(滞空分支不恢复旧击退速度)
+                _localFreezeRemaining = 0f;  // 收掉这次滞空计时
+            }
+        }
 
 
 
@@ -2007,7 +2040,9 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
     /// <param name="hitDir">攻击来源方向；传入时额外生成方向受击 VFX（TakeDamageFrom 路径）</param>
 
-    private bool ApplyDamage(float amount, string attackType, Vector2? vfxPos = null, Vector2? hitDir = null)
+    /// <param name="skipHitVfx">true = 这一击有自己的专属受击特效（背刺终结技 = backstabHitVFX），不再叠普通/方向受击 VFX</param>
+
+    private bool ApplyDamage(float amount, string attackType, Vector2? vfxPos = null, Vector2? hitDir = null, bool skipHitVfx = false)
 
     {
 
@@ -2025,7 +2060,9 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
         // 普通受击 VFX（带 ±3° 随机旋转），挂到 Enemy 下跟随移动
 
-        GameObject vfx = GetHitVFX(attackType);
+        // 背刺终结技:它有专属特效(backstabHitVFX,见本方法末尾),不再叠一层普通受击 VFX(2026-09-22)
+
+        GameObject vfx = skipHitVfx ? null : GetHitVFX(attackType);
 
         if (vfx != null)
 
@@ -2043,7 +2080,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
         // 方向受击 VFX — 朝向攻击反方向（通过翻转 scale.x），挂到 Enemy 下跟随移动
 
-        if (hitDir.HasValue && directionalHitVFXPrefab != null)
+        if (!skipHitVfx && hitDir.HasValue && directionalHitVFXPrefab != null)
 
         {
 
@@ -2373,7 +2410,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
 
 
-        if (ApplyDamage(info.amount, info.attackLabel, vfxPos, hitDir)) Die();
+        if (ApplyDamage(info.amount, info.attackLabel, vfxPos, hitDir, info.isBackstabFinisher)) Die();
 
 
 

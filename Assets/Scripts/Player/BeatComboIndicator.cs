@@ -81,6 +81,23 @@ public class BeatComboIndicator : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// 抵消父级(Player)的水平镜像:玩家朝向靠 transform.localScale.x = ±1 翻转,本标识挂在玩家下,
+    /// 会被一起镜像(图片/文字反了)。每帧对齐一次 —— 父级朝左则自身 localScale.x 取负,让世界水平尺度
+    /// 恒为正;只改符号、不动大小(编辑器里摆的 scale 保留)。放 LateUpdate,在玩家改完朝向之后执行。
+    /// </summary>
+    private void LateUpdate()
+    {
+        Transform p = transform.parent;
+        float wantSign = (p != null && p.lossyScale.x < 0f) ? -1f : 1f;
+        Vector3 s = transform.localScale;
+        if (Mathf.Sign(s.x) != wantSign)
+        {
+            s.x = Mathf.Abs(s.x) * wantSign;
+            transform.localScale = s;
+        }
+    }
+
     // ============================================================
     // 私有
     // ============================================================
