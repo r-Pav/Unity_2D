@@ -35,24 +35,32 @@ public class PlayerTeleport : MonoBehaviour
     /// 跨区传送(石碑系统)传 false —— 两区物理不连通,射线会打到「还没隐藏的旧区」地形上,
     /// 把落点截回旧区(旧区随后隐藏 → 玩家站虚空掉落)。锚点是编辑器摆的安全位,不需要钳制。
     /// </summary>
-    public void TeleportTo(Vector2 destination, bool clampToWall = true)
+    /// <returns>实际落点(贴墙钳制/外推后的世界坐标)。判朝向、算后续站位一律用这个返回值,
+    /// 别用传进来的 destination —— 贴墙时两者会差出去(2026-09-22 背刺朝向判反的根因)。</returns>
+    public Vector2 TeleportTo(Vector2 destination, bool clampToWall = true)
     {
         PlayerController pc = GetComponent<PlayerController>();
-        if (pc == null) return;
+        if (pc == null) return (Vector2)transform.position;
         Rigidbody2D rb = pc.GetRigidbody();
-        if (rb == null) return;
+        if (rb == null) return (Vector2)transform.position;
 
         Vector2 from = rb.position;
         Vector2 to = clampToWall ? ResolveLandingPoint(from, destination) : destination;
 
         rb.position = to;
         rb.velocity = Vector2.zero;
+        // 同帧把 transform 也搬到落点:Rigidbody2D.position 赋值当帧 transform 还是旧值(物理下一次模拟才写回),
+        // 而按 transform 取世界坐标的子物体(攻击 VFX 锚点 attack_VFX 等)会算在瞬移前的位置上
+        // —— 表现就是背刺连音第一刀的刀光出现在上一格(2026-09-22)。两处写同一个值,不与物理冲突。
+        transform.position = to;
 
         PlayerHealth ph = GetComponent<PlayerHealth>();
         ph?.SetInvincible(invincibleDuration);
 
         // 特效事件（占位；素材后续接入，订阅方自行挂特效）
         EventBus.Trigger(new PlayerTeleportedEvent(from, to));
+
+        return to;   // 实际落点:被 ResolveLandingPoint 钳制/外推过,与请求的 destination 可能不同
     }
 
     /// <summary>

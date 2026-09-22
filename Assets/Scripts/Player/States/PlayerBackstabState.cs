@@ -686,9 +686,9 @@ public class PlayerBackstabState : EntityState
         if (_comboTarget == null || teleport == null) return;
         if (!TryResolveComboLanding(_comboTarget, out Vector2 dest)) return;   // 侧面被墙/管道堵 → 这次不传,等下一刀
         var pcSide = (PlayerController)owner;
-        pcSide.UpdateFacing(_comboTarget.BodyPosition.x >= dest.x ? 1f : -1f);   // 面向敌人(与 ExecuteStrike 同口径)
         // Debug.Log($"[背刺诊断] 玩家瞬移 from={(Vector2)owner.transform.position} to={dest} 敌人={_comboTarget.BodyPosition}");
-        teleport.TeleportTo(dest);
+        Vector2 landed = teleport.TeleportTo(dest);
+        pcSide.UpdateFacing(_comboTarget.BodyPosition.x >= landed.x ? 1f : -1f);   // 面向敌人(按实际落点判,与 ExecuteStrike 同口径)
     }
 
     /// <summary>本组第几刀(第 1 刀 = 1);阶梯的阶数直接按它取,不靠递增计数</summary>
@@ -765,23 +765,28 @@ public class PlayerBackstabState : EntityState
 
         Vector2 center = target.transform.position;
         float off = behindOffset;
-        int side = owner.transform.position.x >= center.x ? -1 : 1;   // 取玩家不在的那一侧
-        if (target.IsWallBlockedOnSide(side)) side = -side;
+        int side = owner.transform.position.x >= center.x ? -1 : 1;   // 取玩家不在的那一侧(想落的那侧)
         if (target.IsWallBlockedOnSide(side))
         {
-            // 两侧都被墙堵(贴墙打)→ 照空中攻击闪击的口径「占位推敌」:
-            // 玩家站到 enemy 原位置,enemy 沿「玩家所在的开阔侧」硬挪一段。
-            // 不推的话玩家就只能原地不动 = enemy 飞上去了 player 不跟(2026-09-21 saika 报)。
-            int pushDir = owner.transform.position.x >= center.x ? 1 : -1;   // 往玩家那侧推(那边是开的)
-            Vector2 playerDest = new Vector2(center.x, center.y);
+            // ── 想落的那侧贴墙(敌人背靠墙)→ 占位推敌,照样换边 ──
+            // 原实现是 `side = -side` 翻回玩家这侧:玩家落回原地不动 → 贴墙敌人只能单边挨砍、
+            // 朝向也不变,看着就是「连音一直一个朝向」(2026-09-22 saika 报)。
+            // 现在:玩家落敌人原位置(= 想落的那侧),敌人沿开阔侧(玩家所在侧)硬挪一段。
+            // 阶梯顶点必须一起挪 —— 不挪的话下一刀 SetLadderStep 又把它钉回墙边,推了等于没推。
+            int pushDir = -side;                                   // 往开阔侧(玩家所在侧)推
             Vector2 enemyDest = center + Vector2.right * pushDir * ComboPushDistance;
             if (!target.IsPositionFree(enemyDest))
             {
                 enemyDest = center + Vector2.right * pushDir * ComboPushDistanceWide;
-                if (!target.IsPositionFree(enemyDest)) return false;   // 推了也站不住 → 不换位
+                if (!target.IsPositionFree(enemyDest)) return false;   // 推了也站不住 → 这一刀不换位
             }
-            target.ForceSetPosition(enemyDest);   // 硬挪 + 清速度(阶梯会在这之后把它钉回顶点)
-            dest = playerDest;
+            target.ForceSetPosition(enemyDest);   // 硬挪 + 清速度
+            if (_ladderCount > 0)
+            {
+                _ladderEnd = enemyDest;           // 阶梯已退化成顶点一阶:起终点一起跟着走
+                _ladderStart = enemyDest;
+            }
+            dest = center;                         // 玩家站敌人原位置(就是刚才想落的那一侧)
             return true;
         }
 
@@ -831,7 +836,6 @@ public class PlayerBackstabState : EntityState
         }
         bool canSwap = false;
         bool landedByCombo = false;   // 本刀是否用了连打对侧落点(日志/分支用,块外可见)
-        Vector2 enemyOld = Vector2.zero;   // canSwap:玩家落点 = enemy 原站位(enemy 站得住 = 安全点)
         Vector2 enemyNew = Vector2.zero;   // canSwap:enemy 被挪到的攻击框中心(ForceSetPosition 钳制后为准)
 
         if (target != null)
@@ -855,17 +859,13 @@ public class PlayerBackstabState : EntityState
             if (canSwap)
             {
                 // ── 背后被堵(enemy 背靠墙/管道,玩家侧开阔)→ 换位挤出:玩家 ↔ enemy 互换 ──
-                // 玩家落 enemy 背后会进墙 → 玩家去 enemy 原站位(enemy 站得住 = 安全点);
-                // enemy 挪到玩家面前攻击框中心(RangeIndicator.Center,开阔侧)——被挪后其 Facing 不变,
-                // 玩家天然落在 enemy 背后;后续动画/命中帧/ExecuteBackstab 完全照常(精准打击),
-                // 击退方向 = 玩家→enemy,把 enemy 打出墙边。
-                enemyOld = target.transform.position;
-                playerDest = enemyOld;
-                // 玩家面前攻击框中心(世界坐标;此刻玩家还没瞬移,以玩家当前站位为基准)。
-                // 极端:enemy 已几乎在攻击框中心(enemyNew≈enemyOld)→ 仍执行,重叠由
-                // "先挪 enemy 再移玩家"的瞬移顺序吸收;玩家贴墙时中心可能探进墙,
-                // ForceSetPosition 会钳制到墙外侧(2026-09-07 背刺穿墙修复)。
+                // enemy 挪到玩家面前攻击框中心(RangeIndicator.Center,开阔侧);玩家落在 enemy **新位置**
+                // 背后 offset 处 —— 不再死站 enemy 原位:enemyNew ≈ 敌人原位置时两人会挤成贴脸
+                // (2026-09-22 实测相距 0.25m)。执行段拿到 ForceSetPosition 钳制后的 enemyNew 会再精算一次。
                 enemyNew = (Vector2)combat.RangeIndicator.Center;
+                float swapDir = enemyNew.x >= pc.transform.position.x ? 1f : -1f;
+                playerDest = new Vector2(enemyNew.x - swapDir * behindOffset, enemyNew.y);
+                playerDest = ResolveBackstabLanding(playerDest, target);   // 避开管道
             }
             else if (!landedByCombo)
             {
@@ -930,25 +930,34 @@ public class PlayerBackstabState : EntityState
                 // ForceSetPosition 返回钳制后实际落点(玩家贴墙时攻击框中心可能探进墙,已被外推到墙外),
                 // 后续朝向/击退方向都以实际落点为准。
                 enemyNew = target.ForceSetPosition(enemyNew);
+                // 玩家落点按 enemy 钳制后的实际位置精算(与上面落点解析同一公式)
+                float swapDir = enemyNew.x >= pc.transform.position.x ? 1f : -1f;
+                playerDest = new Vector2(enemyNew.x - swapDir * behindOffset, enemyNew.y);
                 if (teleport != null)
-                    teleport.TeleportTo(enemyOld);   // 复用原语义:瞬移+贴墙钳制+清速度+无敌帧+事件
+                    teleport.TeleportTo(playerDest);   // 复用原语义:瞬移+贴墙钳制+清速度+无敌帧+事件
                 else
-                    pc.transform.position = enemyOld;   // 未挂 PlayerTeleport 时兜底直接位移
-                // 回身朝 enemy 新位置(玩家新站位 = enemyOld):enemyNew 在右 → 朝右,反之朝左。
-                // 不能用 enemy.Facing(被挪后 Facing 不变,玩家在它背后,用它玩家会背朝 enemy);
-                // 也不能读 pc.transform.position——TeleportTo 走 rb.position,同帧 transform 未同步(空中闪同坑)
-                pc.UpdateFacing(enemyNew.x >= enemyOld.x ? 1f : -1f);
+                    pc.transform.position = playerDest;   // 未挂 PlayerTeleport 时兜底直接位移
+                // 玩家朝 enemy;同时让 enemy **转身背对玩家**(与玩家同向)= 背刺该有的姿态。
+                // 不让它转的话,换位挤出后两人面对面(2026-09-22 saika:贴墙背刺「朝向 enemy 而不是同向」)。
+                pc.UpdateFacing(swapDir);
+                if (target.Facing != (int)swapDir) target.UpdateFacing(swapDir);
             }
             else
             {
+                Vector2 landed = playerDest;
                 if (teleport != null)
-                    teleport.TeleportTo(playerDest);
+                    landed = teleport.TeleportTo(playerDest);   // 返回实际落点
                 else
-                    pc.transform.position = playerDest;   // 未挂 PlayerTeleport 时兜底直接位移(无敌帧等由挂载后生效)
-                // 强制转向敌人:按敌人与玩家实际落点(playerDest)的相对位置(不能用 pc.transform.position——
-                // TeleportTo 走 rb.position,同帧 transform.position 未同步还是瞬移前旧值,会把朝向判反;
-                // 也不能用 enemy.Facing——靠墙时落点改到 enemy 正面,enemy.Facing 朝玩家,用它玩家会背朝 enemy)
-                pc.UpdateFacing(target.transform.position.x >= playerDest.x ? 1f : -1f);
+                    pc.transform.position = playerDest;         // 未挂 PlayerTeleport 时兜底直接位移(无敌帧等由挂载后生效)
+                // 强制转向敌人:按「实际落点」判 —— TeleportTo 的贴墙钳制会把落点推到墙外(常在敌人同侧),
+                // 拿 playerDest 判就会反成背朝敌人(2026-09-22 saika 报「enemy 在墙边背刺后 player 背向 enemy」)。
+                // 也不能用 enemy.Facing —— 靠墙时落点改到 enemy 正面,enemy.Facing 朝玩家,用它玩家会背朝 enemy。
+                float toEnemyDir = target.transform.position.x >= landed.x ? 1f : -1f;
+                pc.UpdateFacing(toEnemyDir);
+                // 背刺姿态校正:玩家该在敌人背后 = 两人同向。玩家落点在敌人"正面"时(连打对侧落点被墙改 /
+                // 贴墙占位推敌 / 换位挤出)敌人还朝着玩家 → 面对面,看着就不像背刺。
+                // 让它转身背对玩家;玩家本来就在背后(普通背后路径)时方向已一致,不动。
+                if (target.Facing != (int)toEnemyDir) target.UpdateFacing(toEnemyDir);
             }
 
             // 背刺持续特效:进背刺动作播背刺槽(统一入口;退出 OnExit Stop)。
@@ -985,6 +994,8 @@ public class PlayerBackstabState : EntityState
             if (sfxPoint >= 0f && mgr != null) sfxDsp = mgr.DspTimeForPoint(sfxPoint);
             _vfx?.PlayBackstabSingle(sfxDsp);
         }
+
+
 
         // 本刀刀记录:必须先于动画起播。动画 Rebind + 相位推进(anim.Update)会把命中帧/结束事件当场抛出来,
         // 记录还没进列表的话事件会落在 null 上(日志里就是「命中事件序号=1 但 命中已结=0」)→ 这一刀伤害丢掉。
@@ -1058,9 +1069,19 @@ public class PlayerBackstabState : EntityState
         _hitEventSeq = earlierStrikes;
         _endEventSeq = earlierStrikes;
 
+        // Rebind 会把 Animator 绑定的属性恢复成默认值 —— 连 transform.localScale 一起打回初始值。
+        // 而玩家朝向就是靠 scale.x = ±1 表达的 → 这一下把朝向抹掉:这一刀的 sprite 动作与刀光
+        // 看起来都朝同一侧(2026-09-22 saika 报「刀光和播放的动画一直是一个方向」,
+        // 而退出背刺后朝向是对的 = 只在动画播放期间被改)。所以 Rebind 前记下朝向,Rebind 之后写回。
+        var pcFace = (PlayerController)owner;
+        float faceSign = pcFace != null && pcFace.transform.localScale.x < 0f ? -1f : 1f;
+
         anim.Rebind();
         anim.SetBool(AnimParams.IsBackstabbing, true);
         for (int i = 0; i < 3 && !IsPlayingBackstab(anim); i++) anim.Update(0f);
+
+        // 写回这一刀的朝向(幂等:没被抹掉时无副作用)
+        if (pcFace != null) pcFace.UpdateFacing(faceSign);
 
         // 相位对齐:本刀动画「位置 0」该对应的音乐时刻 = clockStartMusic(= 标点 − 打击帧)。
         // 自动刀就是在这个时刻出刀的,差约 0;手按那刀按下时已经晚了 → 一次性把动画推到该在的相位,

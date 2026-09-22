@@ -13,6 +13,8 @@ using UnityEngine;
 ///   统一入口(攻击开始/切段/结束事件调用):PlayGround(1~3) / PlayAir(1~3) / PlayBackstab() / PlayMapDash() / Stop()。
 /// 通用槽(Boss/敌人用,玩家不填):slots + Show("slot_xxx"),保留原按名查找/同名槽子物体挂点逻辑。
 /// 实例管理收拢:同 prefab 池化复用;Hide = 停发射 + 粒子飞完延迟回池(保留淡出);KillAll = 立即回池。
+/// 背刺刀光(PlayBackstabVfx / PlayBackstabSingle)生成后保留世界变换脱离锚点、固定在本刀落点:
+/// 连打每刀都瞬移,留在锚点下会把上一刀没播完的刀光一起搬到下一格(2026-09-22)。
 /// 命中类一次性特效不走本组件(继续 VFXSpawner)。
 /// </summary>
 public class AttackVFXAnchor : MonoBehaviour
@@ -103,13 +105,14 @@ public class AttackVFXAnchor : MonoBehaviour
     /// <summary>空中连击段特效(1~3 → air1/2/3;越界自动钳)</summary>
     public void PlayAir(int comboIndex) => PlayComboSlot(GetSlot(air1, air2, air3, comboIndex), comboIndex);
 
-    /// <summary>背刺刀光(→ backstab 槽),只出特效:整组卡点音已在进组时排好(见 ScheduleBackstabGroup)。</summary>
-    public void PlayBackstabVfx(float vfxDelay = 0f) => PlayComboSlot(backstab, 0, null, 0.0, false, true, vfxDelay);
+    /// <summary>背刺刀光(→ backstab 槽),只出特效:整组卡点音已在进组时排好(见 ScheduleBackstabGroup)。
+    /// 刀光固定在本刀落点(脱离锚点),不被后续连打瞬移搬走。</summary>
+    public void PlayBackstabVfx(float vfxDelay = 0f) => PlayComboSlot(backstab, 0, null, 0.0, false, true, vfxDelay, detachFromAnchor: true);
 
     /// <summary>背刺动作音效(→ backstab 槽),单点路径(自动重音 / Boss 判定链 / 手按单点背刺):
     /// 音高 = 本槽基准半音(固定原调,不再按刀序变调);scheduleDsp &gt; 0 = 排到该 dspTime 播,0 = 立即播。</summary>
     public void PlayBackstabSingle(double scheduleDsp = 0.0)
-        => PlayComboSlot(backstab, 0, null, scheduleDsp, false, false);
+        => PlayComboSlot(backstab, 0, null, scheduleDsp, false, false, 0f, detachFromAnchor: true);
 
     /// <summary>只播背刺音效、不动特效(不 spawn、也不 Hide 上一组):连音路径整组排程用。</summary>
     public void PlayBackstabSfxOnly(double scheduleDsp = 0.0)
@@ -161,8 +164,9 @@ public class AttackVFXAnchor : MonoBehaviour
 
     /// <summary>播放一个玩家分组槽(VFX / 音效各自判空,两个都空则静默跳过;自动收上一组)。
     /// scheduleDsp &gt; 0 = 音效排到该 dspTime 播(背刺卡点:与 BGM 走同一个音频时钟);0 = 立即播(普通攻击槽的默认行为)。
-    /// sfxOnly = 只出声、不 spawn 特效也不收上一组特效:连音自动连打的空挥刀用。</summary>
-    private void PlayComboSlot(ComboSlot slot, int comboIndex, float? pitchOverride = null, double scheduleDsp = 0.0, bool sfxOnly = false, bool vfxOnly = false, float vfxDelay = 0f)
+    /// sfxOnly = 只出声、不 spawn 特效也不收上一组特效:连音自动连打的空挥刀用。
+    /// detachFromAnchor = 特效生成后保留世界变换脱离锚点(背刺刀光:固定在本刀落点,不跟随瞬移)。</summary>
+    private void PlayComboSlot(ComboSlot slot, int comboIndex, float? pitchOverride = null, double scheduleDsp = 0.0, bool sfxOnly = false, bool vfxOnly = false, float vfxDelay = 0f, bool detachFromAnchor = false)
     {
         if (slot == null) return;
 
@@ -198,19 +202,19 @@ public class AttackVFXAnchor : MonoBehaviour
 
         float spawnDelay = slot.showDelay + vfxDelay;   // 槽自带延迟 + 本刀要求的延迟(刀光等回打击帧)
         if (spawnDelay > 0f)
-            _delayedRoutine = StartCoroutine(ShowDelayedPrefab(slot.prefab, spawnDelay));
+            _delayedRoutine = StartCoroutine(ShowDelayedPrefab(slot.prefab, spawnDelay, detachFromAnchor));
         else
-            SpawnPrefab(slot.prefab);
+            SpawnPrefab(slot.prefab, detachFromAnchor);
 
         _lifeRoutine = StartCoroutine(LifetimeGuard());
     }
 
 
-    private IEnumerator ShowDelayedPrefab(GameObject prefab, float delay)
+    private IEnumerator ShowDelayedPrefab(GameObject prefab, float delay, bool detachFromAnchor = false)
     {
         yield return new WaitForSeconds(delay);
         _delayedRoutine = null;
-        SpawnPrefab(prefab);
+        SpawnPrefab(prefab, detachFromAnchor);
     }
 
     // ============================================================
@@ -301,15 +305,38 @@ public class AttackVFXAnchor : MonoBehaviour
         }
     }
 
-    /// <summary>玩家分组槽:特效实例挂 attack_VFX(锚点)原点,prefab 内部自带相对位置</summary>
-    private void SpawnPrefab(GameObject prefab) => SpawnPrefabTo(prefab, transform);
+    /// <summary>玩家分组槽:特效实例挂 attack_VFX(锚点)原点,prefab 内部自带相对位置。
+    /// detachFromAnchor = 生成后保留世界变换脱离父级(背刺刀光用,见 SpawnPrefabTo)</summary>
+    private void SpawnPrefab(GameObject prefab, bool detachFromAnchor = false)
+        => SpawnPrefabTo(prefab, detachFromAnchor ? null : transform);
 
-    /// <summary>池化取实例挂到指定父节点(localPosition=0),清残留后全粒子 Play</summary>
+    /// <summary>池化取实例挂到指定父节点(localPosition=0),清残留后全粒子 Play。
+    /// parent 为 null = 保留生成那一刻的世界变换脱离父级:实例固定在这一刀的落点与朝向,
+    /// 之后玩家再瞬移(连打每刀左右交替)不会把刚生成 / 还在播的刀光一起搬走。
+    /// 先在锚点原点对齐再脱离,所以 prefab 内部偏移与朝向镜像与挂在锚点下完全一致。</summary>
     private void SpawnPrefabTo(GameObject prefab, Transform parent)
     {
         GameObject go = Acquire(prefab);
-        go.transform.SetParent(parent, false);
-        go.transform.localPosition = Vector3.zero;
+        if (parent == null)
+        {
+            // 背刺刀光:先在锚点原点对齐(与常规挂法完全等价,prefab 内部偏移不变),再保留世界变换脱离父级。
+            float facing = transform.lossyScale.x < 0f ? -1f : 1f;   // 玩家朝向(父链 scale 的符号)
+            go.transform.SetParent(transform, false);
+            go.transform.localPosition = Vector3.zero;
+            go.transform.SetParent(null, true);   // worldPositionStays:位置 / 旋转 / 缩放留在本刀落点
+            // Unity 的粒子系统不吃负缩放:父级 scale.x = -1 时 SpriteRenderer 会镜像,粒子却不会
+            // (负 scale 下粒子朝向不翻,部分材质甚至直接不渲染 —— 这是粒子系统的已知行为)。
+            // 所以这里不继承那个负号:scale 取绝对值,用「绕 Y 轴 180°」表达朝左
+            // (2D 里等价于 flipX,子物体位置会一起镜像)。
+            Vector3 s = go.transform.localScale;
+            go.transform.localScale = new Vector3(Mathf.Abs(s.x), Mathf.Abs(s.y), Mathf.Abs(s.z));
+            if (facing < 0f) go.transform.rotation = Quaternion.Euler(0f, 180f, 0f) * go.transform.rotation;
+        }
+        else
+        {
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = Vector3.zero;
+        }
 
         _active.Add(new ActiveVFX { instance = go, prefab = prefab });
     }
@@ -325,6 +352,10 @@ public class AttackVFXAnchor : MonoBehaviour
 
         go.name = prefab.name + "_VFX";
         go.SetActive(true);   // 团结引擎:Instantiate 复制 prefab 激活状态,inactive 则 Play 不生效
+
+        // 复用实例可能有残留的变换(背刺刀光脱离父级时会写 scale/rotation)→ 按 prefab 原始值复位
+        go.transform.localRotation = prefab.transform.localRotation;
+        go.transform.localScale = prefab.transform.localScale;
 
         // 复用实例可能有残留:停发射并清空,再统一从头 Play
         foreach (var ps in go.GetComponentsInChildren<ParticleSystem>(true))
