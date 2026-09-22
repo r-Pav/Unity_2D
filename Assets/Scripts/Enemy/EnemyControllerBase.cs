@@ -82,11 +82,8 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
 
 
-    [Header("属性")]
-
-    [Tooltip("最大血量（0 = 未设置，用 SO 对应 Lv 档 / 内置默认兜底）")]
-
-    [SerializeField] protected float maxHealth = 0f;
+    // [2026-09-22 SO 唯一] 血量来自 EnemyConfigSO.maxHealth（按 level 取档）；不序列化 → prefab 不再存第二份
+    protected float maxHealth;
 
 
 
@@ -182,37 +179,31 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
     [Header("攻击范围 — 矩形")]
 
-    [Tooltip("攻击矩形半宽（X 轴；0 = 未设置）")]
+    [Tooltip("攻击矩形半宽（X 轴；0 = 用内置默认。矩形不进 SO,只在这里手填）")]
 
     [SerializeField] protected float attackWidth = 0f;
 
-    [Tooltip("攻击矩形半高（Y 轴；0 = 未设置）")]
+    [Tooltip("攻击矩形半高（Y 轴；0 = 用内置默认。矩形不进 SO,只在这里手填）")]
 
     [SerializeField] protected float attackHeight = 0f;
 
 
 
-    [Header("攻击冷却")]
-
-    [Tooltip("攻击冷却时间（秒；0 = 未设置）")]
-
-    [SerializeField] protected float attackCooldownDuration = 0f;
+    // [SO 唯一] 攻击冷却来自 EnemyConfigSO.attackCooldownDuration
+    protected float attackCooldownDuration;
 
     public float AttackCooldownDuration => attackCooldownDuration;
 
 
 
-    [Header("击退")]
-
-    [Tooltip("远程攻击击退力度（近战击退由 PoiseComponent 控制；0 = 未设置）")]
-
-    [SerializeField] protected float rangedKnockbackForce = 0f;
+    // [SO 唯一] 远程击退力度来自 EnemyConfigSO.rangedKnockbackForce
+    protected float rangedKnockbackForce;
 
 
 
-    [Tooltip("最高击飞上升速度上限(米/秒):空中多次击退叠加(普攻第三击+背刺等,ApplyKnockback 速度累加)后\n向上速度钳到该值,防敌人飞太高;只限上升(y 分量>0),向下/落地不限,不影响落地冲击")]
-
-    [SerializeField] protected float maxLaunchUpSpeed = 10f;
+    // [SO 唯一] 击飞上升速度上限来自 EnemyConfigSO.maxLaunchUpSpeed
+    // （原说明：空中多次击退叠加后向上速度钳到此值，防飞太高；只限上升 y>0，向下/落地不限）
+    protected float maxLaunchUpSpeed;
 
     public float MaxLaunchUpSpeed => maxLaunchUpSpeed;
 
@@ -1232,7 +1223,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
     protected float Resolve(float inspector, float soValue, float fallback)
 
-        => inspector > 0f ? inspector : (soValue > 0f ? soValue : fallback);
+        => soValue > 0f ? soValue : (inspector > 0f ? inspector : fallback);
 
 
 
@@ -1256,15 +1247,17 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
         // 取值链：Inspector 手填(>0) → SO 对应 Lv 档(>0) → 内置默认（0 = 未设置）
 
-        maxHealth = Resolve(maxHealth, lvStats?.maxHealth ?? 0f, DefaultMaxHealth);
+        maxHealth = lvStats != null && lvStats.maxHealth > 0f ? lvStats.maxHealth : DefaultMaxHealth;
 
-        attackWidth = Resolve(attackWidth, lvStats?.attackWidth ?? 0f, DefaultAttackWidth);
+        attackWidth = Resolve(attackWidth, 0f, DefaultAttackWidth);   // 矩形不进 SO,只认 Inspector
 
-        attackHeight = Resolve(attackHeight, lvStats?.attackHeight ?? 0f, DefaultAttackHeight);
+        attackHeight = Resolve(attackHeight, 0f, DefaultAttackHeight);   // 矩形不进 SO,只认 Inspector
 
-        attackCooldownDuration = Resolve(attackCooldownDuration, lvStats?.attackCooldownDuration ?? 0f, DefaultAttackCooldown);
+        attackCooldownDuration = lvStats != null && lvStats.attackCooldownDuration > 0f ? lvStats.attackCooldownDuration : DefaultAttackCooldown;
 
-        rangedKnockbackForce = Resolve(rangedKnockbackForce, lvStats?.rangedKnockbackForce ?? 0f, DefaultRangedKnockback);
+        rangedKnockbackForce = lvStats != null && lvStats.rangedKnockbackForce > 0f ? lvStats.rangedKnockbackForce : DefaultRangedKnockback;
+
+        maxLaunchUpSpeed = lvStats != null && lvStats.maxLaunchUpSpeed > 0f ? lvStats.maxLaunchUpSpeed : 10f;
 
 
 

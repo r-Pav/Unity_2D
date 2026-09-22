@@ -349,10 +349,9 @@ public class EnemyEditorWindow : EditorWindow
         SetProp(ctrl, "level", lv);
         SetProp(ctrl, "config", so);
         SetFloat(ctrl, "maxHealth", stats.maxHealth);
-        SetFloat(ctrl, "detectionWidth", stats.detectionWidth);
-        SetFloat(ctrl, "detectionHeight", stats.detectionHeight);
-        SetFloat(ctrl, "attackWidth", stats.attackWidth);
-        SetFloat(ctrl, "attackHeight", stats.attackHeight);
+        // [2026-09-22 saika 口径] 矩形不进 SO,不再烘焙:
+        //   detectionWidth/Height 原本就写不进去(EnemyControllerBase 没有这两个字段,SetFloat 静默忽略);
+        //   attackWidth/attackHeight 已改成只认 Inspector 手填。
         SetFloat(ctrl, "attackCooldownDuration", stats.attackCooldownDuration);
         SetFloat(ctrl, "rangedKnockbackForce", stats.rangedKnockbackForce);
         ctrl.ApplyModifiedProperties();

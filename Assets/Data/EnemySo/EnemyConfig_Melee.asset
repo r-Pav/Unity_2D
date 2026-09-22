@@ -13,31 +13,25 @@ MonoBehaviour:
   m_Name: EnemyConfig_Melee
   m_EditorClassIdentifier: 
   lv1:
-    maxHealth: 3
+    maxHealth: 500
+    maxLaunchUpSpeed: 10
     armor: 10
-    detectionWidth: 8
-    detectionHeight: 3
-    attackWidth: 1.5
-    attackHeight: 1.5
-    attackCooldownDuration: 1
+    attackCooldownDuration: 3
     rangedKnockbackForce: 5
     patrolRange: 3
-    meleeDamage: 1
+    meleeDamage: 10
     contactPushForce: 3
     contactCooldown: 0.3
-    contactDetectRadius: 0.6
-    rangedAttackWidth: 8
-    rangedAttackHeight: 5
+    contactDetectRadius: 0.5
+    energyOrbTotalMin: 30
+    energyOrbTotalMax: 50
     rangedDamage: 1
     bulletSpeed: 6
     bulletRadius: 0.5
   lv2:
     maxHealth: 3
+    maxLaunchUpSpeed: 10
     armor: 0
-    detectionWidth: 8
-    detectionHeight: 3
-    attackWidth: 1.5
-    attackHeight: 1.5
     attackCooldownDuration: 1
     rangedKnockbackForce: 5
     patrolRange: 3
@@ -45,18 +39,15 @@ MonoBehaviour:
     contactPushForce: 3
     contactCooldown: 0.3
     contactDetectRadius: 0.6
-    rangedAttackWidth: 8
-    rangedAttackHeight: 5
+    energyOrbTotalMin: 30
+    energyOrbTotalMax: 50
     rangedDamage: 1
     bulletSpeed: 6
     bulletRadius: 0.5
   lv3:
     maxHealth: 3
+    maxLaunchUpSpeed: 10
     armor: 0
-    detectionWidth: 8
-    detectionHeight: 3
-    attackWidth: 1.5
-    attackHeight: 1.5
     attackCooldownDuration: 1
     rangedKnockbackForce: 5
     patrolRange: 3
@@ -64,8 +55,8 @@ MonoBehaviour:
     contactPushForce: 3
     contactCooldown: 0.3
     contactDetectRadius: 0.6
-    rangedAttackWidth: 8
-    rangedAttackHeight: 5
+    energyOrbTotalMin: 30
+    energyOrbTotalMax: 50
     rangedDamage: 1
     bulletSpeed: 6
     bulletRadius: 0.5

@@ -44788,13 +44788,9 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 8882206565466879994, guid: 2272a696994d31a4e978d908831eb3fa, type: 3}
-      propertyPath: hitVFXPrefab
-      value: 
-      objectReference: {fileID: 643364657174781280, guid: 3f0695f9c4514404d81731f675fef584, type: 3}
-    - target: {fileID: 8882206565466879994, guid: 2272a696994d31a4e978d908831eb3fa, type: 3}
-      propertyPath: backstabHitVFX
-      value: 
-      objectReference: {fileID: 1295760684288019244, guid: 581dcfa65930de74f8906a8acc03fdb1, type: 3}
+      propertyPath: baseMoveSpeed
+      value: 2
+      objectReference: {fileID: 0}
     - target: {fileID: 9152192033746889805, guid: 2272a696994d31a4e978d908831eb3fa, type: 3}
       propertyPath: m_LocalPosition.x
       value: -16.08
@@ -123523,7 +123519,6 @@ MonoBehaviour:
   speedMultiplier: 1
   config: {fileID: 0}
   level: 1
-  maxHealth: 500
   hitColor: {r: 0.8867924, g: 0.8867924, b: 0.8867924, a: 1}
   hitFlashDuration: 0.1
   enemyHitPause: 0.1
@@ -123542,9 +123537,6 @@ MonoBehaviour:
   hitVFXVariants: []
   attackWidth: 4.01
   attackHeight: 2.75
-  attackCooldownDuration: 10
-  rangedKnockbackForce: 5
-  maxLaunchUpSpeed: 10
   wallCheckHalfWidth: 2.5
   airHitHangDuration: 0.7
   airHangGravityScale: 0.2

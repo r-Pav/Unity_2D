@@ -8,14 +8,18 @@ using UnityEngine;
 /// </summary>
 public class EnemyEnergyOrbDrop : MonoBehaviour
 {
-    [Tooltip("单怪进度总值下限(普通怪默认 30;Boss/精英可调大)")]
-    [SerializeField] private float totalMin = 30f;
-
-    [Tooltip("单怪进度总值上限(普通怪默认 50)")]
-    [SerializeField] private float totalMax = 50f;
+    [HideInInspector] [SerializeField] private float totalMin = 30f;   // [SO 唯一] 只作兜底，面板已隐藏
+    [HideInInspector] [SerializeField] private float totalMax = 50f;   // [SO 唯一] 只作兜底，面板已隐藏
 
     [Tooltip("能量球 Prefab 资产(根节点挂 EnergyOrb 组件;须引用 Prefab 资产而非场景物体)")]
     [SerializeField] private EnergyOrb orbPrefab;
+
+    private EnemyControllerBase _owner;
+
+    private void Awake()
+    {
+        _owner = GetComponent<EnemyControllerBase>();
+    }
 
     private void OnEnable()
     {
@@ -37,7 +41,11 @@ public class EnemyEnergyOrbDrop : MonoBehaviour
             return;
 
         // 固定掉落 1 枚,单枚携带全部进度总值
-        int total = Mathf.RoundToInt(Random.Range(totalMin, totalMax));
+        // [SO 唯一锚点 2026-09-22] 掉落总量实时取 SO 的 Lv 档,取不到才用隐藏字段兜底
+        var lv = _owner != null ? _owner.LvStats : null;
+        float min = lv != null && lv.energyOrbTotalMin > 0f ? lv.energyOrbTotalMin : (totalMin > 0f ? totalMin : 30f);
+        float max = lv != null && lv.energyOrbTotalMax > 0f ? lv.energyOrbTotalMax : (totalMax > 0f ? totalMax : 50f);
+        int total = Mathf.RoundToInt(Random.Range(min, max));
         if (total <= 0)
             return;
 

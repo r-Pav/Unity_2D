@@ -14,7 +14,7 @@ public class EnemyRangedAttack : MonoBehaviour, IEnemyAttack
     [SerializeField] protected EnemyConfigSO config;
 
     [Header("攻击参数")]
-    [SerializeField] private float damage = 0f;   // 0 = 未设置，SO Lv 档 / 内置兜底
+    [HideInInspector] [SerializeField] private float damage = 0f;   // [SO 唯一] 只作兜底，面板已隐藏
 
     [Header("发射点与特效（粒子预留，允许空）")]
     [Tooltip("attack2 子弹出生点（子物体，saika 手动摆放；空时回退自身位置）")]
@@ -25,9 +25,8 @@ public class EnemyRangedAttack : MonoBehaviour, IEnemyAttack
     [SerializeField] private GameObject fireVFXPrefab;
 
     [Header("子弹")]
-    [Tooltip("子弹飞行速度（0 = 未设置，SO Lv 档 / 内置兜底）")]
-    [SerializeField] private float bulletSpeed = 0f;
-    [SerializeField] private float bulletRadius = 0f;
+    [HideInInspector] [SerializeField] private float bulletSpeed = 0f;   // [SO 唯一] 只作兜底
+    [HideInInspector] [SerializeField] private float bulletRadius = 0f; // [SO 唯一] 只作兜底
     [SerializeField] private Color bulletColor = Color.red;
     [SerializeField] private LayerMask hitLayers;
 
@@ -37,18 +36,8 @@ public class EnemyRangedAttack : MonoBehaviour, IEnemyAttack
 
     private void Awake()
     {
-        // [Lv 收敛] 从 controller 的 LvStats 档取值（组件自身 config 字段保留防序列化丢失，不再参与取值）
+        // [SO 唯一锚点 2026-09-22] 数值不再在这里缓存 —— 统一在 OnFire 里实时取,避免组件 Awake 顺序问题。
         _owner = GetComponent<EnemyControllerBase>();
-        if (_owner?.LvStats != null)
-        {
-            if (damage <= 0f && _owner.LvStats.rangedDamage > 0f) damage = _owner.LvStats.rangedDamage;
-            if (bulletSpeed <= 0f && _owner.LvStats.bulletSpeed > 0f) bulletSpeed = _owner.LvStats.bulletSpeed;
-            if (bulletRadius <= 0f && _owner.LvStats.bulletRadius > 0f) bulletRadius = _owner.LvStats.bulletRadius;
-            if (damage <= 0f) damage = 1f;
-            if (bulletSpeed <= 0f) bulletSpeed = 6f;
-            if (bulletRadius <= 0f) bulletRadius = 0.5f;
-        }
-
         statModManager = GetComponent<StatModifierManager>();
     }
 
@@ -75,8 +64,16 @@ public class EnemyRangedAttack : MonoBehaviour, IEnemyAttack
             return;
         }
 
+        // [SO 唯一锚点 2026-09-22] 伤害与子弹参数实时取 SO 的 Lv 档,取不到才用隐藏字段兜底。
+        float soDamage = _owner.LvStats != null ? _owner.LvStats.rangedDamage : 0f;
+        float baseDamage = soDamage > 0f ? soDamage : (damage > 0f ? damage : 1f);
+        float soSpeed = _owner.LvStats != null ? _owner.LvStats.bulletSpeed : 0f;
+        float useSpeed = soSpeed > 0f ? soSpeed : (bulletSpeed > 0f ? bulletSpeed : 6f);
+        float soRadius = _owner.LvStats != null ? _owner.LvStats.bulletRadius : 0f;
+        float useRadius = soRadius > 0f ? soRadius : (bulletRadius > 0f ? bulletRadius : 0.5f);
+
         // P2b-2: 伤害终值走管线（无 manager 回退 baseValue，对齐 PlayerCombat.GetEffectiveDamage 写法）
-        float finalDamage = statModManager != null ? statModManager.GetFinalValue(damage, StatId.EnemyDamage) : damage;
+        float finalDamage = statModManager != null ? statModManager.GetFinalValue(baseDamage, StatId.EnemyDamage) : baseDamage;
 
         // 2D 方向（含 Y，支持斜上/斜下射击）
         Vector2 dir = ((Vector2)(target.position - _owner.transform.position)).normalized;
@@ -89,9 +86,9 @@ public class EnemyRangedAttack : MonoBehaviour, IEnemyAttack
             position: GetSpawnPos(),
             direction: dir,
             damage: finalDamage,
-            speed: bulletSpeed,
+            speed: useSpeed,
             hitLayers: hitLayers,
-            radius: bulletRadius,
+            radius: useRadius,
             color: bulletColor,
             parent: null,
             wallLayers: (1 << 3) | (1 << 11),  // Ground(3) + Wall(11)

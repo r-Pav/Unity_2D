@@ -10,7 +10,7 @@ public class EnemyMeleeAttack : MonoBehaviour, IEnemyAttack
     [Tooltip("敌人数值配置 ScriptableObject（为空时使用下方序列化字段值，保持旧行为）")]
     [SerializeField] protected EnemyConfigSO config;
 
-    [SerializeField] private float damage = 0f;   // 0 = 未设置，用 SO 对应 Lv 档 / 内置 1f 兜底
+    [HideInInspector] [SerializeField] private float damage = 0f;   // [SO 唯一] 只作 SO 取不到时的兜底，面板已隐藏
     [SerializeField] private Color attackFlashColor = Color.white;
     [SerializeField] private float attackFlashDuration = 0.08f;
 
@@ -26,20 +26,21 @@ public class EnemyMeleeAttack : MonoBehaviour, IEnemyAttack
     public MeleeRangeIndicator RangeIndicator => rangeIndicator;
 
     /// <summary>最终攻击力（管线终值；Inspector 运行时调试显示用）</summary>
-    public float FinalDamage => statModManager != null
-        ? statModManager.GetFinalValue(damage, StatId.EnemyDamage)
-        : damage;
+    public float FinalDamage
+    {
+        get
+        {
+            float so = _owner != null && _owner.LvStats != null ? _owner.LvStats.meleeDamage : 0f;
+            float b = so > 0f ? so : (damage > 0f ? damage : 1f);
+            return statModManager != null ? statModManager.GetFinalValue(b, StatId.EnemyDamage) : b;
+        }
+    }
 
     private void Awake()
     {
-        // [Lv 收敛] 从 controller 的 LvStats 档取值（组件自身 config 字段保留防序列化丢失，不再参与取值）
+        // [SO 唯一锚点 2026-09-22] 伤害不再在这里缓存 —— 取值统一在每个使用点实时做。
+        // 原因:组件 Awake 顺序不确定,这里读 _owner.LvStats 可能拿到 null(EnemyControllerBase.Awake 才赋值)。
         _owner = GetComponent<EnemyControllerBase>();
-        if (_owner?.LvStats != null)
-        {
-            if (damage <= 0f && _owner.LvStats.meleeDamage > 0f) damage = _owner.LvStats.meleeDamage;
-            if (damage <= 0f) damage = 1f;   // 兜底：SO 档也无值
-        }
-
         statModManager = GetComponent<StatModifierManager>();
     }
 
@@ -47,8 +48,11 @@ public class EnemyMeleeAttack : MonoBehaviour, IEnemyAttack
     {
         if (rangeIndicator == null) return;
 
+        // [SO 唯一锚点 2026-09-22] 基础伤害实时取 SO 的 Lv 档(meleeDamage),取不到才用隐藏字段兜底。
+        float soDamage = _owner != null && _owner.LvStats != null ? _owner.LvStats.meleeDamage : 0f;
+        float baseDamage = soDamage > 0f ? soDamage : (damage > 0f ? damage : 1f);
         // P2b-2: 伤害终值走管线（无 manager 回退 baseValue，对齐 PlayerCombat.GetEffectiveDamage 写法）
-        float finalDamage = statModManager != null ? statModManager.GetFinalValue(damage, StatId.EnemyDamage) : damage;
+        float finalDamage = statModManager != null ? statModManager.GetFinalValue(baseDamage, StatId.EnemyDamage) : baseDamage;
 
         // rangeIndicator 位置跟随 Enemy facing（已由 AttackState 在调用前同步）
         Vector3 lp = rangeIndicator.transform.localPosition;

@@ -232,7 +232,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b32461993526b2a43ab6d0e827a2799c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  baseMoveSpeed: 3
+  baseMoveSpeed: 2
   groundLayer:
     serializedVersion: 2
     m_Bits: 2056
@@ -241,7 +241,6 @@ MonoBehaviour:
   speedMultiplier: 1
   config: {fileID: 11400000, guid: 1f53c3acc62abae489469e670692b89b, type: 2}
   level: 1
-  maxHealth: 500
   hitColor: {r: 1, g: 1, b: 1, a: 1}
   hitFlashDuration: 0.1
   enemyHitPause: 0
@@ -249,10 +248,10 @@ MonoBehaviour:
   chargeFlashBaseFreq: 4
   chargeFlashAccel: 6
   chargeFlashMaxFreq: 20
-  hitVFXPrefab: {fileID: 643364657174781280, guid: 33aab815d8caee243ad4e7a8b6c0ff30, type: 3}
+  hitVFXPrefab: {fileID: 643364657174781280, guid: 3f0695f9c4514404d81731f675fef584, type: 3}
   directionalHitVFXPrefab: {fileID: 0}
   deathVFXPrefab: {fileID: 6625299371266367536, guid: 6e562d7d4048bcc43bc5ec1e8f954a8a, type: 3}
-  backstabHitVFX: {fileID: 643364657174781280, guid: 3f0695f9c4514404d81731f675fef584, type: 3}
+  backstabHitVFX: {fileID: 1295760684288019244, guid: 581dcfa65930de74f8906a8acc03fdb1, type: 3}
   hurtSfx: {fileID: 0}
   hurtSfxVolume: 1
   hurtSemitone: 0
@@ -260,9 +259,6 @@ MonoBehaviour:
   hitVFXVariants: []
   attackWidth: 2.31
   attackHeight: 1.26
-  attackCooldownDuration: 3
-  rangedKnockbackForce: 5
-  maxLaunchUpSpeed: 10
   wallCheckHalfWidth: 2.5
   airHitHangDuration: 0.3
   airHangGravityScale: 0.3

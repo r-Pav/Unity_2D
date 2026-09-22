@@ -54,8 +54,9 @@ public class EnemyRangedController : EnemyControllerBase
     {
         // [Lv 收敛] 取值链：Inspector(>0) → SO 对应 Lv 档(>0) → 内置默认（0 = 未设置）
         patrolRange = Resolve(patrolRange, LvStats?.patrolRange ?? 0f, DefaultPatrolRange);
-        rangedAttackWidth = Resolve(rangedAttackWidth, LvStats?.rangedAttackWidth ?? 0f, DefaultRangedAttackWidth);
-        rangedAttackHeight = Resolve(rangedAttackHeight, LvStats?.rangedAttackHeight ?? 0f, DefaultRangedAttackHeight);
+        // [2026-09-22 saika 口径] 矩形不进 SO:远程攻击框只认本组件的 Inspector 字段
+        rangedAttackWidth = Resolve(rangedAttackWidth, 0f, DefaultRangedAttackWidth);
+        rangedAttackHeight = Resolve(rangedAttackHeight, 0f, DefaultRangedAttackHeight);
 
         stunState = new EnemyStunState(this, Fsm, Animator);
         SetStunState(stunState);

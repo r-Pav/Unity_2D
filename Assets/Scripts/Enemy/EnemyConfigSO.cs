@@ -15,20 +15,16 @@ public class EnemyLvStats
     [Tooltip("最大血量基础值（运行时走管线后为管线输入 baseValue）")]
     public float maxHealth = 3f;
 
+    [Tooltip("击飞上限速度（Y 轴；被封顶的击飞初速，调这个改处决手感）")]
+    public float maxLaunchUpSpeed = 10f;
+
     [Tooltip("护甲值(每档;0=无护甲)")]
     public float armor;
 
-    [Tooltip("检测矩形半宽（X 轴）")]
-    public float detectionWidth = 8f;
-
-    [Tooltip("检测矩形半高（Y 轴）")]
-    public float detectionHeight = 3f;
-
-    [Tooltip("攻击矩形半宽（X 轴；远程资产填 10）")]
-    public float attackWidth = 1.5f;
-
-    [Tooltip("攻击矩形半高（Y 轴；远程资产填 6）")]
-    public float attackHeight = 1.5f;
+    // [2026-09-22 saika 口径] 矩形类参数一律不进 SO,只在组件 Inspector 上按 prefab 手填。
+    // 已移除的字段:detectionWidth / detectionHeight(检测框,且早已废弃没人读)、
+    //               attackWidth / attackHeight(近战攻击框,改回只认 EnemyControllerBase 的 Inspector 字段)、
+    //               rangedAttackWidth / rangedAttackHeight(远程攻击框,一直由 EnemyRangedController 自己持有)。
 
     [Tooltip("攻击冷却时间（秒）")]
     public float attackCooldownDuration = 1f;
@@ -59,11 +55,11 @@ public class EnemyLvStats
     // 远程专属（EnemyRangedController / EnemyRangedAttack）
     // ============================================================
 
-    [Tooltip("远程攻击矩形半宽（X 轴；attack2 远程框，与近战 attackWidth/Height 区分）")]
-    public float rangedAttackWidth = 8f;
+    [Tooltip("死亡掉落能量球进度总值下限（普通怪 30；Boss/精英调大）")]
+    public float energyOrbTotalMin = 30f;
 
-    [Tooltip("远程攻击矩形半高（Y 轴；attack2 远程框，与近战 attackWidth/Height 区分）")]
-    public float rangedAttackHeight = 5f;
+    [Tooltip("死亡掉落能量球进度总值上限（普通怪 50）")]
+    public float energyOrbTotalMax = 50f;
 
     [Tooltip("远程伤害基础值（运行时走管线后为管线输入 baseValue）")]
     public float rangedDamage = 1f;
