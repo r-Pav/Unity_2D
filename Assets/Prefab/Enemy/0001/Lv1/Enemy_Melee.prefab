@@ -249,10 +249,10 @@ MonoBehaviour:
   chargeFlashBaseFreq: 4
   chargeFlashAccel: 6
   chargeFlashMaxFreq: 20
-  hitVFXPrefab: {fileID: 876302400590192879, guid: e3508ad174fa61f48ba85b8d788e1676, type: 3}
+  hitVFXPrefab: {fileID: 643364657174781280, guid: 33aab815d8caee243ad4e7a8b6c0ff30, type: 3}
   directionalHitVFXPrefab: {fileID: 0}
   deathVFXPrefab: {fileID: 6625299371266367536, guid: 6e562d7d4048bcc43bc5ec1e8f954a8a, type: 3}
-  backstabHitVFX: {fileID: 876302400590192879, guid: e3508ad174fa61f48ba85b8d788e1676, type: 3}
+  backstabHitVFX: {fileID: 643364657174781280, guid: 3f0695f9c4514404d81731f675fef584, type: 3}
   hurtSfx: {fileID: 0}
   hurtSfxVolume: 1
   hurtSemitone: 0
