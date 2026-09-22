@@ -1,5 +1,6 @@
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 /// <summary>Binds Q/E skill-tree nodes and refreshes them from skill events.</summary>
@@ -96,8 +97,68 @@ public class SkillTreeUI : MonoBehaviour, IPanel
                 int capturedSkill = skill;
                 int capturedNode = node;
                 button.onClick.AddListener(() => OnNodeClicked(capturedSkill, capturedNode));
+
+                BindNodeTooltip(idx, capturedSkill, capturedNode);
             }
         }
+    }
+
+    /// <summary>
+    /// 绑定节点悬停提示(2026-09-22)。节点本身就是 Button(点击 = 解锁/升级该节点),
+    /// 所以悬停走 EventTrigger,不动点击;幂等(已挂就不重复添加)。
+    /// </summary>
+    private void BindNodeTooltip(int idx, int skill, int node)
+    {
+        Button button = nodeButtons[idx];
+        if (button == null || button.GetComponent<EventTrigger>() != null) return;
+
+        var trigger = button.gameObject.AddComponent<EventTrigger>();
+
+        var enter = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
+        enter.callback.AddListener(_ => ShowNodeTooltip(skill, node));
+        trigger.triggers.Add(enter);
+
+        var exit = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit };
+        exit.callback.AddListener(_ => UITooltip.Hide());
+        trigger.triggers.Add(exit);
+    }
+
+    /// <summary>
+    /// 悬停技能树节点:显示该节点对应的分支内容。
+    /// 节点 → 数据:0=lv1Data / 1=lv2Left / 2=lv2Right / 3=lv3Left / 4=lv3Right。
+    /// 空节点(该分支还没配数据)不弹。
+    /// </summary>
+    private void ShowNodeTooltip(int skill, int node)
+    {
+        if (skillManager == null) return;
+
+        var data = skillManager.GetSlotData(skill) as ActiveSkillData;
+        if (data == null) return;
+
+        ActiveSkillData.ActiveBranchData branch = node switch
+        {
+            0 => data.lv1Data,
+            1 => data.lv2Left,
+            2 => data.lv2Right,
+            3 => data.lv3Left,
+            4 => data.lv3Right,
+            _ => null
+        };
+        if (branch == null) return;
+
+        string[] nodeLabels = { "一级", "二级·左", "二级·右", "三级·左", "三级·右" };
+        string nodeLabel = node >= 0 && node < nodeLabels.Length ? nodeLabels[node] : "节点";
+
+        string content = string.IsNullOrEmpty(branch.description) ? data.description : branch.description;
+
+        string tip = string.Empty;
+        if (!string.IsNullOrEmpty(branch.branchName)) tip = branch.branchName;
+        if (branch.cooldown > 0f) tip += (tip.Length > 0 ? "　" : string.Empty) + $"冷却 {branch.cooldown:0.##}s";
+        if (branch.manaCost > 0f) tip += (tip.Length > 0 ? "　" : string.Empty) + $"消耗 {branch.manaCost:0.##}";
+        if (branch.damage > 0f) tip += (tip.Length > 0 ? "　" : string.Empty) + $"伤害 {branch.damage:0.##}";
+
+        UITooltip.ShowText($"{data.skillName} · {nodeLabel}", content, tip,
+            (RectTransform)nodeButtons[skill * 5 + node].transform);
     }
 
     private void OnNodeClicked(int slotIndex, int node)

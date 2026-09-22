@@ -171,7 +171,12 @@ public class EquipmentSlot : MonoBehaviour, IDropHandler, IBeginDragHandler, IDr
 
     public void OnPointerEnter(PointerEventData eventData)
     {
-        if (!DragSession.IsDragging) return;
+        // 悬停(非拖拽)显示该槽已装备的详情(2026-09-22);拖拽中不弹,那是拖放判定
+        if (!DragSession.IsDragging)
+        {
+            ShowEquippedTooltip();
+            return;
+        }
 
         ItemInstance draggedItem = DragSession.DraggedItem;
         bool valid = draggedItem != null
@@ -185,6 +190,19 @@ public class EquipmentSlot : MonoBehaviour, IDropHandler, IBeginDragHandler, IDr
     public void OnPointerExit(PointerEventData eventData)
     {
         SetHighlight(false);
+        UITooltip.Hide();
+    }
+
+    /// <summary>悬停时把该槽已装备的物品交给 tooltip(空槽不弹)</summary>
+    private void ShowEquippedTooltip()
+    {
+        InventoryManager inv = InventoryManager.Instance;
+        if (inv == null) return;
+
+        ItemInstance item = inv.GetEquippedItem(slotType);
+        if (item == null || item.template == null) return;
+
+        UITooltip.ShowItem(item.template, (RectTransform)transform);
     }
 
     // ============================================================

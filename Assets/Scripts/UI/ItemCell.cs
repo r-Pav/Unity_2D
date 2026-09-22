@@ -59,7 +59,8 @@ public class ItemCell : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
     // 运行时状态
     // ============================================================
 
-    private static readonly Color s_highlightColor = new Color(1f, 1f, 0f, 0.3f); // 淡黄色高亮
+    private static readonly Color s_highlightColor = new Color(1f, 1f, 0f, 0.3f); // 拖入高亮:淡黄
+    private static readonly Color s_selectedColor = new Color(1f, 0.95f, 0.4f, 0.5f); // 选中高亮:更亮的暖黄(与拖入区分)
 
     // ============================================================
     // 生命周期
@@ -205,11 +206,34 @@ public class ItemCell : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
     {
         if (DragSession.IsDragging && IsValidDropTarget())
             SetHighlight(true);
+
+        // 悬停换格子:tip 要切到当前这一格,同时取消别处的选中
+        // (选中只在"点完鼠标不动"的前提下成立;一移动就失效,免得点第二次时装备错目标)
+        var rect = (RectTransform)transform;
+        if (!UITooltip.IsPinnedTo(rect))
+            UITooltip.SetPinned(null, false);
+
+        ShowItemTooltip();
     }
 
     public void OnPointerExit(PointerEventData eventData)
     {
         SetHighlight(false);
+        UITooltip.Hide();
+    }
+
+    /// <summary>
+    /// 悬停时把这一格的内容交给 tooltip(2026-09-22 新增)。
+    /// 空格子不弹;拖拽中不弹(拖拽时格子会被高亮盖住,弹窗反而挡视线)。
+    /// </summary>
+    private void ShowItemTooltip()
+    {
+        if (DragSession.IsDragging) return;
+
+        ItemInstance item = GetItemData();
+        if (item == null || item.template == null) return;
+
+        UITooltip.ShowItem(item.template, (RectTransform)transform);
     }
 
     // ============================================================
@@ -314,6 +338,12 @@ public class ItemCell : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
     // IPointerClickHandler — 左键点击装备
     // ============================================================
 
+    /// <summary>
+    /// 左键两段式(2026-09-22 saika 定):
+    ///   第 1 次 = 选中这一格(固定 tip + 高亮),不装备;
+    ///   同格再点 = 装备,并取消选中、收起 tip。
+    /// 鼠标移开时若仍选中则 tip 不移除(见 UITooltip.Hide)。
+    /// </summary>
     public void OnPointerClick(PointerEventData eventData)
     {
         if (eventData.button != PointerEventData.InputButton.Left) return;
@@ -321,12 +351,43 @@ public class ItemCell : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
 
         ItemInstance item = GetItemData();
         if (item == null || !item.IsValid) return;
+
+        var rect = (RectTransform)transform;
+
+        // 第一段:选中
+        if (!UITooltip.IsPinnedTo(rect))
+        {
+            UITooltip.ShowItem(item.template, rect);
+            UITooltip.SetPinned(rect, true);
+            SetSelected(true);
+            return;
+        }
+
+        // 第二段:装备(仅装备类;消耗品/材料目前只停在第 1 段)
         if (item.template.category != ItemCategory.Equipment) return;
 
         InventoryManager inv = InventoryManager.Instance;
         if (inv == null) return;
 
+        UITooltip.Close();   // 物品会移出格子,选中与 tip 一起收
         inv.EquipItem(SlotIndex, item.template.slotType);
+    }
+
+    /// <summary>选中高亮 — 与拖入高亮共用 highlightOverlay,用不同颜色区分"选中"和"可拖入"</summary>
+    public void SetSelected(bool on)
+    {
+        if (highlightOverlay == null) return;
+
+        if (on)
+        {
+            highlightOverlay.color = s_selectedColor;
+            highlightOverlay.gameObject.SetActive(true);
+        }
+        else
+        {
+            highlightOverlay.color = s_highlightColor;   // 还原成拖入高亮色,免得下次拖入判错
+            highlightOverlay.gameObject.SetActive(false);
+        }
     }
 
     // ============================================================

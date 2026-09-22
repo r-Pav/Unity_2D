@@ -1,5 +1,6 @@
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 /// <summary>
@@ -103,6 +104,20 @@ public class SkillBarHUD : MonoBehaviour
     // 刷新逻辑
     // ============================================================
 
+    /// <summary>悬停技能栏槽位:把该槽的技能交给 tooltip(空槽不弹)</summary>
+    private void ShowSlotTooltip(int index)
+    {
+        var ownedSkill = skillPool?.GetHudSkill(index);
+        if (ownedSkill == null || ownedSkill.skillData == null) return;
+
+        var elements = GetSlotElements(index);
+        RectTransform anchor = elements.button != null
+            ? (RectTransform)elements.button.transform
+            : (RectTransform)transform;
+
+        UITooltip.ShowSkill(ownedSkill.skillData, ownedSkill.level, anchor);
+    }
+
     private void RefreshAll()
     {
         for (int i = 0; i < 4; i++) RefreshSlot(i);
@@ -142,6 +157,21 @@ public class SkillBarHUD : MonoBehaviour
         if (elements.button != null)
         {
             elements.button.interactable = hasSkill;
+
+            // 悬停显示技能详情(2026-09-22)。幂等:RefreshSlot 会被反复调用,已挂就不再添加。
+            if (elements.button.GetComponent<EventTrigger>() == null)
+            {
+                var trigger = elements.button.gameObject.AddComponent<EventTrigger>();
+
+                int captured = index;
+                var enter = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
+                enter.callback.AddListener(_ => ShowSlotTooltip(captured));
+                trigger.triggers.Add(enter);
+
+                var exit = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit };
+                exit.callback.AddListener(_ => UITooltip.Hide());
+                trigger.triggers.Add(exit);
+            }
             elements.button.onClick.RemoveAllListeners();
             if (hasSkill)
             {

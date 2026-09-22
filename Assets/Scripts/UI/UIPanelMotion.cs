@@ -132,6 +132,17 @@ public class UIPanelMotion : MonoBehaviour
     }
 
     /// <summary>
+    /// [动态面板用,如 UITooltip] 指定本次开启的目标摆位并覆盖缓存。
+    /// 静态面板不用调它 —— 它们在 Inspector 摆好位置,首次 PlayOpen 自动缓存。
+    /// 动态面板(每次跟随不同元素)必须在 PlayOpen 前先调它,否则会被旧的缓存摆位拉回去。
+    /// </summary>
+    public void SetHomePosition(Vector2 anchoredPos)
+    {
+        _homePos = anchoredPos;
+        _homeCached = true;
+    }
+
+    /// <summary>
     /// 播放打开动效。
     /// 前置条件:gameObject 已 SetActive(true)(调用方负责),anchoredPosition 处于 Inspector 摆位。
     /// 播完回调 onDone。重复调用会先 Kill 旧动画再播。

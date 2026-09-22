@@ -206,7 +206,12 @@ public class QuickSlotBar : MonoBehaviour, IDropHandler, IBeginDragHandler, IDra
 
     public void OnPointerEnter(PointerEventData eventData)
     {
-        if (!DragSession.IsDragging) return;
+        // 悬停(非拖拽)显示槽内物品详情(2026-09-22);拖拽中不弹,那是拖放判定
+        if (!DragSession.IsDragging)
+        {
+            ShowQuickSlotTooltip(GetSlotIndexFromEvent(eventData));
+            return;
+        }
 
         // 判断鼠标在哪个槽位上（通过 GameObject 名称判断）
         _hoveredSlotIndex = GetSlotIndexFromEvent(eventData);
@@ -223,6 +228,21 @@ public class QuickSlotBar : MonoBehaviour, IDropHandler, IBeginDragHandler, IDra
     {
         SetSlotHighlight(_hoveredSlotIndex, false);
         _hoveredSlotIndex = -1;
+        UITooltip.Hide();
+    }
+
+    /// <summary>悬停时把快捷槽里的物品交给 tooltip(空槽不弹)</summary>
+    private void ShowQuickSlotTooltip(int slotIndex)
+    {
+        if (slotIndex < 0) return;
+
+        InventoryManager inv = InventoryManager.Instance;
+        if (inv == null) return;
+
+        ItemInstance item = inv.GetQuickSlot(slotIndex);
+        if (item == null || item.template == null) return;
+
+        UITooltip.ShowItem(item.template, (RectTransform)transform);
     }
 
     // ============================================================

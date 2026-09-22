@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 /// <summary>Builds a selectable list from the current craft material pool.</summary>
@@ -53,6 +54,7 @@ public class CraftMatListDialog : MonoBehaviour, IPanel
             item.onClick.RemoveAllListeners();
             item.onClick.AddListener(() => Select(capturedIndex));
             PopulateItem(item, material);
+            BindItemTooltip(item, material);
             spawnedItems.Add(item);
         }
     }
@@ -64,6 +66,30 @@ public class CraftMatListDialog : MonoBehaviour, IPanel
             if (item != null) Destroy(item.gameObject);
         }
         spawnedItems.Clear();
+    }
+
+    /// <summary>
+    /// 列表项悬停显示材料详情(2026-09-22)。项是运行时 Instantiate 出来的,
+    /// 每次 Rebuild 都是新实例,所以直接挂、不用幂等;点击(选中该材料)不受影响。
+    /// </summary>
+    private static void BindItemTooltip(Button item, CombinationCraftSystem.MaterialInfo material)
+    {
+        if (item == null) return;
+
+        var trigger = item.gameObject.AddComponent<EventTrigger>();
+        var rect = (RectTransform)item.transform;
+
+        var enter = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
+        enter.callback.AddListener(_ =>
+        {
+            if (material.skillData != null)
+                UITooltip.ShowSkill(material.skillData, material.level, rect);
+        });
+        trigger.triggers.Add(enter);
+
+        var exit = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit };
+        exit.callback.AddListener(_ => UITooltip.Hide());
+        trigger.triggers.Add(exit);
     }
 
     private static void PopulateItem(Button item, CombinationCraftSystem.MaterialInfo material)

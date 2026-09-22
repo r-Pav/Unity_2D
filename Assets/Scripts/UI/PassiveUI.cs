@@ -116,6 +116,7 @@ public class PassiveUI : MonoBehaviour, IPanel
                     }
                 });
                 rightClickTrigger.triggers.Add(rightClickEntry);
+                // [2026-09-22 saika] 被动槽的悬停 tip 已取消(作用不大),只保留左右键原有功能
             }
         }
     }

@@ -45,23 +45,6 @@ public class SkillListEntry : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
     // 生命周期
     // ============================================================
 
-    private void Update()
-    {
-        if (_isHolding && !_isDragging)
-        {
-            _holdTimer += Time.unscaledDeltaTime;
-            if (holdIndicator != null)
-                holdIndicator.fillAmount = _holdTimer / HoldThreshold;
-
-            if (_holdTimer >= HoldThreshold)
-            {
-                if (holdIndicator != null)
-                    holdIndicator.enabled = false;
-                StartRealDrag();
-            }
-        }
-    }
-
     private void OnDestroy()
     {
         // 自己被 Destroy 时清理幽灵（防止悬空残留）
@@ -104,8 +87,37 @@ public class SkillListEntry : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
         _parentScrollRect = GetComponentInParent<ScrollRect>();
     }
 
+    /// <summary>
+    /// 绑定悬停提示(2026-09-22)。条目带拖拽,所以走 EventTrigger,不动拖拽接口;
+    /// Setup 会被反复调用,这里做幂等(已挂就不再添加 entry)。
+    /// </summary>
+    private void BindHoverTooltip()
+    {
+        EventTrigger trigger = GetComponent<EventTrigger>();
+        if (trigger == null)
+        {
+            trigger = gameObject.AddComponent<EventTrigger>();
+
+            var enter = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
+            enter.callback.AddListener(_ => ShowEntryTooltip());
+            trigger.triggers.Add(enter);
+
+            var exit = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit };
+            exit.callback.AddListener(_ => UITooltip.Hide());
+            trigger.triggers.Add(exit);
+        }
+    }
+
+    /// <summary>悬停技能列表条目:把该条目的技能交给 tooltip</summary>
+    private void ShowEntryTooltip()
+    {
+        if (_entry == null || _entry.skillData == null) return;
+        UITooltip.ShowSkill(_entry.skillData, _entry.level, (RectTransform)transform);
+    }
+
     public void Setup(OwnedSkillEntry entry)
     {
+        BindHoverTooltip();
         _entry = entry;
         if (entry == null) return;
 
@@ -127,15 +139,10 @@ public class SkillListEntry : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
     {
         if (_entry == null || _entry.skillData == null) return;
 
-        _holdTimer = 0f;
+        // [2026-09-22 saika] 不再需要长按状态,按下只重置拖拽标记
         _isDragging = false;
-        _isHolding = true;
-
-        if (holdIndicator != null)
-        {
-            holdIndicator.fillAmount = 0f;
-            holdIndicator.enabled = true;
-        }
+        _isHolding = false;
+        if (holdIndicator != null) holdIndicator.enabled = false;
     }
 
     public void OnPointerUp(PointerEventData eventData)
@@ -151,10 +158,16 @@ public class SkillListEntry : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
 
     public void OnBeginDrag(PointerEventData eventData)
     {
-        if (_isDragging) return;  // 已被长按激活，不转发
+        if (_isDragging) return;
 
-        if (_parentScrollRect != null)
-            _parentScrollRect.OnBeginDrag(eventData);
+        // [2026-09-22 saika] 去掉长按:按下就拖,和背包装备一致(那边 OnBeginDrag 直接 BeginDrag)。
+        if (_entry == null || _entry.skillData == null) return;
+
+        _isHolding = false;
+        if (holdIndicator != null) holdIndicator.enabled = false;
+
+        StartRealDrag();
+        if (_dragGhostRect != null) _dragGhostRect.position = eventData.position;
     }
 
     public void OnDrag(PointerEventData eventData)

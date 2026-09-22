@@ -72,11 +72,35 @@ public class SkillHudSlot : MonoBehaviour, IBeginDragHandler, IDragHandler, IEnd
     }
 
     /// <summary>由 SkillConfigUI.Awake 调用，绑定索引和父面板引用</summary>
+    /// <summary>绑定悬停提示(2026-09-22)。槽位是拖拽源,所以走 EventTrigger,不占用拖拽接口。</summary>
+    private void BindHoverTooltip()
+    {
+        EventTrigger trigger = GetComponent<EventTrigger>();
+        if (trigger == null) trigger = gameObject.AddComponent<EventTrigger>();
+
+        var enter = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
+        enter.callback.AddListener(_ => ShowSlotTooltip());
+        trigger.triggers.Add(enter);
+
+        var exit = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit };
+        exit.callback.AddListener(_ => UITooltip.Hide());
+        trigger.triggers.Add(exit);
+    }
+
+    /// <summary>悬停技能栏槽位:把该槽的技能交给 tooltip(空槽不弹)</summary>
+    private void ShowSlotTooltip()
+    {
+        if (CurrentEntry == null || CurrentEntry.skillData == null) return;
+        UITooltip.ShowSkill(CurrentEntry.skillData, CurrentEntry.level, (RectTransform)transform);
+    }
+
     public void Initialize(int hudIndex, SkillConfigUI configUI)
     {
         HudIndex = hudIndex;
         _configUI = configUI;
         if (keyLabel != null) keyLabel.text = keyLabelString;
+
+        BindHoverTooltip();
     }
 
     // ============================================================
