@@ -28,18 +28,38 @@ public class TeleportBlackout : MonoBehaviour
     [Tooltip("幕布 CanvasGroup(控制整体 alpha:0 透明不遮挡,1 全黑)")]
     [SerializeField] private CanvasGroup canvasGroup;
 
-    [Tooltip("单段淡出/淡入时长(秒);全流程 = 淡出 + 全黑做事 + 淡入")]
-    [SerializeField] private float fadeDuration = 0.25f;
+    [Header("三段式黑场时长(秒)")]
+    [Tooltip("进:透明 → 全黑(管道 = 进管道起跑;石碑 = 传送开始)")]
+    [SerializeField] private float blackInDuration = 0.4f;
+
+    [Tooltip("全黑保持:传送/瞬移在这段里发生(管道 = 瞬移那一刻起计时;石碑 = 全黑后立即计时)")]
+    [SerializeField] private float blackHoldDuration = 0.2f;
+
+    [Tooltip("出:全黑 → 透明")]
+    [SerializeField] private float blackOutDuration = 0.4f;
 
     /// <summary>是否正在黑场流程(淡出→全黑→淡入);true 期间拒绝新 Run(防重入)</summary>
     public bool IsBusy { get; private set; }
 
+    /// <summary>
+    /// 场景内唯一幕布。给「管道瞬移」这类非 Run 流程用(先全黑 → 传送 → 再淡出):免拖引用免 Find。
+    /// Awake 接管 + OnDestroy 自清(同 AudioManager/SceneTransition 单例口径);每场景一个实例,场景卸载即失效。
+    /// </summary>
+    public static TeleportBlackout Instance { get; private set; }
+
     private void Awake()
     {
+        Instance = this;
+
         // 初始状态:全透明不遮挡游戏 + 射线检测关闭(淡出开始时打开,淡入结束后关闭)。
         // 场景内幕布每场景加载时复位,防止上一场残留 alpha=1 黑屏。
         if (canvasGroup != null) canvasGroup.alpha = 0f;
         if (blackImage != null) blackImage.raycastTarget = false;
+    }
+
+    private void OnDestroy()
+    {
+        if (Instance == this) Instance = null;   // 自清:场景卸载后不留悬挂引用
     }
 
     /// <summary>
@@ -69,29 +89,89 @@ public class TeleportBlackout : MonoBehaviour
 
     private IEnumerator BlackoutRoutine(Action onFullyBlack, Action onDone)
     {
-        // 淡出期即阻断输入:黑图中途开始挡点击,防淡出半透明时误触背后 UI
+        // 进段即阻断输入:黑图中途开始挡点击,防半透明时误触背后 UI
         blackImage.raycastTarget = true;
 
-        yield return StartCoroutine(FadeRoutine(1f));   // 淡出:alpha 0 → 1(全黑)
+        yield return StartCoroutine(FadeTo(1f, blackInDuration));   // 进:0 → 1(全黑)
 
-        onFullyBlack?.Invoke();                          // 全黑内做传送(位置突变画面不可见,无穿帮)
+        onFullyBlack?.Invoke();                                      // 全黑内做传送/切区(突变不可见)
 
-        yield return StartCoroutine(FadeRoutine(0f));   // 淡入:alpha 1 → 0(揭幕回游戏)
+        if (blackHoldDuration > 0f)
+            yield return new WaitForSecondsRealtime(blackHoldDuration);   // 全黑保持
 
-        blackImage.raycastTarget = false;
-        IsBusy = false;
+        yield return StartCoroutine(FadeTo(0f, blackOutDuration));   // 出:1 → 0(揭幕回游戏)
+
+        FinishBlackout();
         onDone?.Invoke();
     }
 
-    /// <summary>alpha 线性渐变到 targetAlpha(Time.unscaledDeltaTime:暂停/跨场景均不受 timeScale 影响,抄 SceneTransition.FadeRoutine)</summary>
-    private IEnumerator FadeRoutine(float targetAlpha)
+    /// <summary>
+    /// 统一入口·分段用法之一(管道):进管道时调 —— 走「进」段变到全黑并停住,之后一直保持全黑,
+    /// 直到 EndBlackout 被调(传送完成)。这样黑场覆盖整条管道行程,不靠时间猜位置。
+    /// </summary>
+    public void BeginBlackout()
     {
+        if (blackImage == null || canvasGroup == null) return;
+        if (IsBusy) return;                       // 已有流程在跑(如石碑传送)不打断
+        IsBusy = true;
+        blackImage.raycastTarget = true;
+        StartCoroutine(FadeTo(1f, blackInDuration));
+    }
+
+    /// <summary>
+    /// 统一入口·分段用法之二(管道):传送完成时调 —— 先保持全黑 blackHoldDuration,再走「出」段变回透明。
+    /// </summary>
+    public void EndBlackout(Action onDone = null)
+    {
+        if (blackImage == null || canvasGroup == null)
+        {
+            onDone?.Invoke();
+            return;
+        }
+        StartCoroutine(EndBlackoutRoutine(onDone));
+    }
+
+    private IEnumerator EndBlackoutRoutine(Action onDone)
+    {
+        if (blackHoldDuration > 0f)
+            yield return new WaitForSecondsRealtime(blackHoldDuration);
+
+        yield return StartCoroutine(FadeTo(0f, blackOutDuration));
+
+        FinishBlackout();
+        onDone?.Invoke();
+    }
+
+    /// <summary>立即给幕布一个 alpha(传送那一帧的兜底:管道极短、「进」段没跑完也要保证传送不可见)</summary>
+    public void SetAlpha(float alpha)
+    {
+        if (canvasGroup == null) return;
+        canvasGroup.alpha = Mathf.Clamp01(alpha);
+        if (blackImage != null) blackImage.raycastTarget = canvasGroup.alpha > 0.001f;
+    }
+
+    /// <summary>收尾:恢复输入可点 + 清忙碌标记(进/出两条路径共用)</summary>
+    private void FinishBlackout()
+    {
+        if (blackImage != null) blackImage.raycastTarget = false;
+        IsBusy = false;
+    }
+
+    /// <summary>alpha 线性渐变到 targetAlpha(Time.unscaledDeltaTime:暂停/跨场景均不受 timeScale 影响,抄 SceneTransition.FadeRoutine)</summary>
+    private IEnumerator FadeTo(float targetAlpha, float duration)
+    {
+        if (canvasGroup == null) yield break;
         float startAlpha = canvasGroup.alpha;
+        if (duration <= 0f)
+        {
+            canvasGroup.alpha = targetAlpha;
+            yield break;
+        }
         float elapsed = 0f;
-        while (elapsed < fadeDuration)
+        while (elapsed < duration)
         {
             elapsed += Time.unscaledDeltaTime;
-            float t = Mathf.Clamp01(elapsed / fadeDuration);
+            float t = Mathf.Clamp01(elapsed / duration);
             canvasGroup.alpha = Mathf.Lerp(startAlpha, targetAlpha, t);
             yield return null;
         }

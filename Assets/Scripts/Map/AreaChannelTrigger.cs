@@ -106,9 +106,13 @@ public class AreaChannelTrigger : MonoBehaviour
         }
         _pendingSavePosition = null;
         _isMoving = false;
+        // 管道黑场兜底:取消管道(读档/切场景)时幕布可能停在全黑,这里收掉,防卡黑屏
+        TeleportBlackout.Instance?.SetAlpha(0f);
         if (_movingPlayer != null)
         {
             _movingPlayer.SetMoveSpeedOverride(null);
+            // 取消管道(读档/切场景)也是过场断点:清掉管道期间可能留下的意图,恢复输入后不补发
+            _movingPlayer.ClearInputBuffers();
             _movingPlayer.InputEnabled = true;
             _movingPlayer.SetVelocityPublic(x: 0f);
             _movingPlayer = null;
@@ -200,6 +204,12 @@ public class AreaChannelTrigger : MonoBehaviour
         //    PlayerController.OnUpdate 第一行 `if (!InputEnabled) return;` 直接短路,
         //    FSM 不再跑 → 不再写 velocity,协程独享控制权。无需 player.enabled=false。
         player.InputEnabled = false;
+        // 过场断点:进管道前按下的预输入/跳跃意图一律作废,不跨管道补发(2026-09-23 saika 定)
+        player.ClearInputBuffers();
+
+        // 2026-09-23 saika 定:三段式黑场(进 / 全黑保持 / 出,三个时长在 TeleportBlackout 上配)。
+        // 进管道 = 走「进」段变到全黑并停住;传送完成 = 走「全黑保持 + 出」段。
+        TeleportBlackout.Instance?.BeginBlackout();
 
         // 音乐:进管道,淡入淡出切换。优先读对侧区域根(AreaMusicSlot)的槽位音乐;
         // 对侧未配槽 → 回退自身 MusicSwitchTrigger(Boss 房/旧 Scene 配置兼容)。
@@ -288,6 +298,8 @@ public class AreaChannelTrigger : MonoBehaviour
                 {
                     _teleportOccurred = false;
                     elapsed = 0f;
+                    // 瞬移已在全黑里做完:黑场走「全黑保持 + 出」段,玩家在对侧一边走一边亮起来
+                    TeleportBlackout.Instance?.EndBlackout();
                 }
                 elapsed += Time.deltaTime;
                 // 每帧强制锁输入:PanelManager._ApplyInteractionState 在面板开/关时会重设
@@ -302,6 +314,8 @@ public class AreaChannelTrigger : MonoBehaviour
             }
             player.SetVelocityPublic(x: 0f); // 到点停(或超时停)
             _pendingSavePosition = null; // 移动结束清空
+            // 兜底:没走瞬移路径(单段管道/无对侧/没接线)时也把黑场走完,保证出管道全亮
+            TeleportBlackout.Instance?.EndBlackout();
         }
 
         // 3. 到达后关闭来源地区(原场景):其背景淡出后 SetActive(false)。
@@ -320,6 +334,8 @@ public class AreaChannelTrigger : MonoBehaviour
         // 4. 恢复 orthoSize(进入前的用户设置值) + 恢复速度/输入
         StartZoom(_defaultOrthoSize);
         player.SetMoveSpeedOverride(null); // 恢复原速
+        // 出管道前再清一次:管道期间若有哪一帧被面板开关把输入改回 true 记下了意图,也不带出管道
+        player.ClearInputBuffers();
         player.InputEnabled = true;
         _isMoving = false;
         _moveRoutine = null;

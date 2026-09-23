@@ -13,8 +13,8 @@ using UnityEngine;
 public class PlayerTeleport : MonoBehaviour
 {
     [Header("传送落点钳制")]
-    [Tooltip("墙/地面层（Ground=3 + Wall=11；与 Projectile 墙层同款）")]
-    [SerializeField] private LayerMask wallMask = (1 << 3) | (1 << 11);
+    [Tooltip("墙/地面/管道层（Ground=3 + Wall=11 + Channel=16）—— 管道也算：不算的话连打落点会把玩家传进管道、被 AreaChannelTrigger 接管送走（2026-09-23）")]
+    [SerializeField] private LayerMask wallMask = (1 << 3) | (1 << 11) | (1 << 16);
 
     [Tooltip("落点探测半径（米）— 按玩家碰撞体半宽估，进墙判定用")]
     [SerializeField] private float probeRadius = 0.45f;

@@ -77,11 +77,18 @@ public sealed class PanelManager : MonoBehaviour
     private readonly Stack<GameObject> _panelStack = new Stack<GameObject>();
     private readonly Stack<GameObject> _fullScreenHistory = new Stack<GameObject>();
     private readonly HashSet<GameObject> _closingPanels = new HashSet<GameObject>();
+
+    /// <summary>批量关闭淡出进行中：期间拒绝 CloseTopPanel / ClosePanel / 重复 CloseAllPanels，防栈状态被穿插改写</summary>
+    private bool _closingAll;
     private PlayerController _player;
 
     [Header("ESC 菜单")]
     [Tooltip("无面板打开时按 ESC 打开的菜单（拖 PauseMenu）")]
     [SerializeField] private GameObject escapeMenu;
+
+    [Header("批量关闭（返回游戏）")]
+    [Tooltip("统一淡出时长（秒）：CloseAllPanels 时所有在显示的面板一起淡出再隐藏，一处配置各面板不用各自配；0 = 直接隐藏")]
+    [SerializeField] private float closeAllFadeDuration = 0.15f;
 
     public bool IsAnyPanelOpen => _panelStack.Count > 0;
 
@@ -223,6 +230,7 @@ public sealed class PanelManager : MonoBehaviour
 
     public void CloseTopPanel()
     {
+        if (_closingAll) return;   // 批量关闭淡出中：不再逐层关（由淡出收尾统一隐藏）
         GameObject panel = _PopTopValidPanel();
         if (panel == null) return;
 
@@ -280,6 +288,7 @@ public sealed class PanelManager : MonoBehaviour
 
     public void ClosePanel(GameObject panel)
     {
+        if (_closingAll) return;   // 批量关闭淡出中：统一由淡出收尾隐藏
         if (_FindRegistered(panel) == null)
         {
             Debug.LogError($"[PanelManager] Panel is not registered: {panel?.name}", this);
@@ -314,7 +323,75 @@ public sealed class PanelManager : MonoBehaviour
         _ApplyInteractionState();
     }
 
+    /// <summary>
+    /// 一次性关掉所有面板回游戏（「返回游戏」按钮 / 读档完成）：面板栈 + FullScreen 历史一起清，
+    /// 不会在关闭过程中把某个旧面板恢复出来。
+    /// 统一淡出：closeAllFadeDuration &gt; 0 时把所有在显示的面板一起淡出再隐藏（一处配置，面板不用各自配动画）；
+    /// 淡出用 unscaledDeltaTime —— 面板打开时 timeScale=0，暂停态也要能播完。
+    /// </summary>
     public void CloseAllPanels()
+    {
+        if (_closingAll) return;   // 淡出中重复点击直接忽略
+
+        // 收集当前在显示的面板（栈里的；历史里的是 inactive，直接隐藏即可，不用淡）
+        var visible = new List<GameObject>();
+        foreach (GameObject panel in _panelStack)
+        {
+            if (panel != null && panel.activeInHierarchy)
+                visible.Add(panel);
+        }
+
+        if (closeAllFadeDuration > 0f && Application.isPlaying && visible.Count > 0)
+        {
+            _closingAll = true;
+            StartCoroutine(CloseAllFadeRoutine(closeAllFadeDuration));
+            return;   // 收尾（隐藏 + 清栈 + 恢复交互态）在协程里
+        }
+
+        FinishCloseAll(null, null);
+    }
+
+    /// <summary>批量关闭的统一淡出：所有在显示的面板同时淡到 0，淡完统一隐藏并清栈</summary>
+    private System.Collections.IEnumerator CloseAllFadeRoutine(float duration)
+    {
+        var panels = new List<GameObject>();
+        var groups = new List<CanvasGroup>();
+        var startAlphas = new List<float>();
+
+        foreach (GameObject panel in _panelStack)
+        {
+            if (panel == null || !panel.activeInHierarchy) continue;
+
+            CanvasGroup group = panel.GetComponent<CanvasGroup>();
+            if (group == null) group = panel.AddComponent<CanvasGroup>();
+
+            group.blocksRaycasts = false;   // 淡出期间别让玩家再点面板里的按钮
+            panels.Add(panel);
+            groups.Add(group);
+            startAlphas.Add(group.alpha);
+        }
+
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float k = Mathf.Clamp01(elapsed / duration);
+            for (int i = 0; i < groups.Count; i++)
+            {
+                if (groups[i] != null)
+                    groups[i].alpha = Mathf.Lerp(startAlphas[i], 0f, k);
+            }
+            yield return null;
+        }
+
+        FinishCloseAll(panels, groups);
+    }
+
+    /// <summary>
+    /// 批量关闭收尾：隐藏栈与历史里的全部面板 → 复位淡出用过的 CanvasGroup（alpha/射线，下次打开不受影响）
+    /// → 清栈/历史/关闭标记 → 恢复交互态。fading/groups 为 null 时表示走了硬隐藏路径。
+    /// </summary>
+    private void FinishCloseAll(List<GameObject> fading, List<CanvasGroup> groups)
     {
         while (_panelStack.Count > 0)
         {
@@ -328,8 +405,20 @@ public sealed class PanelManager : MonoBehaviour
             if (panel != null) panel.SetActive(false);
         }
 
+        if (groups != null)
+        {
+            for (int i = 0; i < groups.Count; i++)
+            {
+                if (groups[i] == null) continue;
+                groups[i].alpha = 1f;          // 复位：下次 PlayOpen 的淡入从 0 开始，父级透明度不该留残留
+                groups[i].blocksRaycasts = true;
+            }
+        }
+
         _closingPanels.Clear();
+        _closingAll = false;
         _ApplyInteractionState();
+
     }
 
     public void TogglePanel(GameObject panel)

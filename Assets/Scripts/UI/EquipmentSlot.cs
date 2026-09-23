@@ -10,7 +10,8 @@ using UnityEngine.EventSystems;
 ///   1. IDropHandler — 接受拖入装备（仅匹配 slotType 的 Equipment 类物品）
 ///   2. IBeginDragHandler — 作为拖拽源，将装备从槽位拖回背包
 ///   3. 显示装备图标 + 槽位背景
-///   4. 右键卸下装备到背包
+///   4. 左键两段式卸下(2026-09-23 saika 定,与背包格 ItemCell 同口径):
+///      第 1 次点 = 选中(固定 tip + 高亮),同槽再点 = 卸下到背包
 ///   5. 拖入高亮反馈
 /// </summary>
 public class EquipmentSlot : MonoBehaviour, IDropHandler, IBeginDragHandler, IDragHandler, IEndDragHandler,
@@ -51,6 +52,7 @@ public class EquipmentSlot : MonoBehaviour, IDropHandler, IBeginDragHandler, IDr
     private RectTransform _ghostRect;
     private static readonly Color s_highlightColor = new Color(0f, 1f, 0f, 0.25f); // 淡绿色高亮
     private static readonly Color s_invalidHighlightColor = new Color(1f, 0f, 0f, 0.25f); // 淡红色
+    private static readonly Color s_selectedColor = new Color(1f, 0.95f, 0.4f, 0.5f); // 选中高亮:暖黄(与 ItemCell 同色)
 
     // ============================================================
     // 生命周期
@@ -172,6 +174,12 @@ public class EquipmentSlot : MonoBehaviour, IDropHandler, IBeginDragHandler, IDr
     public void OnPointerEnter(PointerEventData eventData)
     {
         // 悬停(非拖拽)显示该槽已装备的详情(2026-09-22);拖拽中不弹,那是拖放判定
+        // 悬停换槽:tip 切到当前槽位,同时取消别处的选中
+        // (选中只在"点完鼠标不动"的前提下成立;一移动就失效,免得点第二次时卸错装备)
+        var rect = (RectTransform)transform;
+        if (!UITooltip.IsPinnedTo(rect))
+            UITooltip.SetPinned(null, false);
+
         if (!DragSession.IsDragging)
         {
             ShowEquippedTooltip();
@@ -258,22 +266,58 @@ public class EquipmentSlot : MonoBehaviour, IDropHandler, IBeginDragHandler, IDr
     }
 
     // ============================================================
-    // IPointerClickHandler — 右键卸下装备
+    // IPointerClickHandler — 左键两段式卸下
     // ============================================================
 
+    /// <summary>
+    /// 左键两段式(2026-09-23 saika 定,与背包格 ItemCell 同口径):
+    ///   第 1 次 = 选中这个槽位(固定 tip + 高亮),不卸下;
+    ///   同槽再点 = 卸下到背包,并取消选中、收起 tip。
+    /// 原「右键卸下」已废。选中状态沿用 UITooltip 的 pin 机制,不另开字段。
+    /// </summary>
     public void OnPointerClick(PointerEventData eventData)
     {
-        // 右键卸下
-        if (eventData.button == PointerEventData.InputButton.Right)
+        if (eventData.button != PointerEventData.InputButton.Left) return;
+        if (DragSession.IsDragging) return;
+
+        InventoryManager inv = InventoryManager.Instance;
+        if (inv == null) return;
+
+        ItemInstance equipped = inv.GetEquippedItem(slotType);
+        if (equipped == null || equipped.template == null) return;   // 空槽不响应
+
+        var rect = (RectTransform)transform;
+
+        // 第一段:选中
+        if (!UITooltip.IsPinnedTo(rect))
         {
-            InventoryManager inv = InventoryManager.Instance;
-            if (inv == null) return;
+            UITooltip.ShowItem(equipped.template, rect);
+            UITooltip.SetPinned(rect, true);
+            SetSelected(true);
+            return;
+        }
 
-            ItemInstance equipped = inv.GetEquippedItem(slotType);
-            if (equipped == null) return;
+        // 第二段:卸下(装备会移出槽位,选中与 tip 一起收)
+        UITooltip.Close();
+        SetSelected(false);
+        inv.UnequipItem(slotType);
+        RefreshDisplay();
+    }
 
-            inv.UnequipItem(slotType);
-            RefreshDisplay();
+    /// <summary>选中高亮 — 与拖入高亮共用 highlightOverlay,用不同颜色区分"选中"和"可拖入"(同 ItemCell)</summary>
+    public void SetSelected(bool on)
+    {
+        if (highlightOverlay == null) return;
+
+        if (on)
+        {
+            highlightOverlay.color = s_selectedColor;
+            highlightOverlay.gameObject.SetActive(true);
+        }
+        else
+        {
+            highlightOverlay.color = s_highlightColor;   // 还原成拖入高亮色,免得下次拖入判错
+            highlightOverlay.gameObject.SetActive(false);
         }
     }
 

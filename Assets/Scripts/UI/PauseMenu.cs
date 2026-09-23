@@ -97,6 +97,9 @@ public class PauseMenu : MonoBehaviour, IPanel, ISlideClose
     /// <summary>当前播放中的主动画序列（每次新动画前 Kill 防重入；OnDisable 也 Kill 防残留回调串台）</summary>
     private Sequence _activeSequence;
 
+    /// <summary>menuBar / 一级 bg 的目标位是否已缓存（未打开过就不复位摆位，保持场景摆位）</summary>
+    private bool _visualTargetsCached;
+
     private void OnEnable()
     {
         if (btnContinue != null) btnContinue.onClick.AddListener(OnContinueClicked);
@@ -133,6 +136,11 @@ public class PauseMenu : MonoBehaviour, IPanel, ISlideClose
 
         // 面板隐藏 → 打断播放中的动画（Kill 不触发 OnComplete，防 Tween 残留回调串台）
         KillActiveAnimation();
+
+        // 强关兜底：CloseAllPanels（「返回游戏」按钮 / 读档完成）是直接 SetActive(false)，
+        // 不经过 SlideClose / ReturnToLevel1 —— 这里把 menuBar 与一级/二级 bg 复位并隐藏，
+        // 否则它们会留在画面上，且下次开菜单会把半途摆位当目标位读进去。
+        ResetVisualsAndHide();
     }
 
     /// <summary>
@@ -223,6 +231,7 @@ public class PauseMenu : MonoBehaviour, IPanel, ISlideClose
         {
             menuBar.gameObject.SetActive(true);
             _menuTargetPos = menuBar.anchoredPosition; // 激活后读，即场景拖好的最终显示位置
+            _visualTargetsCached = true;               // 目标位已记录：强关兜底时才敢复位摆位
             CanvasGroup barGroup = EnsureCanvasGroup(menuBar.gameObject);
             menuBar.anchoredPosition = _menuTargetPos + new Vector2(-slideOffset.x, 0f);
             if (barGroup != null) barGroup.alpha = 0f;
@@ -529,10 +538,23 @@ public class PauseMenu : MonoBehaviour, IPanel, ISlideClose
     /// <summary>一级逆动画收尾：复位摆位/alpha + 全部隐藏 + 回调（原 Level1CloseRoutine 结尾同款，防反复开关累积漂移）</summary>
     private void FinishLevel1Close(Action onComplete)
     {
+        ResetVisualsAndHide();
+        onComplete?.Invoke();
+    }
+
+    /// <summary>
+    /// 复位所有自绘物体（menuBar + 一级/二级 bg）的摆位与 alpha 并隐藏。
+    /// 两个调用场合：① 一级逆动画播完（FinishLevel1Close）；② 面板被直接 SetActive(false) 强关
+    /// （CloseAllPanels「返回游戏」路径 / 切场景前取消，都不经过 SlideClose）。
+    /// 不做这步的后果：一级/二级 bg 留在画面上，且下次开菜单把半途摆位当成目标位读进去。
+    /// 摆位只在目标位缓存过之后才复位（从未打开过的物体保持场景摆位，不动它）。
+    /// </summary>
+    private void ResetVisualsAndHide()
+    {
         if (menuBar != null)
         {
             CanvasGroup g = EnsureCanvasGroup(menuBar.gameObject);
-            menuBar.anchoredPosition = _menuTargetPos;
+            if (_visualTargetsCached) menuBar.anchoredPosition = _menuTargetPos;
             if (g != null) g.alpha = 1f;
             menuBar.gameObject.SetActive(false);
         }
@@ -540,7 +562,7 @@ public class PauseMenu : MonoBehaviour, IPanel, ISlideClose
         {
             RectTransform rt = level1BgTop.GetComponent<RectTransform>();
             CanvasGroup g = EnsureCanvasGroup(level1BgTop);
-            if (rt != null) rt.anchoredPosition = _level1BgTopTarget;
+            if (rt != null && _visualTargetsCached) rt.anchoredPosition = _level1BgTopTarget;
             if (g != null) g.alpha = 1f;
             level1BgTop.SetActive(false);
         }
@@ -548,16 +570,16 @@ public class PauseMenu : MonoBehaviour, IPanel, ISlideClose
         {
             RectTransform rt = level1BgBottom.GetComponent<RectTransform>();
             CanvasGroup g = EnsureCanvasGroup(level1BgBottom);
-            if (rt != null) rt.anchoredPosition = _level1BgBottomTarget;
+            if (rt != null && _visualTargetsCached) rt.anchoredPosition = _level1BgBottomTarget;
             if (g != null) g.alpha = 1f;
             level1BgBottom.SetActive(false);
         }
-        // 关闭菜单时兜底隐藏二级 bg（若某路径残留打开态）
+        // 顺带兜底隐藏二级 bg（若某条路径残留打开态）
         if (level2BgTop != null)
         {
             RectTransform rt = level2BgTop.GetComponent<RectTransform>();
             CanvasGroup g = EnsureCanvasGroup(level2BgTop);
-            if (rt != null) rt.anchoredPosition = _level2BgTopTarget;
+            if (rt != null && _visualTargetsCached) rt.anchoredPosition = _level2BgTopTarget;
             if (g != null) g.alpha = 1f;
             level2BgTop.SetActive(false);
         }
@@ -565,12 +587,10 @@ public class PauseMenu : MonoBehaviour, IPanel, ISlideClose
         {
             RectTransform rt = level2BgBottom.GetComponent<RectTransform>();
             CanvasGroup g = EnsureCanvasGroup(level2BgBottom);
-            if (rt != null) rt.anchoredPosition = _level2BgBottomTarget;
+            if (rt != null && _visualTargetsCached) rt.anchoredPosition = _level2BgBottomTarget;
             if (g != null) g.alpha = 1f;
             level2BgBottom.SetActive(false);
         }
-
-        onComplete?.Invoke();
     }
 
     // ============================================================

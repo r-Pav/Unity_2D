@@ -409,6 +409,7 @@ public class UIButtonFeedback : MonoBehaviour,
         KillTween(ref _indicatorMoveTween);
         KillTween(ref _indicatorFadeTween);
 
+
         float targetX = show ? _indicatorEndX : _indicatorStartX;
         float targetAlpha = show ? _indicatorBaseAlpha : 0f;
 

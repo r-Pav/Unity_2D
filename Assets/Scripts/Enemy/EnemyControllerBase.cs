@@ -556,6 +556,10 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
     private bool _airHangFreeze;
 
+    /// <summary>2026-09-23:进入滞空前记录的原重力倍率,解除滞空时恢复(原先写死 1f → 敌人配的重力被永久改掉)</summary>
+
+    private float _airHangSavedGravity;
+
     /// <summary>上一帧是否在地面(落地上升沿检测用)</summary>
 
     private bool _wasGrounded;
@@ -583,6 +587,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
     /// <summary>受击标记:被空中第三段(下砸)命中,落地时必触发落地冲击(不依赖速度阈值)</summary>
 
     private bool _pendingGroundImpact;
+
 
     /// <summary>空中击退中:移动系统完全让位(不清 x),让斜向击退速度自由飞,落地才恢复</summary>
 
@@ -847,7 +852,9 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
             // 滞空模式:恢复重力(缓慢下落期间速度从未清零,不恢复保存速度,避免速度倒退到滞空开始)
 
-            if (rb != null) rb.gravityScale = 1f;
+            // 2026-09-23:恢复滞空前记录的原值,不写死 1f
+
+            if (rb != null) rb.gravityScale = _airHangSavedGravity > 0.01f ? _airHangSavedGravity : 1f;
 
             _airHangFreeze = false;
 
@@ -923,6 +930,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
                 rb.velocity = new Vector2(rb.velocity.x, 0f);
 
+            _airHangSavedGravity = rb.gravityScale;    // 记下原重力,解除滞空时恢复
             rb.gravityScale = airHangGravityScale;     // 小重力:缓慢下落,不清速度(二次击飞从当前速度累加,不冲突)
 
         }
@@ -1069,9 +1077,9 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
 
 
-    /// <summary>ForceSetPosition 落点钳制用的墙/地形层(Ground=3 + Wall=11,与 PlayerTeleport.wallMask 一致)</summary>
+    /// <summary>ForceSetPosition / IsPositionFree / ClampToWallSafe 的「不可落点」层 = Ground(3) + Wall(11) + Channel(16,管道)。管道必须算进来(2026-09-23 saika 报「连音把 player 和 enemy 一起打入管道」):管道是 trigger,原先只查 Ground/Wall → 连打阶梯的点落在管道里被判可站,敌人被 SnapComboTo 送进管道、玩家跟着传进去。单次背刺那套(ResolveBackstabLanding)本就有管道避让,连打这套走 IsPositionFree 漏了管道层,收口在这一处。与 PlayerTeleport.wallMask / PlayerBackstabState.WallBlockMask 同口径</summary>
 
-    private const int ForcePushWallMask = (1 << 3) | (1 << 11);
+    private const int ForcePushWallMask = (1 << 3) | (1 << 11) | (1 << 16);
 
 
 
@@ -2561,6 +2569,24 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
         if (_comboHold) return;   // 连打定格中:吞掉击退(位置被钉住,不能被后续的刀再打飞)
 
+        // 2026-09-23:命中本地冻结期间速度被清零暂存(ApplyLocalFreeze),这段期间的击退不许写进 rb,
+
+        // 要累加到「待恢复速度」上 —— 原先直接写 rb 会被解冻时的旧速度覆盖,这一击的击退凭空消失。
+
+        if (_localFreezeRemaining > 0f && !_airHangFreeze)
+
+        {
+
+            Vector2 heldDir = knockback.direction;
+
+            if (heldDir.magnitude < 0.01f) heldDir = Vector2.right;
+
+            _localFreezeSavedVelocity += heldDir * (knockback.force / Mathf.Max(0.01f, rb.mass));
+
+            return;
+
+        }
+
         Vector2 knockDir = knockback.direction;
 
         if (knockDir.magnitude < 0.01f) knockDir = Vector2.right;
@@ -2781,7 +2807,12 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
             _pendingGroundImpact = airSlamAirborne;
 
-            _pullToPlayer = airSlamAirborne;
+            // 2026-09-23 saika 定:下砸只「施加一次斜向击退」,之后 enemy 怎么撞、怎么落地全交给物理模拟,
+            // 代码不再改写它的运动。原先这里把空中吸附一起打开 → 吸附每帧把 y 往玩家高度 Lerp,
+            // 下落被持续抵消(实测 vy -20.3 → -14.3,越落越慢),看着就是「先快后慢飘回地面」。
+            // 与 :2822「下砸不走滞空」同一口径:不吸附、不滞空,纯物理。
+            _pullToPlayer = false;
+
 
             // 结束进行中的滞空冻结(如空中第二击遗留):不恢复旧保存速度,
 
@@ -2791,15 +2822,9 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
             {
 
-                _airHangFreeze = false;
-
                 _localFreezeRemaining = 0f;
 
-                _localFreezeSavedVelocity = Vector2.zero;
-
-                if (_animator != null) _animator.speed = 1f;
-
-                if (rb != null) rb.gravityScale = 1f;
+                EndLocalFreeze();   // 走统一出口:恢复动画速度 + 滞空前记录的重力(原先这里把重力写死成 1f)
 
             }
 

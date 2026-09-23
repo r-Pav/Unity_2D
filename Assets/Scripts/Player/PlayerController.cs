@@ -403,7 +403,17 @@ public class PlayerController : PlayerCharacterBase
 
     protected override void OnUpdate()
     {
-        if (!InputEnabled) return;
+        // 缓冲窗口倒计时:必须放在所有 return 之前(含下面 InputEnabled=false 的输入锁分支)。
+        // 进管道自动移动 / 传送黑场期间 OnUpdate 会提前返回,倒计时若跟着停,进管道前记下的
+        // 意图会被冻在窗口里、出管道后补发(2026-09-23 saika 报"预输入保留太久")。
+        jump?.TickJumpBuffer();
+
+        if (!InputEnabled)
+        {
+            // 输入锁期间统一意图缓冲也要按真实时间过期(它的递减平时挂在 UpdateCooldowns 里,进不来)
+            TickIntentTimers();
+            return;
+        }
 
         // P3a:AirHurt 落地检测由 AirHurtState.OnUpdate 管理(原顶部独立分支删除,避免重复处理)
 
@@ -571,6 +581,19 @@ public class PlayerController : PlayerCharacterBase
         if (Input.GetKeyDown(KeyCode.Q)) RecordIntent(InputIntent.Skill0);
         if (Input.GetKeyDown(KeyCode.E)) RecordIntent(InputIntent.Skill1);
         if (Input.GetKeyDown(KeyCode.R)) RecordIntent(InputIntent.Skill2);
+    }
+
+    /// <summary>
+    /// 清空全部输入缓冲(预输入各通道 + 跳跃缓冲)。
+    /// 用途 = 过场断点(进管道 / 传送黑场):跨过场的意图一律作废,出过场后从零开始,
+    /// 不让过场前按下的键在解锁那一帧补发(2026-09-23 saika 定)。
+    /// 与"窗口按真实时间过期"是两件事 —— 过期是自然衰减,这里是立刻清。
+    /// </summary>
+    public void ClearInputBuffers()
+    {
+        for (int i = 0; i < _intentTimers.Length; i++)
+            _intentTimers[i] = 0f;
+        jump?.ClearJumpBuffer();
     }
 
     /// <summary>记录一条意图通道:覆盖式刷新时间戳(同动作连按不排队;下限 0.01s 防窗口值被配成 0 导致刚记就过期)</summary>

@@ -50,6 +50,10 @@ public class ChannelTeleportTrigger : MonoBehaviour
         // 战斗空气墙等场景(输入仍可用)同样不会误触。
         if (player.InputEnabled) return;
 
+        // 传送那一帧必须全黑(2026-09-23 saika 定):正常走到这里黑场已按行程推满;
+        // 万一没推满,这里直接置全黑,保证瞬移的跳变不可见(之后由 AreaChannelTrigger 按剩余行程渐亮)。
+        TeleportBlackout.Instance?.SetAlpha(1f);
+
         _teleported = true;
         TeleportPlayer(player);
     }

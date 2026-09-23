@@ -50,8 +50,18 @@ public class MusicPointManager : MonoBehaviour
     [Tooltip("预告提前量(秒):距下一点 ≤ 此值时激活预告")]
     [SerializeField] private float previewLead = 1f;
 
-    [Tooltip("缓入缓出时长(秒):管道/Boss 切换")]
+    [Tooltip("缓入缓出时长(秒):Boss 进房交叠 / 通用过渡")]
     [SerializeField] private float crossFadeDuration = 1f;
+
+    [Header("切曲三段式(场景模式:管道换区 / 石碑传送 / 退 Boss)")]
+    [Tooltip("① 当前曲淡出时长(秒)")]
+    [SerializeField] private float switchFadeOutDuration = 2f;
+
+    [Tooltip("② 全静音空隙时长(秒)")]
+    [SerializeField] private float switchSilenceDuration = 2f;
+
+    [Tooltip("③ 新曲淡入时长(秒)")]
+    [SerializeField] private float switchFadeInDuration = 2f;
 
     [Header("时基")]
     [Tooltip("音频输出延迟补偿(秒):>0 = 把“当前音乐时刻”整体往后挪这么多(补偿音箱/耳机输出延迟)。默认 0")]
@@ -996,21 +1006,34 @@ public class MusicPointManager : MonoBehaviour
         _autoBarRoutine = null;
     }
 
-    /// <summary>缓入缓出切曲(管道/场景切换用):当前主源淡出,副源淡入新曲,完成后主源切换</summary>
+    /// <summary>
+    /// 场景模式切曲(管道换区 / 石碑传送 / 退 Boss):三段式 = 当前曲淡出 → 全静音空隙 → 新曲淡入。
+    /// 同曲(相邻两区配了同一首)直接返回,不打断当前播放;三段总时长 ≤0 或没有主源时退化成 PlayTrack 硬切。
+    /// </summary>
     public void CrossFadeTo(MusicTrackData track)
     {
         if (track == null || track.clip == null) return;
-        if (_activeSource == null || crossFadeDuration <= 0f)
+        if (_currentTrack == track) return;             // 同曲不切:同区传送 / 同曲相邻区,音乐不打断
+        if (_activeSource == null || TotalSwitchDuration <= 0f)
         {
             PlayTrack(track);
             return;
         }
         if (_crossFadeRoutine != null) StopCoroutine(_crossFadeRoutine);
-        StopAutoBar();                     // 切曲开始:停旧自动重音协程(新曲协程在 fade 结束按新曲重启)
+        StopAutoBar();                     // 切曲开始:停旧自动重音协程(新曲协程在淡入结束按新曲重启)
         ResetScheduleWindowState();        // 过渡期无窗口(活跃点表/消费记录一起清)
         _crossFadeRoutine = StartCoroutine(CrossFadeRoutine(track));
     }
 
+    /// <summary>三段式切曲总时长(秒);≤0 = 三段都关掉,退化成硬切</summary>
+    private float TotalSwitchDuration =>
+        Mathf.Max(0f, switchFadeOutDuration) + Mathf.Max(0f, switchSilenceDuration) + Mathf.Max(0f, switchFadeInDuration);
+
+    /// <summary>
+    /// 三段式切曲协程:① 旧源淡出到 0 并停 → ② 静音等待 → ③ 副源起播新曲 + 淡入到 BgmVolume。
+    /// 时钟在③新曲起播那一刻才切(MarkClockPending);①②段没有主源在播,点表已复位,不会有窗口判定。
+    /// 三段都用 Time.unscaledDeltaTime 累加:传送黑场/暂停面板(timeScale=0)时序列照常走完。
+    /// </summary>
     private IEnumerator CrossFadeRoutine(MusicTrackData track)
     {
         AudioSource fadeOut = _activeSource;
@@ -1024,30 +1047,51 @@ public class MusicPointManager : MonoBehaviour
         // 音量基准 = AudioManager 当前 BGM 音量,淡入目标跟随用户设置,不覆盖
         float targetVol = AudioManager.Instance != null ? AudioManager.Instance.BgmVolume : 1f;
 
+        // ① 淡出:只降旧源音量,新曲还没起播
+        float outDur = Mathf.Max(0f, switchFadeOutDuration);
+        float startVol = fadeOut.volume;
+        float elapsed = 0f;
+        while (elapsed < outDur)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            fadeOut.volume = Mathf.Lerp(startVol, 0f, Mathf.Clamp01(elapsed / outDur));
+            yield return null;
+        }
+        if (outDur > 0f) fadeOut.volume = 0f;
+        fadeOut.Stop();
+        fadeOut.clip = null;
+        fadeOut.volume = targetVol;      // 恢复默认,下次作 fadeIn 时强制 0
+
+        // ② 静音空隙:这一段没有任何音乐在播
+        float silence = Mathf.Max(0f, switchSilenceDuration);
+        elapsed = 0f;
+        while (elapsed < silence)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        // ③ 新曲起播 + 淡入(时钟此刻才切到新曲,旧源已停)
         fadeIn.clip = track.clip;
         fadeIn.loop = true;              // 场景模式:播完重复
         fadeIn.time = 0f;
         fadeIn.volume = 0f;
         fadeIn.Play();
 
-        _activeSource = fadeIn;          // 时钟立即切到新曲
+        _activeSource = fadeIn;
         _currentTrack = track;
         MarkClockPending();              // 时基:换主源,重记锚点
 
-        float elapsed = 0f;
-        while (elapsed < crossFadeDuration)
+        float inDur = Mathf.Max(0f, switchFadeInDuration);
+        elapsed = 0f;
+        while (elapsed < inDur)
         {
             elapsed += Time.unscaledDeltaTime;
-            float k = Mathf.Clamp01(elapsed / crossFadeDuration);
-            fadeOut.volume = Mathf.Lerp(targetVol, 0f, k);
-            fadeIn.volume = Mathf.Lerp(0f, targetVol, k);
+            fadeIn.volume = Mathf.Lerp(0f, targetVol, Mathf.Clamp01(elapsed / inDur));
             yield return null;
         }
-
-        fadeOut.Stop();
-        fadeOut.clip = null;
-        fadeOut.volume = targetVol;      // 恢复默认,下次作 fadeIn 时强制 0
         fadeIn.volume = targetVol;
+
         _crossFadeRoutine = null;
         RestartSchedule();
         RestartAutoBar();                // 新曲 barIntervalSeconds>0 时启动自动重音

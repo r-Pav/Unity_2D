@@ -18,17 +18,17 @@ public class LineSelectDialog : MonoBehaviour, IPanel
     [Header("下拉定位")]
     [Tooltip("对话框相对 slot 左上角的偏移（默认 0=左上角对齐；y 负值=稍微下移留间隙）")]
     [SerializeField] private Vector2 offsetBelow = new Vector2(0f, -8f);
-    [Tooltip("对话框固定尺寸（按钮下方展开的大小）")]
-    [SerializeField] private Vector2 fixedSize = new Vector2(300f, 400f);
 
     private System.Action<int> onLineSelected;
     private RectTransform selfRect;
     private RectTransform lastAnchorButton;
     private GameObject blocker;
+    private UIPanelMotion motion;   // 同物体上的开关动效：动态面板每次 Show 前要把本次摆位交给它
 
     private void Awake()
     {
         selfRect = (RectTransform)transform;
+        if (motion == null) motion = GetComponent<UIPanelMotion>();
         if (panelManager == null) panelManager = PanelManager.Instance;
         if (optionButtons != null)
         {
@@ -45,7 +45,7 @@ public class LineSelectDialog : MonoBehaviour, IPanel
 
     private void OnValidate()
     {
-        // Inspector 调整 offsetBelow/fixedSize 时立即重新定位（Play 模式也实时生效）
+        // Inspector 调整 offsetBelow 时立即重新定位（Play 模式且面板显示中才实时生效）
         if (lastAnchorButton != null && selfRect != null && gameObject.activeInHierarchy)
             PositionBelow(lastAnchorButton);
     }
@@ -69,75 +69,104 @@ public class LineSelectDialog : MonoBehaviour, IPanel
         if (title != null) title.text = $"选择 T{layer + 1} 要装备的线";
         lastAnchorButton = anchorButton;
         CreateBlocker();
-        panelManager?.OpenPanel(gameObject);
+
+        // 顺序关键：定位必须在 OpenPanel 之前。
+        // 本物体挂了 UIPanelMotion(打开=从屏幕外滑入)，PanelManager.OpenPanel → PlayOpen 内部会把
+        // 当时的 anchoredPosition 当目标摆位(只缓存一次)并 tween 过去；若先 OpenPanel 再定位，
+        // 这次算好的位置会被 tween 覆盖、滑回上一次缓存的旧摆位(anchoredPosition 的含义还随 anchor 一起变)
+        // → 对话框落在屏幕外。动态面板约定：PlayOpen 前先 SetHomePosition(PositionBelow 末尾已调)。
         PositionBelow(anchorButton);
+
+        panelManager?.OpenPanel(gameObject);
     }
 
-    /// <summary>把对话框定位到 slot 附近：以 slot 左上角为锚点，宽度=slot 宽，高度用 fixedSize.y。
-    /// 越界自动翻转：超底往上、超右往左。</summary>
+    /// <summary>
+    /// 把对话框摆到触发槽位旁边（只写位置，尺寸/锚点/Pivot 全取场景里摆好的值，与 UITooltip 同口径）：
+    ///   默认：框左上角对齐槽位左上角 + offsetBelow（x 右移，y 负值=下移），向下展开；
+    ///   下方放不下 → 翻到槽位上方（框底边贴槽位上边，偏移量同口径反向）；顶到边仍放不下 → 夹住；
+    ///   右侧放不下 → 框右边缘对齐槽位右边缘往左展开；左侧放不下 → 夹住。
+    /// 尺寸读 sizeDelta（固定尺寸摆好的，不吃布局系统），所以框多大由 Inspector 决定。
+    /// 前提：本物体 anchor 必须是固定锚点（anchorMin == anchorMax，如 Center），stretch 下 anchoredPosition 的含义不同。
+    /// </summary>
     private void PositionBelow(RectTransform anchorButton)
     {
+        // 面板常驻 inactive，Awake 要等第一次 SetActive 才执行 → 这里懒取，不能依赖 Awake 已赋值
+        if (selfRect == null) selfRect = (RectTransform)transform;
+        if (motion == null) motion = GetComponent<UIPanelMotion>();
         if (anchorButton == null || selfRect == null) return;
 
-        // 锚点对齐 0,0，由代码控制位置；尺寸：宽=slot宽，高=手动
-        selfRect.anchorMin = Vector2.zero;
-        selfRect.anchorMax = Vector2.zero;
+        RectTransform parentRect = selfRect.parent as RectTransform;
+        if (parentRect == null) return;
 
         Canvas canvas = GetComponentInParent<Canvas>();
         if (canvas == null) return;
+        Camera cam = canvas.renderMode != RenderMode.ScreenSpaceOverlay ? canvas.worldCamera : null;
 
-        RectTransform parentRect = (RectTransform)selfRect.parent;
-        float slotW = anchorButton.rect.width * anchorButton.lossyScale.x;
-        float slotH = anchorButton.rect.height * anchorButton.lossyScale.y;
-        float w = slotW;                 // 宽度跟随 slot
-        float h = fixedSize.y;           // 高度手动
-        selfRect.sizeDelta = new Vector2(w, h);
+        // 尺寸：读场景摆好的固定尺寸，代码不设
+        Vector2 size = selfRect.sizeDelta;
+        float w = size.x;
+        float h = size.y;
 
-        // 取 slot 四角世界坐标: [0]=左下 [1]=左上 [2]=右上 [3]=右下
+        // 槽位四角 → 屏幕坐标：[0]=左下 [1]=左上 [2]=右上 [3]=右下
         Vector3[] corners = new Vector3[4];
         anchorButton.GetWorldCorners(corners);
-        Vector2 topLeft;
-        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                parentRect,
-                RectTransformUtility.WorldToScreenPoint(canvas.worldCamera, corners[1]),
-                canvas.worldCamera, out topLeft))
+        Vector2 slotBL = RectTransformUtility.WorldToScreenPoint(cam, corners[0]);
+        Vector2 slotTL = RectTransformUtility.WorldToScreenPoint(cam, corners[1]);
+        Vector2 slotBR = RectTransformUtility.WorldToScreenPoint(cam, corners[3]);
+        float slotLeft = Mathf.Min(slotBL.x, slotTL.x);
+        float slotTop = Mathf.Max(slotBL.y, slotTL.y);
+        float slotRight = Mathf.Max(slotBR.x, RectTransformUtility.WorldToScreenPoint(cam, corners[2]).x);
+
+        float sw = Screen.width;
+        float sh = Screen.height;
+
+        // 默认：左上角对齐槽位左上角 + 偏移，向下展开
+        float left = slotLeft + offsetBelow.x;
+        float top = slotTop + offsetBelow.y;
+
+        // 下方放不下 → 翻到槽位上方
+        if (top - h < 0f)
+        {
+            float bottom = slotBL.y - offsetBelow.y;   // 框底边贴槽位下边，偏移量反向
+            top = bottom + h;
+            if (top > sh) top = sh;                    // 仍超顶 → 夹住
+        }
+
+        // 右侧放不下 → 右边缘对齐槽位右边缘往左展开
+        if (left + w > sw)
+        {
+            left = slotRight - w;
+            if (left < 0f) left = 0f;
+        }
+        if (left < 0f) left = 0f;
+
+        // 框的 Pivot 点（屏幕坐标）→ 父级局部坐标
+        Vector2 pivotScreen = new Vector2(
+            left + selfRect.pivot.x * w,
+            top - (1f - selfRect.pivot.y) * h);
+
+        Vector2 localPoint;
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(parentRect, pivotScreen, cam, out localPoint))
             return;
 
-        // ScreenPointToLocalPointInRectangle 返回相对父级 pivot(中心)的坐标，
-        // 而 anchoredPosition(anchor=0,0) 需要相对父级左下角的坐标 → 补 pivot 偏移
-        Vector2 pivotOffset = new Vector2(
-            parentRect.pivot.x * parentRect.rect.width,
-            parentRect.pivot.y * parentRect.rect.height);
-        topLeft += pivotOffset;
+        // anchoredPosition 的基准 = 父矩形内按自身 anchor 比例算出的参考点（与 UITooltip.Place 同算法）
+        Vector2 anchorRef = parentRect.rect.min + Vector2.Scale(selfRect.anchorMin, parentRect.rect.size);
+        Vector2 pos = localPoint - anchorRef;
 
-        // 父级（Canvas）可视区域尺寸
-        Vector2 viewSize = parentRect.rect.size;
+        selfRect.anchoredPosition = pos;
 
-        // 默认：左上角对齐 slot 左上角，向下展开
-        selfRect.pivot = new Vector2(0f, 1f); // 左上角为锚，向下展开
-        float x = topLeft.x + offsetBelow.x;
-        float y = topLeft.y + offsetBelow.y;
-
-        // 水平越界：超出右侧 → 右边缘对齐 slot 右边缘往左展开；再超左则钳制
-        if (x + w > viewSize.x)
-        {
-            x = topLeft.x + slotW - w - offsetBelow.x;
-            if (x < 0f) x = 0f;
-        }
-
-        // 垂直越界：超出底部 → 翻到 slot 上方（pivot 改左下，向上展开）
-        if (y - h < 0f)
-        {
-            selfRect.pivot = new Vector2(selfRect.pivot.x, 0f); // 左下角为锚，向上展开
-            y = topLeft.y - slotH - offsetBelow.y;              // 底部贴 slot 顶部之上
-            if (y + h > viewSize.y)
-                y = viewSize.y - h; // 仍超顶则钳制
-        }
-
-        selfRect.anchoredPosition = new Vector2(x, y);
+        // 登记本次摆位为「家」：UIPanelMotion 的 PlayOpen 从这里滑入、PlayClose 向这里滑出。
+        // 动态面板必须每次 Show 重设，否则会滑回首次缓存的旧摆位。
+        motion?.SetHomePosition(pos);
     }
 
-    /// <summary>创建全屏透明遮挡层：点击对话框外区域关闭。插入到对话框之下，不影响对话框内按钮点击。</summary>
+    /// <summary>
+    /// 创建全屏透明遮挡层：面板显示期间点面板外任意位置都关闭它。
+    /// 父级取对话框自己的父级(不是 Canvas)：blocker 插在对话框前一个 sibling =
+    /// 渲染在对话框之下、其余 UI 之上，点框外任何位置都先落到 blocker，
+    /// 既不会被下层 UI 先吃掉点击，也不会误触其它按钮。
+    /// (挂到 Canvas 下时 SetSiblingIndex 的索引语义对不上，会出现「时好时坏」。)
+    /// </summary>
     private void CreateBlocker()
     {
         if (blocker != null)
@@ -146,16 +175,19 @@ public class LineSelectDialog : MonoBehaviour, IPanel
             return;
         }
 
-        Canvas canvas = GetComponentInParent<Canvas>();
-        if (canvas == null) return;
+        if (selfRect == null) selfRect = (RectTransform)transform;
+        RectTransform parentRect = selfRect != null ? selfRect.parent as RectTransform : null;
+        if (parentRect == null) return;
 
         blocker = new GameObject("LineSelectBlocker");
-        blocker.transform.SetParent(canvas.transform, false);
+        blocker.transform.SetParent(parentRect, false);
 
         RectTransform rt = blocker.AddComponent<RectTransform>();
         rt.anchorMin = Vector2.zero;
         rt.anchorMax = Vector2.one;
         rt.sizeDelta = Vector2.zero;
+        rt.anchoredPosition = Vector2.zero;
+        rt.pivot = new Vector2(0.5f, 0.5f);
 
         Image img = blocker.AddComponent<Image>();
         img.color = new Color(0f, 0f, 0f, 0f); // 全透明，仅拦截点击
@@ -164,6 +196,7 @@ public class LineSelectDialog : MonoBehaviour, IPanel
         Button btn = blocker.AddComponent<Button>();
         btn.transition = Selectable.Transition.None;
         btn.onClick.AddListener(Hide);
+
 
         // 插到对话框之下：对话框先渲染，blocker 在下层只接未被对话框覆盖的点击
         blocker.transform.SetSiblingIndex(transform.GetSiblingIndex());

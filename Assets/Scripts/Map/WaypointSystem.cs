@@ -272,7 +272,12 @@ public class WaypointSystem : MonoBehaviour
         // 再由 Update 在 IsTeleporting 期间每帧重申(只锁一次会被面板关闭回调覆盖)。
         PanelManager.Instance?.CloseTopPanel();
         PlayerController pcLock = PlayerController.Instance;
-        if (pcLock != null) pcLock.InputEnabled = false;
+        if (pcLock != null)
+        {
+            // 过场断点:传送前按下的预输入/跳跃意图一律作废,不跨黑场补发(2026-09-23 saika 定)
+            pcLock.ClearInputBuffers();
+            pcLock.InputEnabled = false;
+        }
 
         StartCoroutine(TeleportFlow(targetAreaId, ignoreCombat, bk));
     }
@@ -302,6 +307,25 @@ public class WaypointSystem : MonoBehaviour
     }
 
     /// <summary>
+    /// 按目标区根上的 AreaMusicSlot 切场景音乐(CrossFadeTo 内部就是三段式:淡出 → 静音 → 淡入)。
+    /// 取不到目标区根 / 区没挂 AreaMusicSlot / 槽位没配曲 → 不动当前音乐(与管道换区口径一致)。
+    /// </summary>
+    private static void SwitchAreaMusic(string targetAreaId)
+    {
+        MusicPointManager music = MusicPointManager.Instance;
+        ZoneManager zm = ZoneManager.Instance;
+        if (music == null || zm == null || string.IsNullOrEmpty(targetAreaId)) return;
+
+        GameObject targetRoot = zm.GetAreaRoot(targetAreaId);
+        if (targetRoot == null) return;
+
+        AreaMusicSlot slot = targetRoot.GetComponentInChildren<AreaMusicSlot>(true);
+        if (slot == null || slot.AreaMusic == null) return;
+
+        music.CrossFadeTo(slot.AreaMusic);
+    }
+
+    /// <summary>
     /// 传送执行协程(宿主 = 本组件,场景根常驻):调用黑场幕布 Run(淡出→全黑回调→淡入)。
     /// 全黑回调内按方案 §3.6 顺序执行:锁输入 → (死亡入口 Revive 留 T6) → 取锚点(无则中止回滚)
     /// → PlayerTeleport 落点 → VCam warp → 区显隐 → NotifyAreaEntered(AutoSave) → 关面板。
@@ -316,6 +340,12 @@ public class WaypointSystem : MonoBehaviour
             IsTeleporting = false;
             yield break;
         }
+
+        // 场景音乐随目标区切(三段式:淡出 → 静音 → 淡入,时长在 MusicPointManager 上配)。
+        // 与管道换区同一口径:读目标区根的 AreaMusicSlot;目标区没配槽 / 目标曲就是当前曲
+        //(同区传送)时 CrossFadeTo 内部直接返回,音乐不打断。
+        // 音乐序列(默认 2+2+2=6 秒)独立于黑场(0.5 秒),所以流程一开始就发起,不等黑场。
+        SwitchAreaMusic(targetAreaId);
 
         // 旧当前区:在 onFullyBlack 里改区前记录(NotifyAreaEntered 会覆盖 CurrentAreaId)
         string oldAreaId = ZoneManager.Instance != null ? ZoneManager.Instance.CurrentAreaId : null;
@@ -407,7 +437,12 @@ public class WaypointSystem : MonoBehaviour
             onDone: () =>
             {
                 // 兜底恢复输入(PanelManager 关面板时已恢复;此处双保险防异常路径锁死)
-                if (pc != null) pc.InputEnabled = true;
+                if (pc != null)
+                {
+                    // 黑场期间(含面板关闭那几帧把输入改回 true)记下的意图一律作废,不带出过场
+                    pc.ClearInputBuffers();
+                    pc.InputEnabled = true;
+                }
                 IsTeleporting = false;
             });
 

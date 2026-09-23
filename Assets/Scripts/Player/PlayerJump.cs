@@ -86,12 +86,27 @@ public class PlayerJump : MonoBehaviour
         jumpBufferTimer = jumpBufferWindow;
     }
 
-    /// <summary>跳跃缓冲递减:>0 时尝试补跳。返回 true 表示已跳起(调用方切换 JumpState);
-    /// 翻顶时返回 false(TryVault 已传送完成,不再需要 JumpState)。</summary>
+    /// <summary>缓冲窗口倒计时(每帧,由 PlayerController.OnUpdate 顶部无条件调用)。
+    /// 递减必须由外部每帧驱动:输入锁(进管道自动移动 / 传送黑场)与攻击等 LocksInput 状态期间
+    /// OnUpdate 会提前 return,若递减还留在 UpdateJumpBuffer 里(只有 Idle/Move/Jump/Fall 调),
+    /// 窗口会被整段冻住 → 出管道后补跳一个早已过期的意图(2026-09-23 saika 报"保留太久")。</summary>
+    public void TickJumpBuffer()
+    {
+        if (jumpBufferTimer <= 0f) return;
+        jumpBufferTimer -= Time.deltaTime;
+        if (jumpBufferTimer < 0f) jumpBufferTimer = 0f;
+    }
+
+    /// <summary>立刻清掉跳跃缓冲(过场断点:进管道 / 传送黑场用,跨过场不补跳)</summary>
+    public void ClearJumpBuffer()
+    {
+        jumpBufferTimer = 0f;
+    }
+
+    /// <summary>跳跃缓冲消费:窗口内(倒计时由 TickJumpBuffer 每帧做)则尝试补跳。
+    /// 返回 true 表示已跳起(调用方切换 JumpState);翻顶时返回 false(已传送完成,不再需要 JumpState)。</summary>
     public bool UpdateJumpBuffer(PlayerController owner)
     {
-        if (jumpBufferTimer <= 0f) return false;
-        jumpBufferTimer -= Time.deltaTime;
         if (jumpBufferTimer <= 0f) return false;
 
         // [2026-09-07 翻顶废弃:统一 PlayerStepClimb,不再 TryVault] 跳跃缓冲命中 → 正常起跳
