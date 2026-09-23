@@ -1048,5 +1048,129 @@ public static class ParticleFXGenerator
             new[] { new GradientColorKey(headColor, 0f), new GradientColorKey(headColor, 1f) },
             new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0.85f, 0.6f), new GradientAlphaKey(0f, 1f) });
         return g;
+    }
+    // ==================== UI 层:鼠标拖尾 ====================
+    // 走 UIParticle 用。粒子的世界单位 = UI 世界单位(Overlay Canvas 下 1 单位 ≈ 1 参考分辨率像素),
+    // 所以尺寸/速度是十几~几十,不是世界空间特效那种 0.x。材质必须是 UI 着色器(UI/Additive)。
+
+    private const string UITrailMatPath = "Assets/Graphics/VFX/UI_MouseTrail.mat";
+    private const string UITrailTexPath = "Assets/Epic Toon FX/Textures/glow.png";
+
+    [MenuItem("Tools/粒子特效/UI/鼠标拖尾")]
+    public static void CreateUIMouseTrail()
+    {
+        string path = OutputDir + "/UI_MouseTrail.prefab";
+
+        if (!AssetDatabase.IsValidFolder(OutputDir))
+        {
+            Debug.LogError("[ParticleFXGenerator] 输出目录不存在:" + OutputDir);
+            return;
+        }
+        // 不 DeleteAsset:已存在时覆盖保存(保 guid,UIParticle 已引用的实例不断)
+
+        Material mat = EnsureUITrailMaterial();
+        if (mat == null) return;
+
+        GameObject root = new GameObject("UI_MouseTrail");
+        ParticleSystem ps = CreateChildParticle(root.transform, "Trail", UITrailMatPath);
+        ConfigureUIMouseTrail(ps);
+
+        GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, path);
+        Object.DestroyImmediate(root);
+
+        if (prefab != null)
+        {
+            EditorGUIUtility.PingObject(prefab);
+            Selection.activeObject = prefab;
+            Debug.Log("[ParticleFXGenerator] 已生成:" + path + "  材质:" + UITrailMatPath, prefab);
+        }
+        else
+        {
+            Debug.LogError("[ParticleFXGenerator] prefab 保存失败:" + path);
+        }
+    }
+
+    /// <summary>UI 粒子材质:UI/Additive(UIParticle 包自带,加算发光),没有就建一份,不覆盖已有。</summary>
+    private static Material EnsureUITrailMaterial()
+    {
+        Material exist = AssetDatabase.LoadAssetAtPath<Material>(UITrailMatPath);
+        if (exist != null) return exist;
+
+        Shader sh = Shader.Find("UI/Additive");
+        if (sh == null)
+        {
+            Debug.LogError("[ParticleFXGenerator] 找不到 UI/Additive 着色器,确认 com.coffee.ui-particle 已装(包内 Shaders/UIAdditive.shader)");
+            return null;
+        }
+
+        if (!AssetDatabase.IsValidFolder("Assets/Graphics/VFX"))
+            AssetDatabase.CreateFolder("Assets/Graphics", "VFX");
+
+        Material mat = new Material(sh);
+        mat.name = "UI_MouseTrail";
+        Texture tex = AssetDatabase.LoadAssetAtPath<Texture>(UITrailTexPath);
+        if (tex != null) mat.SetTexture("_MainTex", tex);
+        mat.SetColor("_Color", Color.white);
+
+        AssetDatabase.CreateAsset(mat, UITrailMatPath);
+        AssetDatabase.SaveAssets();
+        Debug.Log("[ParticleFXGenerator] 已生成材质:" + UITrailMatPath);
+        return AssetDatabase.LoadAssetAtPath<Material>(UITrailMatPath);
+    }
+
+    /// <summary>
+    /// 鼠标拖尾:光点沿鼠标路径洒落、原地淡出(常见鼠标拖尾)。
+    /// 全在 World 模拟空间,粒子脱离发射器留在原地才有尾巴;Local 的话粒子跟着鼠标走,看不到拖尾。
+    /// 发射速率随时间(停着也在冒),不做 burst。挂在跟随鼠标的 RectTransform 下,和 UIParticle 同一个物体。
+    /// </summary>
+    private static void ConfigureUIMouseTrail(ParticleSystem ps)
+    {
+        ParticleSystem.MainModule main = ps.main;
+        main.duration = 5f;
+        main.loop = true;
+        main.playOnAwake = true;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.45f, 0.8f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(8f, 26f);
+        main.startSize = new ParticleSystem.MinMaxCurve(12f, 26f);
+        main.startColor = new Color(1f, 0.9f, 0.65f, 0.9f);
+        main.startRotation = new ParticleSystem.MinMaxCurve(0f, 6.2831853f);
+        main.simulationSpace = ParticleSystemSimulationSpace.World; // 关键:留尾
+        main.gravityModifier = 0f;
+        main.maxParticles = 400;
+        main.useUnscaledTime = true; // \u65f6\u95f4\u7f29\u653e\u4e3a 0(\u9762\u677f\u6682\u505c)\u65f6\u4e0d\u51bb\u7ed3
+
+        // 停着也在冒
+        ParticleSystem.EmissionModule emission = ps.emission;
+        emission.enabled = true;
+        emission.rateOverTime = new ParticleSystem.MinMaxCurve(50f);
+
+        // 鼠标点周围小范围洒,不是一个针尖喷
+        ParticleSystem.ShapeModule shape = ps.shape;
+        shape.enabled = true;
+        shape.shapeType = ParticleSystemShapeType.Sphere;
+        shape.radius = 6f;
+
+        ParticleSystem.ColorOverLifetimeModule color = ps.colorOverLifetime;
+        color.enabled = true;
+        color.color = new ParticleSystem.MinMaxGradient(MakeFadeGradient(new Color(1f, 0.9f, 0.65f)));
+
+        ParticleSystem.SizeOverLifetimeModule size = ps.sizeOverLifetime;
+        size.enabled = true;
+        size.size = new ParticleSystem.MinMaxCurve(1f, new AnimationCurve(
+            new Keyframe(0f, 1f), new Keyframe(1f, 0.35f)));
+
+        // 每粒子小拖尾:光点看着像小流星,不是圆点
+        ParticleSystem.TrailModule trails = ps.trails;
+        trails.enabled = true;
+        trails.mode = ParticleSystemTrailMode.PerParticle;
+        trails.lifetime = 0.25f;
+        trails.minVertexDistance = 0.5f;
+        trails.widthOverTrail = new ParticleSystem.MinMaxCurve(1f, new AnimationCurve(
+            new Keyframe(0f, 0.6f), new Keyframe(1f, 0f)));
+        trails.colorOverTrail = new ParticleSystem.MinMaxGradient(MakeFadeGradient(new Color(1f, 0.92f, 0.7f)));
+        trails.dieWithParticles = true;
+
+        ParticleSystemRenderer rend = ps.GetComponent<ParticleSystemRenderer>();
+        rend.trailMaterial = rend.sharedMaterial; // 不设拖尾不显示
     }
 }

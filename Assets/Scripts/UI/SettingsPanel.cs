@@ -10,6 +10,7 @@ using UnityEngine.UI;
 ///   SettingsPanel > BTN > Btn_Volume / Btn_Video
 ///   SettingsPanel > Grp_Volume > Master+Sld_Master / BGM+Sld_BGM / SFX+Sld_SFX
 ///   SettingsPanel > Grp_Video > Fullscreen+Toggle / Dd_Resolution+Dropdown(TMP_Dropdown)
+///   SettingsPanel > Grp_Video > 帧率四个 Toggle(垂直同步/30/60/120,四选一互斥,拖各自 Toggle 子物体)
 ///   SettingsPanel > Btn_Back
 /// 行为：
 ///   - 页签互斥：Btn_Volume → Grp_Volume 显示 / Grp_Video 隐藏；Btn_Video 反向；OnEnable 默认画面页
@@ -51,11 +52,27 @@ public class SettingsPanel : MonoBehaviour, IPanel, ISlideClose
     [Tooltip("分辨率下拉（1920x1080/1600x900/1280x720/1280x800，选项已在场景配好不得改动）")]
     [SerializeField] private TMP_Dropdown resolutionDropdown;
 
+    [Header("帧率(四选一,互相排斥)")]
+    [Tooltip("垂直同步档开关(帧率跟显示器刷新率)")]
+    [SerializeField] private Toggle frameRateVSyncToggle;
+    [Tooltip("30 帧档开关")]
+    [SerializeField] private Toggle frameRate30Toggle;
+    [Tooltip("60 帧档开关")]
+    [SerializeField] private Toggle frameRate60Toggle;
+    [Tooltip("120 帧档开关")]
+    [SerializeField] private Toggle frameRate120Toggle;
+
     [Header("返回")]
     [Tooltip("返回按钮 → 关闭当前页（关闭动效由 UIPanelMotion 承担，PauseMenu 回一级）")]
     [SerializeField] private Button backButton;
     [Tooltip("PauseMenu 引用（拖 PauseMenu 物体）：本面板关闭后菜单回一级（ReturnToLevel1）")]
     [SerializeField] private PauseMenu pauseMenu;
+
+    /// <summary>当前帧率档位(四选一,与四个开关状态一一对应)</summary>
+    private int _frameRateMode;
+
+    /// <summary>同步四个开关时置真:屏蔽 onValueChanged,防止互斥赋值互相触发</summary>
+    private bool _syncingFrameRateToggles;
 
     private void Awake()
     {
@@ -73,6 +90,10 @@ public class SettingsPanel : MonoBehaviour, IPanel, ISlideClose
         if (sfxSlider != null) sfxSlider.onValueChanged.AddListener(OnSfxChanged);
         if (fullscreenToggle != null) fullscreenToggle.onValueChanged.AddListener(OnFullscreenChanged);
         if (resolutionDropdown != null) resolutionDropdown.onValueChanged.AddListener(OnResolutionChanged);
+        if (frameRateVSyncToggle != null) frameRateVSyncToggle.onValueChanged.AddListener(OnFrameRateVSyncChanged);
+        if (frameRate30Toggle != null) frameRate30Toggle.onValueChanged.AddListener(OnFrameRate30Changed);
+        if (frameRate60Toggle != null) frameRate60Toggle.onValueChanged.AddListener(OnFrameRate60Changed);
+        if (frameRate120Toggle != null) frameRate120Toggle.onValueChanged.AddListener(OnFrameRate120Changed);
         if (backButton != null) backButton.onClick.AddListener(OnBackClicked);
 
         // OnEnable 默认画面页（Grp_Volume 隐藏 / Grp_Video 显示）
@@ -98,6 +119,10 @@ public class SettingsPanel : MonoBehaviour, IPanel, ISlideClose
         if (sfxSlider != null) sfxSlider.onValueChanged.RemoveListener(OnSfxChanged);
         if (fullscreenToggle != null) fullscreenToggle.onValueChanged.RemoveListener(OnFullscreenChanged);
         if (resolutionDropdown != null) resolutionDropdown.onValueChanged.RemoveListener(OnResolutionChanged);
+        if (frameRateVSyncToggle != null) frameRateVSyncToggle.onValueChanged.RemoveListener(OnFrameRateVSyncChanged);
+        if (frameRate30Toggle != null) frameRate30Toggle.onValueChanged.RemoveListener(OnFrameRate30Changed);
+        if (frameRate60Toggle != null) frameRate60Toggle.onValueChanged.RemoveListener(OnFrameRate60Changed);
+        if (frameRate120Toggle != null) frameRate120Toggle.onValueChanged.RemoveListener(OnFrameRate120Changed);
         if (backButton != null) backButton.onClick.RemoveListener(OnBackClicked);
     }
 
@@ -185,6 +210,42 @@ public class SettingsPanel : MonoBehaviour, IPanel, ISlideClose
         Screen.SetResolution(w, h, Screen.fullScreen);
     }
 
+    private void OnFrameRateVSyncChanged(bool isOn) => OnFrameRateChanged(FrameRateLimit.ModeVSync, isOn);
+    private void OnFrameRate30Changed(bool isOn) => OnFrameRateChanged(FrameRateLimit.Mode30, isOn);
+    private void OnFrameRate60Changed(bool isOn) => OnFrameRateChanged(FrameRateLimit.Mode60, isOn);
+    private void OnFrameRate120Changed(bool isOn) => OnFrameRateChanged(FrameRateLimit.Mode120, isOn);
+
+    /// <summary>
+    /// 帧率四选一:点谁谁生效,其余自动取消并立即应用 + 存档。
+    /// isOn=false 只可能是被点掉(或代码同步),此时不切换,直接把当前档的勾补回来,避免出现"四个都没选"。
+    /// </summary>
+    private void OnFrameRateChanged(int mode, bool isOn)
+    {
+        if (_syncingFrameRateToggles) return;
+
+        if (!isOn)
+        {
+            SyncFrameRateToggles(_frameRateMode);   // 不允许全不选
+            return;
+        }
+
+        _frameRateMode = mode;
+        FrameRateLimit.Apply(mode);
+        SyncFrameRateToggles(mode);
+        SaveToPrefs();
+    }
+
+    /// <summary>把四个开关刷成"只有 mode 这一档勾着"(同步期间屏蔽回调,防递归)</summary>
+    private void SyncFrameRateToggles(int mode)
+    {
+        _syncingFrameRateToggles = true;
+        if (frameRateVSyncToggle != null) frameRateVSyncToggle.isOn = mode == FrameRateLimit.ModeVSync;
+        if (frameRate30Toggle != null) frameRate30Toggle.isOn = mode == FrameRateLimit.Mode30;
+        if (frameRate60Toggle != null) frameRate60Toggle.isOn = mode == FrameRateLimit.Mode60;
+        if (frameRate120Toggle != null) frameRate120Toggle.isOn = mode == FrameRateLimit.Mode120;
+        _syncingFrameRateToggles = false;
+    }
+
     private void OnBackClicked()
     {
         // 游戏内（SampleScene）：PanelManager 在 → 走栈管理 CloseTopPanel
@@ -215,6 +276,10 @@ public class SettingsPanel : MonoBehaviour, IPanel, ISlideClose
         if (sfxSlider != null) sfxSlider.value = data.sfx;
         if (fullscreenToggle != null) fullscreenToggle.isOn = data.fullscreen;
 
+        // 帧率档位:按存档把四个开关摆好(不做 Apply —— 启动时 AudioManager.Awake 已按存档应用过)
+        _frameRateMode = data.frameRateMode;
+        SyncFrameRateToggles(_frameRateMode);
+
         if (resolutionDropdown != null)
         {
             int index = data.resolutionIndex;
@@ -233,7 +298,8 @@ public class SettingsPanel : MonoBehaviour, IPanel, ISlideClose
             bgm = bgmSlider != null ? bgmSlider.value : 1f,
             sfx = sfxSlider != null ? sfxSlider.value : 1f,
             fullscreen = fullscreenToggle != null ? fullscreenToggle.isOn : Screen.fullScreen,
-            resolutionIndex = resolutionDropdown != null ? resolutionDropdown.value : 0
+            resolutionIndex = resolutionDropdown != null ? resolutionDropdown.value : 0,
+            frameRateMode = _frameRateMode
         };
         AudioManager.SaveSettings(data);
     }

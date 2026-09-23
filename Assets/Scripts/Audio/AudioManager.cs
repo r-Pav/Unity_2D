@@ -14,6 +14,9 @@ public class GameSettingsData
     public float sfx = 1f;
     public bool fullscreen = true;
     public int resolutionIndex = 0;
+
+    /// <summary>帧率档位:0=垂直同步,1=30,2=60,3=120(JsonUtility 旧档缺字段时取 0)
+    public int frameRateMode = 0;
 }
 
 /// <summary>
@@ -109,6 +112,7 @@ public class AudioManager : MonoBehaviour
         GameSettingsData data = LoadSettings();
         SetVolumes(data.master, data.bgm, data.sfx);
         CreateSfxPool();
+        FrameRateLimit.Apply(data.frameRateMode);   // 帧率档位(常驻单例最早 Awake执行)
     }
 
     /// <summary>自清单例引用：Instance 不再需要 Find 兜底(销毁后静态字段不留脏引用；重复实例自毁时 _instance != this 不会误清)</summary>
