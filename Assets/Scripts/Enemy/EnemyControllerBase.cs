@@ -2992,7 +2992,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
         passiveEquipManager?.SetCombatState(true);
 
-        AttackingStat.Instance?.Notify(true);   // 敌人仇恨 → 玩家 attackingStat(管道空气墙由它驱动)
+        AttackingStat.Instance?.Notify(true, this);   // 敌人仇恨 → 玩家 attackingStat(管道空气墙由它驱动)
 
     }
 
@@ -3010,7 +3010,7 @@ public abstract class EnemyControllerBase : CharacterBase, ICombatant
 
         passiveEquipManager?.SetCombatState(false);
 
-        AttackingStat.Instance?.Notify(false);  // 脱战/死亡 → attackingStat 减计数
+        AttackingStat.Instance?.Notify(false, this);  // 脱战/死亡 → attackingStat 减计数
 
 
 

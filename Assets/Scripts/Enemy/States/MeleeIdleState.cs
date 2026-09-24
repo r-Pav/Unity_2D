@@ -17,7 +17,9 @@ public class MeleeIdleState : EntityState
         var me = (EnemyMeleeController)owner;
         timer = Random.Range(1f, 2.5f);
         me.moveInput = 0f;
-        me.OnExitCombatState();
+        // [2026-09-24] 不在这里清仇恨:Idle 是战斗内待机(本状态 OnUpdate 看到玩家就转 Chase)。
+        // 若在此 OnExitCombatState,攻击结束→Idle→立刻脱战→下一帧又 Chase,一刀一循环(战斗相机/管道实心跟着闪)。
+        // 仇恨统一由 Patrol.OnEnter(真正回巡逻)清。
         // me.ApplyStateColor(new Color(0.6f, 0.6f, 0.6f));  // [状态色已移除]
     }
 

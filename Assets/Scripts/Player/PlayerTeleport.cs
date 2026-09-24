@@ -95,7 +95,10 @@ public class PlayerTeleport : MonoBehaviour
                 foreach (Vector2 candidateDir in dirs)
                 {
                     Vector2 candidate = dest + candidateDir * d;
-                    if (!IsBlocked(candidate))
+                    // 候选点除了自己那圈不重叠,还得与请求落点之间不穿墙层:
+                    // 只判前一条会把落点推到墙/柱子另一边(2026-09-24 连音:玩家落点请求 (30.20,-18.13) 被外推到
+                    // (31.95,-18.13),与敌人之间隔着一块砖 → 看着两人分居两块地形)。
+                    if (!IsBlocked(candidate) && IsPathClear(dest, candidate))
                         return candidate;
                 }
             }
@@ -105,4 +108,25 @@ public class PlayerTeleport : MonoBehaviour
 
     private bool IsBlocked(Vector2 point)
         => Physics2D.OverlapCircle(point, probeRadius, wallMask) != null;
+
+    /// <summary>
+    /// 直线通路校验:from → to 之间不能穿过墙层(Ground=3 + Wall=11 + Channel=16)。
+    /// 贴墙外推的候选点必须过这一条,否则会把落点推到墙/柱子/那层地板的另一边
+    /// (2026-09-24 连音把玩家落在与敌人隔着地形的空位上)。
+    /// RaycastAll 跳过玩家自身 collider:from 是落点坐标,一般不在自身碰撞体内,兜底用。
+    /// </summary>
+    private bool IsPathClear(Vector2 from, Vector2 to)
+    {
+        Vector2 delta = to - from;
+        float dist = delta.magnitude;
+        if (dist < 0.01f) return true;
+        RaycastHit2D[] hits = Physics2D.RaycastAll(from, delta / dist, dist, wallMask);
+        foreach (RaycastHit2D hit in hits)
+        {
+            if (hit.collider == null) continue;
+            if (hit.transform == transform || hit.transform.IsChildOf(transform)) continue;   // 跳过玩家自身
+            return false;
+        }
+        return true;
+    }
 }
