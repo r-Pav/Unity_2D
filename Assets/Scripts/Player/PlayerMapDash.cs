@@ -75,7 +75,7 @@ public class PlayerMapDash : MonoBehaviour
     /// <summary>
     /// 对指定元素执行一次地图元素冲刺。成功返回 true,任何守卫不通过返回 false(调用方据此走原背刺/空挥路径)。
     /// 流程:空引用/就绪守卫 → 算推进方向(元素在玩家哪一侧,长度≈0 时按朝向兜底)
-    ///      → 落点 = 元素(特效)位置本身 → TeleportTo → 给一次水平冲力(dashSpeed) → 残影 → 特效 → 元素收判定环 + 进 CD
+    ///      → 落点 = 元素(特效)位置本身 → TeleportTo → 给一次水平冲力(dashSpeed) + 朝向转向元素 → 残影 → 特效 → 元素收判定环 + 进 CD
     ///      → 空中触发则起缓落。全程无伤害、不进状态。
     /// </summary>
     /// <param name="point">目标地图元素(由 MapDashPoint.TryFindNearest 选出);null 或 CD 中直接失败</param>
@@ -122,6 +122,13 @@ public class PlayerMapDash : MonoBehaviour
         //     TeleportTo 已把速度清零,故这里直接赋值;只写 x,垂直分量保持不动。
         if (rb != null)
             rb.velocity = new Vector2(dir.x * dashSpeed, rb.velocity.y);
+
+        // 4c. 朝向 = 冲刺方向(saika 2026-09-24 定:冲刺后朝元素方向,不再保持原朝向)。
+        //     dir 已经是「玩家 → 元素」,取水平分量符号转身;几乎正上/正下(|dir.x| ≈ 0)时不动。
+        //     与背刺追击落点的口径一致(PlayerController :1002 用同一个 UpdateFacing)。
+        //     这里晚于 Update 里的输入朝向 → 同帧不会被覆盖;下一帧玩家按方向键由输入接管。
+        if (_pc != null && Mathf.Abs(dir.x) > 0.01f)
+            _pc.UpdateFacing(dir.x);
 
         // 5. 残影(重入安全:StartTail 内部先停旧协程)
         if (_ghostTrail != null)

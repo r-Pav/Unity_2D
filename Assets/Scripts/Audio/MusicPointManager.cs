@@ -8,6 +8,7 @@ using UnityEngine;
 /// P2:音乐点排程(协程按点表等点,事件驱动,无每帧业务轮询)+ 查询接口。
 /// P1:场景模式单源播放(loop=true 播完重复);P4 管道 CrossFadeTo;P5 Boss 双源交叠循环。
 /// 时钟唯一参照 = 当前主源 AudioSource.time,不做系统计时累加。
+/// P2(音乐收口):进战斗切本区战斗曲、脱战从断点接回场景曲,断点只在内存(见 EnterBattleMusic/ExitBattleMusic)。
 /// 排程(多窗口模型):每个标点各自独立计时,在自己的 [点-lead-半宽, 点-lead+半宽] 区间活跃,
 /// 前一个点关窗不阻塞后一个点开窗 → 相邻/重叠标点可同时处于活跃(连音背刺的前提)。
 /// 事件 OnWindowEnter(point)/OnWindowPassed(point) 每个点各发一次,重叠时按时间顺序各发各的。
@@ -32,6 +33,9 @@ public class MusicPointManager : MonoBehaviour
     [Header("曲目")]
     [Tooltip("场景初始曲(场景加载自动播)")]
     [SerializeField] private MusicTrackData initialTrack;
+
+    [Tooltip("区域音乐表(每区 = 场景曲 + 战斗曲):管道换区/石碑传送按地区 id 查表切场景曲;未拖表 → 调用方走旧配置回退")]
+    [SerializeField] private AreaMusicTable areaMusicTable = null;
 
     [Header("音频源")]
     [Tooltip("BGM 源 A(场景模式主源;两源都拖进 AudioManager.bgmSources 走音量)")]
@@ -108,6 +112,26 @@ public class MusicPointManager : MonoBehaviour
     private double _dspAnchor;           // 时基:dsp 锚点(本段音乐时刻 0 对应的 AudioSettings.dspTime)
     private bool _clockPending = true;   // 时基:待校正(起播后第一次读到源真实位置时对齐一次)
 
+    // ── P2 战斗曲切换(进战斗 / 脱战 / 断点)──
+    // 断点语义(规格决策 3/4/6):场景曲淡出后停源、位置冻在断点,脱战接回时从断点续(不从 0);
+    // 战斗曲脱战记断点 B,下次进战斗从 max(0, B − 8) 起播;断点只在内存,不存档、不跨曲沿用。
+    private bool _battleMusicActive;              // 当前是否处于「战斗曲」状态(进战斗切曲时置真、脱战时置假)
+    private MusicTrackData _battleTrack;          // 本次战斗用的战斗曲(脱战记断点用;进战斗时按当前地区查表拿)
+    private MusicTrackData _preBattleTrack;       // 进战斗那一刻在播的场景曲(脱战切回它;null = 进战斗前本来没音乐)
+    private float _sceneResumeTime;               // 场景曲断点 A(进战斗那一刻的播放位置)
+    private readonly Dictionary<MusicTrackData, float> _battleResumeTimes = new Dictionary<MusicTrackData, float>();  // 战斗曲断点(只在内存)
+    private Coroutine _battleFadeRoutine;         // 战斗进出过渡协程(同一时刻只允许一个,新的先把旧的停掉)
+
+    // ── P3 过渡期屏蔽(玩家侧判定)──
+    // 区域三段式切曲(CrossFadeTo)/ 战斗进出(StartBattleTransition)的淡入淡出进行中为真。
+    // 语义(规格决策 5):过渡期间只关玩家侧背刺判定(IsInWindow / IsAutoBarWindow / IsInChainWindow 一律 false,
+    // PlayerController.HandleBackstabInput 另有一道门),Boss 技能点驱动(NextPointInGroup / 组标点那条链)不查本标志。
+    // 置真只在两条过渡的开始处;复位覆盖「协程正常收尾 + 被打断重开 + 被 Boss 链路接管停掉」三条路,不留恒真标志。
+    private bool _transitioning;
+
+    /// <summary>战斗曲断点回退量(秒):脱战位置 B → 下次进战斗 max(0, B − 8)(规格决策 4)</summary>
+    private const float BattleResumeRewind = 8f;
+
     /// <summary>窗口开启(参数=点时刻)</summary>
     public event Action<float> OnWindowEnter;
 
@@ -119,6 +143,9 @@ public class MusicPointManager : MonoBehaviour
 
     /// <summary>当前曲目(空 = 未配置)</summary>
     public MusicTrackData CurrentTrack => _currentTrack;
+
+    /// <summary>区域音乐表(每区 = 场景曲 + 战斗曲;未拖 = null)。管道换区/石碑传送走 CrossFadeToArea 查它</summary>
+    public AreaMusicTable MusicTable => areaMusicTable;
 
     /// <summary>当前曲子的每小节拍数(3 = 3/4,4 = 4/4):背刺挥刀音高组按它选批。
     /// 未配置曲目 / 未填 / 非法值一律按 4 —— 只有 3 与非 3 两种结果,不会出现没有音高批的情况</summary>
@@ -133,6 +160,11 @@ public class MusicPointManager : MonoBehaviour
 
     /// <summary>缓入缓出时长(切换用)</summary>
     public float CrossFadeDuration => crossFadeDuration;
+
+    /// <summary>是否处于过渡期(区域三段式切曲 / 战斗进出淡入淡出进行中,P3)。
+    /// true 期间玩家侧背刺判定整体不生效(三个窗口查询返回 false + PlayerController.HandleBackstabInput 直接 return);
+    /// Boss 技能点驱动不看本属性。</summary>
+    public bool IsTransitioning => _transitioning;
 
     /// <summary>预告提前量(预告圆环激活判定用)</summary>
     public float PreviewLead => previewLead;
@@ -229,19 +261,21 @@ public class MusicPointManager : MonoBehaviour
     /// <summary>当前自动重音判定窗口时长(秒)= 2×windowHalfWidth;背刺标识动态适配内环用</summary>
     public float WindowSeconds => windowHalfWidth * 2f;
 
-    /// <summary>当前是否在触发窗口内(特殊攻击按键事件查询,不做每帧轮询)</summary>
-    public bool IsInWindow() => _inWindow;
+    /// <summary>当前是否在触发窗口内(特殊攻击按键事件查询,不做每帧轮询)。
+    /// P3:过渡期(淡入淡出进行中)一律 false —— 玩家侧判定整体不生效。</summary>
+    public bool IsInWindow() => !_transitioning && _inWindow;
 
-    /// <summary>当前在窗口内时,返回对应点时刻</summary>
+    /// <summary>当前在窗口内时,返回对应点时刻(P3:过渡期返回 false,点时刻仍按最近开窗点给出,调用方只认返回值)</summary>
     public bool IsInWindow(out float pointTime)
     {
         pointTime = _activePointTime;
-        return _inWindow;
+        return !_transitioning && _inWindow;
     }
 
     /// <summary>当前是否在「自动重音窗口」内(背刺判定用;Boss 标点窗口不满足,不干扰 PlayerBeatJudge)。
-    /// 只看自动重音自己开的窗口(_autoBarWindowOpen),标点活跃窗口同时存在时不误判。</summary>
-    public bool IsAutoBarWindow => _autoBarWindowOpen && _autoBarActive && !_autoBarConsumed;
+    /// 只看自动重音自己开的窗口(_autoBarWindowOpen),标点活跃窗口同时存在时不误判。
+    /// P3:过渡期一律 false(只关它开出来的窗口,不动自动重音的排程本身)。</summary>
+    public bool IsAutoBarWindow => !_transitioning && _autoBarWindowOpen && _autoBarActive && !_autoBarConsumed;
 
     /// <summary>消费当前自动重音窗口:背刺成功进入状态后调用,本窗口内不再响应 F(每 bar 一次);
     /// 下一窗口开窗时自动重置</summary>
@@ -497,11 +531,13 @@ public class MusicPointManager : MonoBehaviour
         return (index < 0 || index >= pts.Length) ? -1f : pts[index];
     }
 
-    /// <summary>当前是否有本组内某点处于活跃窗口且未被消费(P6 判定入口用)</summary>
+    /// <summary>当前是否有本组内某点处于活跃窗口且未被消费(P6 判定入口用)。
+    /// P3:过渡期一律 false(连音自动推进 TickAutoChain 查的就是本属性 → 过渡期自然失效,不用另加开关)。</summary>
     public bool IsInChainWindow
     {
         get
         {
+            if (_transitioning) return false;
             var pts = CurrentChainPoints;
             for (int i = 0; i < pts.Length; i++)
             {
@@ -1007,6 +1043,23 @@ public class MusicPointManager : MonoBehaviour
     }
 
     /// <summary>
+    /// 按地区 id 切场景曲(管道换区 / 石碑传送的查表入口)。
+    /// 查区域音乐表拿该区场景曲:非空、有 clip 且与当前曲不同 → 复用 CrossFadeTo(三段式淡出 → 静音 → 淡入)并返回 true;
+    /// 表未拖 / 表里没该区 / 该区没配场景曲 / 曲目没挂 clip / 要切的就是当前曲 → 返回 false,
+    /// 不打断当前音乐(调用方据此走旧配置回退:AreaMusicSlot → MusicSwitchTrigger)。
+    /// 同曲提前短路是为了给出准确返回值(CrossFadeTo 内部也有一道同曲守卫,行为不变)。
+    /// </summary>
+    public bool CrossFadeToArea(string areaId)
+    {
+        MusicTrackData scene = areaMusicTable != null ? areaMusicTable.GetSceneMusic(areaId) : null;
+        if (scene == null || scene.clip == null) return false;
+        if (scene == _currentTrack) return false;
+
+        CrossFadeTo(scene);
+        return true;
+    }
+
+    /// <summary>
     /// 场景模式切曲(管道换区 / 石碑传送 / 退 Boss):三段式 = 当前曲淡出 → 全静音空隙 → 新曲淡入。
     /// 同曲(相邻两区配了同一首)直接返回,不打断当前播放;三段总时长 ≤0 或没有主源时退化成 PlayTrack 硬切。
     /// </summary>
@@ -1022,6 +1075,7 @@ public class MusicPointManager : MonoBehaviour
         if (_crossFadeRoutine != null) StopCoroutine(_crossFadeRoutine);
         StopAutoBar();                     // 切曲开始:停旧自动重音协程(新曲协程在淡入结束按新曲重启)
         ResetScheduleWindowState();        // 过渡期无窗口(活跃点表/消费记录一起清)
+        _transitioning = true;             // P3:三段式过渡开始 → 玩家侧判定整体不生效(协程收尾/被接管处复位)
         _crossFadeRoutine = StartCoroutine(CrossFadeRoutine(track));
     }
 
@@ -1041,6 +1095,7 @@ public class MusicPointManager : MonoBehaviour
         if (fadeIn == null)
         {
             PlayTrack(track);
+            _transitioning = false;   // P3:退化硬切(没副源)没有过渡期,置真后必须复位,不留恒真标志
             yield break;
         }
 
@@ -1093,8 +1148,254 @@ public class MusicPointManager : MonoBehaviour
         fadeIn.volume = targetVol;
 
         _crossFadeRoutine = null;
+        _transitioning = false;          // P3:淡入完成 = 过渡结束 → 玩家侧判定立即恢复(不需要额外交互)
         RestartSchedule();
         RestartAutoBar();                // 新曲 barIntervalSeconds>0 时启动自动重音
+    }
+
+    // ============================================================
+    // 战斗曲切换(P2 音乐收口):进战斗切本区战斗曲 / 脱战接回场景曲(断点续播)
+    // 状态源 = AttackingStat(玩家全局战斗状态,refCount 0→1 进战斗、→0 脱战),
+    // 由 AttackingStat.Notify 在翻转处直接调本类(与「管道实心」「战斗相机缩放」同一处,零订阅生命周期问题);
+    // Boss 房不走这里:MusicSwitchTrigger(Boss 模式) → EnterBossMusic/ExitBossMusic 全程不介入(规格决策 2)。
+    // 区域音乐表未拖 / 该区未配 / 战斗曲没挂 clip → 一律直接 return,音乐零变化(规格决策 7)。
+    // ============================================================
+
+    /// <summary>
+    /// 进战斗:按当前地区(ZoneManager.CurrentAreaId)查区域音乐表拿战斗曲 → 切过去。
+    /// 拿不到(表未拖 / 该区未配 / 战斗曲无 clip)/ 本次战斗已切过 / Boss 模式 / 区域三段式过渡在跑 → 直接 return,
+    /// 音乐零变化(战斗曲为空的区 = 进战斗继续播场景曲)。
+    /// 调用点 = AttackingStat(玩家战斗状态唯一源)的 0→1 翻转处 + AttackingStat.Start 的「进场景时已在战斗中」对齐。
+    /// </summary>
+    public void EnterBattleMusic()
+    {
+        if (_bossMode || _crossFadeRoutine != null) return;   // Boss 房 / 区域过渡在跑:本机制不介入,避免两条协程抢同一个源
+
+        MusicTrackData battle = areaMusicTable != null && ZoneManager.Instance != null
+            ? areaMusicTable.GetBattleMusic(ZoneManager.Instance.CurrentAreaId)
+            : null;
+        if (battle == null || battle.clip == null) return;    // 该区没配战斗曲:不切、不报错
+        if (_battleMusicActive) return;                       // 本次战斗已切过(重复上报):不重复过渡
+
+        _battleTrack = battle;
+        _battleMusicActive = true;
+
+        // 记场景曲断点 A(只有「当前在播的不是这首战斗曲」时才记 —— 快速进出后回摆时不能把战斗曲的位置当场景曲断点)
+        if (_currentTrack != battle)
+        {
+            _preBattleTrack = _currentTrack;
+            _sceneResumeTime = _activeSource != null ? _activeSource.time : 0f;
+        }
+
+        float startTime = _battleResumeTimes.TryGetValue(battle, out float resume)
+            ? Mathf.Max(0f, resume - BattleResumeRewind)      // 上次脱战位置 B − 8(规格决策 4)
+            : 0f;                                            // 没有记录 = 从 0 起播
+        StartBattleTransition(battle, startTime);
+    }
+
+    /// <summary>
+    /// 脱战:记战斗曲断点 B(内存字典,不存档、不跨曲沿用)→ 淡出战斗曲并停源 → 场景曲从断点 A 起播淡入。
+    /// 没在战斗曲状态(该区战斗曲为空 / 没切过曲)/ Boss 模式 / 区域过渡在跑 → 不切曲,音乐零变化。
+    /// </summary>
+    public void ExitBattleMusic()
+    {
+        if (_crossFadeRoutine != null) return;                 // 区域三段式过渡在跑:不介入
+        if (_bossMode)
+        {
+            // Boss 房接管音乐(规格决策 2:本机制全程不碰 Boss 链路)→ 不切曲,但状态必须清:
+            // 否则战斗曲开关卡在真值上,出 Boss 房后再进战斗会被「本次战斗已切过」挡掉,整场战斗都没有战斗曲。
+            _battleMusicActive = false;
+            return;
+        }
+        if (!_battleMusicActive) return;
+        _battleMusicActive = false;
+
+        // 记战斗曲断点 B(快速进出时战斗曲可能还没起播:只记「真的在播的那首」,没播过就不留记录 → 下次从 0)
+        // 必须 isPlaying:AudioSource.time 在停播时恒返回 0(docs AudioSource.time),停着读会把 0 当断点记进去
+        if (_battleTrack != null && _currentTrack == _battleTrack && _activeSource != null && _activeSource.isPlaying)
+            _battleResumeTimes[_battleTrack] = _activeSource.time;
+
+        // 接回哪首:当前就在播的非战斗曲(过渡被打断后以现状为准)→ 否则用进战斗时记下的场景曲(可能 null = 进战前没音乐)
+        MusicTrackData back = _currentTrack != null && _currentTrack != _battleTrack ? _currentTrack : _preBattleTrack;
+        StartBattleTransition(back, _sceneResumeTime);
+    }
+
+    /// <summary>
+    /// 开启一次战斗进出过渡(唯一入口)。同一时刻只允许一个战斗过渡协程:
+    /// 先把在飞的那个停掉(它可能停在淡出/淡入中途),再按「当前实时状态」重开一次 —— 快速进出战斗以最新状态为准
+    /// (规格 P2 第 5 条:不要叠两个协程抢同一个源)。
+    /// 三种形态:① 目标曲就是当前在播那首(回摆)→ 只把音量拉回,不重播不移位;
+    ///           ② 没有可接回的曲 → 淡出当前源后停掉;
+    ///           ③ 常规 → 旧源淡出到 0 后停源(位置冻在断点)→ 目标曲定位起播 → 淡入。
+    /// </summary>
+    private void StartBattleTransition(MusicTrackData target, float startTime)
+    {
+        if (_battleFadeRoutine != null)
+        {
+            StopCoroutine(_battleFadeRoutine);
+            _battleFadeRoutine = null;
+        }
+        if (_bossMode || _crossFadeRoutine != null) return;   // Boss 模式 / 区域三段式过渡在跑:不介入
+
+        // P3:战斗进出过渡开始 → 玩家侧判定整体不生效。三种形态各自的收尾处复位(不在下面三个分支里散写,
+        // 集中在这里置位,避免漏掉某个形态);顺手清掉已开窗口(与 CrossFadeTo 同口径:过渡期无窗口)。
+        _transitioning = true;
+        ResetScheduleWindowState();
+
+        if (target == null || target.clip == null)
+        {
+            _battleFadeRoutine = StartCoroutine(FadeOutAndStopRoutine());
+            return;
+        }
+        if (target == _currentTrack && _activeSource != null && _activeSource.isPlaying)
+        {
+            _battleFadeRoutine = StartCoroutine(RestoreVolumeRoutine());
+            return;
+        }
+        _battleFadeRoutine = StartCoroutine(BattleSwitchRoutine(target, startTime));
+    }
+
+    /// <summary>
+    /// 战斗进出过渡协程(形态③):① 旧主源淡出到 0 → 停源并清 clip(位置冻在断点,不是继续播);
+    /// ② 目标曲源先设 time 再 Play(与 PlayTrack/CrossFadeRoutine 同一写法)→ 淡入到 BGM 音量。
+    /// 淡入淡出时长复用现有 crossFadeDuration(不新增时长字段);用 Time.unscaledDeltaTime 累加(暂停面板/卡帧照常走完)。
+    /// 时钟在②新曲起播那一刻才切,并照 PlayTrack 做收尾:MarkClockPending + ResetScheduleWindowState + RestartSchedule + RestartAutoBar。
+    /// Boss 模式或区域三段式过渡中途接管时自我中止(AbortBattleTransition),不碰源,交给接手的链管理。
+    /// </summary>
+    private IEnumerator BattleSwitchRoutine(MusicTrackData target, float startTime)
+    {
+        AudioSource fadeOut = _activeSource;
+        AudioSource fadeIn = fadeOut == audioSourceA ? audioSourceB : audioSourceA;
+
+        if (fadeIn == null)
+        {
+            // 副源没接线(硬切兜底):PlayTrack 已做时钟/排程收尾,这里只把起播位置补到目标断点
+            PlayTrack(target);
+            if (_activeSource != null && _activeSource.clip != null)
+                _activeSource.time = Mathf.Clamp(startTime, 0f, Mathf.Max(0f, _activeSource.clip.length - 0.01f));
+            MarkClockPending();
+            _battleFadeRoutine = null;
+            _transitioning = false;   // P3:退化硬切(没副源)没有过渡期,置真后必须复位
+            yield break;
+        }
+
+        float targetVol = AudioManager.Instance != null ? AudioManager.Instance.BgmVolume : 1f;
+        float dur = Mathf.Max(0.01f, crossFadeDuration);
+
+        // ① 淡出旧源(从它当前音量起,不假设是满音量):淡出完成 → 停源 + 清 clip,位置不再前进
+        if (fadeOut != null && fadeOut.isPlaying)
+        {
+            float from = fadeOut.volume;
+            float elapsed = 0f;
+            while (elapsed < dur)
+            {
+                if (_bossMode || _crossFadeRoutine != null) { AbortBattleTransition(); yield break; }
+                elapsed += Time.unscaledDeltaTime;
+                fadeOut.volume = Mathf.Lerp(from, 0f, Mathf.Clamp01(elapsed / dur));
+                yield return null;
+            }
+        }
+        if (fadeOut != null)
+        {
+            fadeOut.volume = 0f;
+            fadeOut.Stop();
+            fadeOut.clip = null;
+            fadeOut.volume = targetVol;      // 恢复默认,下次作 fadeIn 时强制 0
+        }
+        if (_bossMode || _crossFadeRoutine != null) { AbortBattleTransition(); yield break; }
+
+        // ② 目标曲起播 + 淡入(时钟此刻才切到新曲)
+        fadeIn.clip = target.clip;
+        fadeIn.loop = true;              // 场景模式:播完重复(战斗曲无独立 loop 字段,与场景曲同一播放路径)
+        fadeIn.time = Mathf.Clamp(startTime, 0f, Mathf.Max(0f, fadeIn.clip.length - 0.01f));
+        fadeIn.volume = 0f;
+        fadeIn.Play();
+
+        _activeSource = fadeIn;
+        _currentTrack = target;
+        MarkClockPending();              // 时基:换主源,重记锚点
+        ResetScheduleWindowState();      // 切曲:旧窗口/消费记录清掉(新曲排程重新管理)
+        RestartSchedule();               // 新曲点表重排(含连音分组重建)
+        RestartAutoBar();                // 新曲 barIntervalSeconds>0 时重启自动重音
+
+        float inElapsed = 0f;
+        while (inElapsed < dur)
+        {
+            if (_bossMode || _crossFadeRoutine != null) { AbortBattleTransition(); yield break; }
+            inElapsed += Time.unscaledDeltaTime;
+            fadeIn.volume = Mathf.Lerp(0f, targetVol, Mathf.Clamp01(inElapsed / dur));
+            yield return null;
+        }
+        fadeIn.volume = targetVol;
+        _battleFadeRoutine = null;
+        _transitioning = false;          // P3:淡入完成 = 过渡结束 → 玩家侧判定立即恢复
+    }
+
+    /// <summary>形态①:目标曲就是当前在播那首(快速进出的回摆)→ 只把音量拉回 BGM 音量。
+    /// 不重播、不移位、不重排点表 —— 位置与窗口都照旧,音乐听感不断。</summary>
+    private IEnumerator RestoreVolumeRoutine()
+    {
+        AudioSource src = _activeSource;
+        if (src == null) { _battleFadeRoutine = null; _transitioning = false; yield break; }   // P3:无源收尾也要复位
+
+        float targetVol = AudioManager.Instance != null ? AudioManager.Instance.BgmVolume : 1f;
+        float from = src.volume;
+        float dur = Mathf.Max(0.01f, crossFadeDuration);
+        float elapsed = 0f;
+        while (elapsed < dur)
+        {
+            if (_bossMode || _crossFadeRoutine != null) { AbortBattleTransition(); yield break; }
+            elapsed += Time.unscaledDeltaTime;
+            src.volume = Mathf.Lerp(from, targetVol, Mathf.Clamp01(elapsed / dur));
+            yield return null;
+        }
+        src.volume = targetVol;
+        _battleFadeRoutine = null;
+        _transitioning = false;          // P3:回摆(拉回音量)结束 → 玩家侧判定立即恢复
+    }
+
+    /// <summary>形态②:进战斗前本来没音乐(无可接回的曲)→ 淡出当前源后停掉,不留半个音源在响,也不留半首点表在排。</summary>
+    private IEnumerator FadeOutAndStopRoutine()
+    {
+        AudioSource src = _activeSource;
+        float targetVol = AudioManager.Instance != null ? AudioManager.Instance.BgmVolume : 1f;
+        float dur = Mathf.Max(0.01f, crossFadeDuration);
+
+        if (src != null && src.isPlaying)
+        {
+            float from = src.volume;
+            float elapsed = 0f;
+            while (elapsed < dur)
+            {
+                if (_bossMode || _crossFadeRoutine != null) { AbortBattleTransition(); yield break; }
+                elapsed += Time.unscaledDeltaTime;
+                src.volume = Mathf.Lerp(from, 0f, Mathf.Clamp01(elapsed / dur));
+                yield return null;
+            }
+            src.volume = 0f;
+            src.Stop();
+            src.clip = null;
+            src.volume = targetVol;
+        }
+
+        _currentTrack = null;
+        _activeSource = null;
+        ResetScheduleWindowState();
+        RestartSchedule();      // 无曲可排:协程自然结束(不会留着按旧曲时间排点)
+        RestartAutoBar();
+        _battleFadeRoutine = null;
+        _transitioning = false;          // P3:淡出到停源结束 = 过渡结束 → 玩家侧判定立即恢复
+    }
+
+    /// <summary>战斗过渡自我中止(Boss 模式接管 / 区域三段式过渡开始):只清状态,不碰音源 —— 源交给接手的那条链管理。
+    /// 顺手关掉本次战斗的战斗曲开关:避免脱战时把区域过渡刚切上的曲当场景曲再切一次。</summary>
+    private void AbortBattleTransition()
+    {
+        _battleMusicActive = false;
+        _battleFadeRoutine = null;
+        // P3:区域三段式过渡在跑时(_crossFadeRoutine != null)由它自己收尾复位,这里不能动(否则过渡中途屏蔽会漏);
+        // 只有「Boss 链路接管」(没有区域过渡)这一路需要把屏蔽一并结束,避免标志恒真。
+        if (_crossFadeRoutine == null) _transitioning = false;
     }
 
     /// <summary>进入 Boss 战:场景曲缓出,指定曲目双源交叠循环缓入(进 Boss 房调用,曲目由触发处传入)</summary>
@@ -1106,6 +1407,7 @@ public class MusicPointManager : MonoBehaviour
         StopAutoBar();                 // Boss 曲无自动重音:停场景曲的自动重音协程
         ResetScheduleWindowState();
         if (_crossFadeRoutine != null) StopCoroutine(_crossFadeRoutine);
+        _transitioning = false;   // P3:区域三段式过渡被 Boss 链路接管停掉 → 这段屏蔽随之结束(Boss 链路不查本标志)
         _crossFadeRoutine = StartCoroutine(EnterBossRoutine(bossTrack));
     }
 

@@ -307,7 +307,9 @@ public class WaypointSystem : MonoBehaviour
     }
 
     /// <summary>
-    /// 按目标区根上的 AreaMusicSlot 切场景音乐(CrossFadeTo 内部就是三段式:淡出 → 静音 → 淡入)。
+    /// 按目标区切场景音乐。主路径 = 查区域音乐表(MusicPointManager.CrossFadeToArea,按 areaId 拿场景曲);
+    /// 表未拖 / 表里没有该区 → 回退旧的槽读法(目标区根上的 AreaMusicSlot),两条路径保持原有行为不变。
+    /// CrossFadeTo 内部就是三段式(淡出 → 静音 → 淡入)。
     /// 取不到目标区根 / 区没挂 AreaMusicSlot / 槽位没配曲 → 不动当前音乐(与管道换区口径一致)。
     /// </summary>
     private static void SwitchAreaMusic(string targetAreaId)
@@ -315,6 +317,9 @@ public class WaypointSystem : MonoBehaviour
         MusicPointManager music = MusicPointManager.Instance;
         ZoneManager zm = ZoneManager.Instance;
         if (music == null || zm == null || string.IsNullOrEmpty(targetAreaId)) return;
+
+        // 主路径:区域音乐表(表里没配该区 → CrossFadeToArea 返回 false,自动落到下面的槽回退)
+        if (music.CrossFadeToArea(targetAreaId)) return;
 
         GameObject targetRoot = zm.GetAreaRoot(targetAreaId);
         if (targetRoot == null) return;

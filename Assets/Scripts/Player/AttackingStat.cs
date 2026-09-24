@@ -5,7 +5,10 @@ using UnityEngine;
 /// <summary>
 /// [框架二状态位] 玩家全局战斗状态标识 attackingStat — 任意敌人对玩家有仇恨 = 战斗中。
 /// 由 EnemyControllerBase.OnEnter/OnExitCombatState 上报(per-enemy guard 已防重),管道只订阅它。
-/// 职责:维护 refCount + 翻转时切管道实心(AreaChannelTrigger.SetAllSolid) + 切战斗相机缩放 + 广播事件。
+/// 职责:维护 refCount + 翻转时切管道实心(AreaChannelTrigger.SetAllSolid) + 切战斗相机缩放
+///      + 切战斗曲(MusicPointManager.EnterBattleMusic/ExitBattleMusic)+ 广播事件。
+/// 翻转处的副作用一律「直接调静态入口」,不做事件订阅(本组件挂在玩家上,订阅方生命周期跨场景/读档后易断;
+/// 直接调 = 谁在翻转那一帧被调用谁生效,MusicPointManager 不在场时为 null 静默跳过)。
 /// 不含玩家攻击路径 → 挥空不置位。
 /// </summary>
 public class AttackingStat : MonoBehaviour
@@ -52,6 +55,10 @@ public class AttackingStat : MonoBehaviour
 
     private void Start()
     {
+        // 中途进场景(读档/传送)时可能已经在战斗中:战斗曲按当前状态补一次对齐
+        // (与下面的相机对齐同一时机;该区没配战斗曲时 EnterBattleMusic 内部直接 return,零变化)
+        if (InCombat) MusicPointManager.Instance?.EnterBattleMusic();
+
         if (playerVcam == null)
         {
             Debug.LogWarning("[AttackingStat] 战斗相机没引用 VCam,战斗相机缩放不生效(不影响战斗状态位与管道实心)");
@@ -68,12 +75,11 @@ public class AttackingStat : MonoBehaviour
     }
 
     /// <summary>切战斗相机缩放:immediate = 不走过渡直接设值;新的一次切换会打断上一次没播完的过渡</summary>
-    private void SetCombatZoom(bool inCombat, bool immediate, EnemyControllerBase source = null)
+    private void SetCombatZoom(bool inCombat, bool immediate)
     {
         if (playerVcam == null) return;
 
         float target = inCombat ? combatOrthoSize : normalOrthoSize;
-        float from = playerVcam.m_Lens.OrthographicSize;
 
         if (_zoomRoutine != null)
         {
@@ -82,13 +88,11 @@ public class AttackingStat : MonoBehaviour
         }
 
         if (immediate || zoomDuration <= 0f)
+        {
             playerVcam.m_Lens.OrthographicSize = target;
-        else
-            _zoomRoutine = StartCoroutine(ZoomRoutine(target));
-
-        // [CombatDBG 钩子] 镜头距离真的变了才打一条:不每帧(过渡插值不打),不随仇恨上报刷屏
-        if (!Mathf.Approximately(from, target))
-            LogCombatState(inCombat, source);
+            return;
+        }
+        _zoomRoutine = StartCoroutine(ZoomRoutine(target));
     }
 
     /// <summary>过渡:从当前值 Lerp 到目标(Time.unscaledDeltaTime,不受卡帧 timeScale 影响)</summary>
@@ -108,9 +112,9 @@ public class AttackingStat : MonoBehaviour
 
     /// <summary>
     /// 敌人仇恨上报(true=该敌人进入战斗;false=该敌人脱战/死亡)。
-    /// 管道实心只在 0→1 翻转时切,恢复只在 →0 时切。
+    /// 副作用(管道实心/战斗相机缩放/战斗曲切换)只在 0→1 翻转时做,恢复只在 →0 时做。
     /// </summary>
-    public void Notify(bool enterCombat, EnemyControllerBase source = null)
+    public void Notify(bool enterCombat)
     {
         if (enterCombat)
         {
@@ -118,7 +122,8 @@ public class AttackingStat : MonoBehaviour
             if (_combatRefCount == 1)
             {
                 AreaChannelTrigger.SetAllSolid(true);   // 进入战斗:管道变空气墙(物理挡玩家+敌人)
-                SetCombatZoom(true, immediate: false, source);  // 进入战斗:玩家相机拉远
+                SetCombatZoom(true, immediate: false);  // 进入战斗:玩家相机拉远
+                MusicPointManager.Instance?.EnterBattleMusic();  // 进入战斗:切本区战斗曲(表未配/战斗曲空 → 内部 return,音乐零变化)
                 OnCombatChanged?.Invoke(true);
             }
         }
@@ -128,33 +133,11 @@ public class AttackingStat : MonoBehaviour
             if (_combatRefCount == 0)
             {
                 AreaChannelTrigger.SetAllSolid(false);  // 脱离战斗:管道恢复 trigger(可传送)
-                SetCombatZoom(false, immediate: false, source); // 脱战:玩家相机拉回平常值
+                SetCombatZoom(false, immediate: false); // 脱战:玩家相机拉回平常值
+                MusicPointManager.Instance?.ExitBattleMusic();   // 脱战:记战斗曲断点 + 从断点接回场景曲
                 OnCombatChanged?.Invoke(false);
             }
         }
     }
 
-    /// <summary>
-    /// [CombatDBG 2026-09-24] 钩子 = 镜头距离变化(SetCombatZoom 里 from != target 才调)。
-    /// 内容只看战斗状态:仇恨来源/计数/该敌人 FSM 与可见性;不打相机值,不走每帧。排查完整块删。
-    /// </summary>
-    private void LogCombatState(bool inCombat, EnemyControllerBase source)
-    {
-        string src;
-        if (source == null)
-        {
-            src = "来源=无(进场景对齐/非敌人触发)";
-        }
-        else
-        {
-            var pc = PlayerController.Instance;
-            Vector3 ep = source.transform.position;
-            float dx = pc != null ? pc.transform.position.x - ep.x : 0f;
-            float dy = pc != null ? pc.transform.position.y - ep.y : 0f;
-            src = $"来源={source.name} 敌人FSM={source.Fsm?.CurrentState?.GetType().Name ?? "-"}" +
-                  $" isInCombat={source.IsInCombatState} canSee={source.CanSeePlayer()}" +
-                  $" 距离dx={dx:F2} dy={dy:F2} 死亡={source.IsDead}";
-        }
-        Debug.Log($"[CombatDBG] 镜头{(inCombat ? "拉远(进战斗)" : "拉回(脱战)")} refCount={_combatRefCount} {src}");
-    }
 }

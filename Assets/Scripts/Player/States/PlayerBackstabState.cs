@@ -401,7 +401,7 @@ public class PlayerBackstabState : EntityState
     // 三条:退出现场(本类 OnExit)、退出后 0.4s 现场(本类 DbgExitSnapshot)、敌人悬空自检(EnemyControllerBase)。
     // 开关关掉或整块删掉即可,不影响逻辑。
     // ============================================================
-    public const bool BackstabDebug = true;   // 需要排查时改 true(日志前缀 [背刺Dbg] / [连音Dbg])
+    public const bool BackstabDebug = false;   // 需要排查时改 true(日志前缀 [背刺Dbg])
     private string _exitReason = "";
     private float _dbgExitAt;
 
@@ -603,7 +603,6 @@ public class PlayerBackstabState : EntityState
                 // 到顶直接到位(不靠实测轨迹);点被层间隔断(头顶一层横地板)→ 不挪,留在物理位置(2026-09-24)
                 if (LadderPointUsable(_comboTarget, _ladderEnd)) _comboTarget.SnapComboTo(_ladderEnd);
                 SnapPlayerToLadderSide();
-                DbgChain($"到顶钉住 顶点={_ladderEnd}");
                 _comboArming = false;
                 if (BackstabDebug)
                     Debug.Log($"[背刺Dbg] 到顶钉住 enemy位置={_comboTarget.BodyPosition} 速度={_comboTarget.BodyVelocity} 顶点={_ladderEnd} 玩家={(Vector2)owner.transform.position}");
@@ -680,7 +679,6 @@ public class PlayerBackstabState : EntityState
         _ladderStep = 0;
         if (BackstabDebug)
             Debug.Log($"[背刺Dbg] 建阶梯 起点={p0} 速度={v} 顶点={apex} 帧数={_ladderCount} 已出刀={_strikeSeq}");
-        DbgChain($"建阶梯 起点={p0} 顶点={apex}");
         // Debug.Log($"[背刺诊断] 建阶梯 p0={p0} v={v} g={g:F3} 敌人gScale={_comboTarget.BodyGravityScale:F3} apex={apex} count={_ladderCount} seq={_strikeSeq}");
         // 不再这里定阶:阶梯退化成顶点一阶后,这里定阶 = 立刻把敌人瞬移到顶点,把第一击的弧线掉掉。
         // 等飞到顶点(见 UpdateComboHold 的 VerticalVelocity <= 0)才由后续刀把它钉在那里。
@@ -698,7 +696,6 @@ public class PlayerBackstabState : EntityState
         // Debug.Log($"[背刺诊断] 玩家瞬移 from={(Vector2)owner.transform.position} to={dest} 敌人={_comboTarget.BodyPosition}");
         Vector2 landed = teleport.TeleportTo(dest);
         pcSide.UpdateFacing(_comboTarget.BodyPosition.x >= landed.x ? 1f : -1f);   // 面向敌人(按实际落点判,与 ExecuteStrike 同口径)
-        DbgChain($"玩家就位 请求={dest} 实际={landed}");
     }
 
     /// <summary>本组第几刀(第 1 刀 = 1);阶梯的阶数直接按它取,不靠递增计数</summary>
@@ -728,9 +725,7 @@ public class PlayerBackstabState : EntityState
         // Debug.Log($"[背刺诊断] 敌人瞬移 t={t:F2} p={p} 原={_comboTarget.BodyPosition} free={_comboTarget.IsPositionFree(p)}");
         if (BackstabDebug)
             Debug.Log($"[背刺Dbg] 阶梯定阶 阶={_ladderStep}/{_ladderCount} 目标={p} 当前={_comboTarget.BodyPosition} 目标可站={_comboTarget.IsPositionFree(p)}");
-        bool usable = LadderPointUsable(_comboTarget, p);
-        DbgChain($"定阶 {_ladderStep}/{_ladderCount} 目标={p} 可用={(usable ? 1 : 0)}");
-        if (!usable) return;
+        if (!LadderPointUsable(_comboTarget, p)) return;
         _comboTarget.SnapComboTo(p);
     }
 
@@ -793,7 +788,6 @@ public class PlayerBackstabState : EntityState
                 if (!LadderPointUsable(target, enemyDest)) return false;   // 推了也站不住 → 这一刀不换位
             }
             target.ForceSetPosition(enemyDest);   // 硬挪 + 清速度
-            DbgChain($"占位推敌 敌新位={enemyDest} 侧={side}");
             if (_ladderCount > 0)
             {
                 _ladderEnd = enemyDest;           // 阶梯已退化成顶点一阶:起终点一起跟着走
@@ -818,7 +812,6 @@ public class PlayerBackstabState : EntityState
                 _ladderEnd = landedEnemy;   // 阶梯已退化成顶点一阶:起终点一起跟着走
                 _ladderStart = landedEnemy;
             }
-            DbgChain($"落点被堵→交换 敌新位={landedEnemy} 玩新位={center}");
             dest = center;                  // 玩家落敌人原位(同一高度)
             return true;
         }
@@ -984,7 +977,6 @@ public class PlayerBackstabState : EntityState
                 // 强制转向敌人:按「实际落点」判 —— TeleportTo 的贴墙钳制会把落点推到墙外(常在敌人同侧),
                 // 拿 playerDest 判就会反成背朝敌人(2026-09-22 saika 报「enemy 在墙边背刺后 player 背向 enemy」)。
                 // 也不能用 enemy.Facing —— 靠墙时落点改到 enemy 正面,enemy.Facing 朝玩家,用它玩家会背朝 enemy。
-                DbgChain($"出刀瞬移后 请求={playerDest} 实际={landed}");
                 float toEnemyDir = target.transform.position.x >= landed.x ? 1f : -1f;
                 pc.UpdateFacing(toEnemyDir);
                 // 背刺姿态校正:玩家该在敌人背后 = 两人同向。玩家落点在敌人"正面"时(连打对侧落点被墙改 /
@@ -1354,33 +1346,9 @@ public class PlayerBackstabState : EntityState
     {
         if (target == null || !target.IsPositionFree(p)) return false;
         if (_ladderCount <= 0) return true;
-        bool blocked = IsPathBlockedByWall(target.BodyPosition, p);
-        if (blocked && BackstabDebug)
-            Debug.Log($"[背刺Dbg] 阶梯点被层间隔断 目标={p} 敌人={target.BodyPosition} 玩家={(Vector2)owner.transform.position}");
-        return !blocked;
+        return !IsPathBlockedByWall(target.BodyPosition, p);
     }
 
-    /// <summary>
-    /// [连音Dbg 2026-09-24 saika 要] 连音组状态一行快照:enemy 与 player 各自的位置/状态 + 两人之间直线是否被 Ground/Wall 隔断。
-    /// 「两人直线隔断=1」就是有人到了另一层(头顶那层横地板的上面/下面)。
-    /// 由 BackstabDebug 开关控制,只在连音关键节点调(建阶梯/到顶/定阶/玩家就位/出刀/推敌/交换),不每帧。
-    /// </summary>
-    private void DbgChain(string tag)
-    {
-        if (!BackstabDebug) return;
-        var pc = owner as PlayerController;
-        Vector2 pPos = owner.transform.position;
-        string pFsm = (pc != null && pc.PlayerFsm != null && pc.PlayerFsm.CurrentState != null)
-            ? pc.PlayerFsm.CurrentState.GetType().Name : "-";
-        bool pGround = pc != null && pc.IsGrounded();
-        string eTxt = _comboTarget == null
-            ? "目标=null"
-            : $"目标={_comboTarget.name} 敌位={_comboTarget.BodyPosition} 敌速={_comboTarget.BodyVelocity}" +
-              $" 敌重力={_comboTarget.BodyGravityScaleRaw:F2} 敌定格={(_comboTarget.IsComboHeld ? 1 : 0)} 敌死亡={(_comboTarget.IsDead ? 1 : 0)}";
-        int sep = (_comboTarget != null && IsPathBlockedByWall(pPos, _comboTarget.BodyPosition)) ? 1 : 0;
-        Debug.Log($"[连音Dbg] {tag} 刀={_strikeSeq}/{_ladderCount} 阶={_ladderStep} | 玩位={pPos} 玩FSM={pFsm} 玩在地面={(pGround ? 1 : 0)}" +
-                  $" | {eTxt} | 两人直线隔断={sep}");
-    }
 
     /// <summary>背刺冲刺残影(2026-09-21):瞬移前沿「玩家当前位置 → 落点」直线补 3 张,
     /// 玩家还在原位时拷贝当前帧,瞬移后残影留在来路上淡出 = 冲刺拖影。

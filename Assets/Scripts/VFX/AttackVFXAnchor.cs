@@ -5,13 +5,16 @@ using UnityEngine;
 /// <summary>
 /// 攻击 VFX 锚点 / 统一管理器 — 挂在攻击者的 attack_VFX 子物体上。
 /// 玩家侧(2026-09-07 saika 拍板结构):Inspector 直接三块大组,不嵌套数组、无槽名字符串 ——
-///   地面攻击:段1/段2/段3 各一个特效 prefab 槽(ground1/2/3)
-///   空中攻击:段1/段2/段3 各一个特效 prefab 槽(air1/2/3)
+///   地面攻击:段1/段2/段3 各一个特效 prefab 槽(ground1/2/3;挥刀音走下面的挥刀音效池)
+///   空中攻击:段1/段2/段3 各一个特效 prefab 槽(air1/2/3;挥刀音走下面的挥刀音效池)
 ///   被刺:一个背刺特效 prefab 槽(backstab)
 ///   地图元素冲刺:一个冲刺特效 prefab 槽(mapDash)
+///   挥刀音效池(2026-09-24 重做):轻击组 / 重击组两个素材数组,每组各自按和谐音程升调建池,
+///     每次挥刀从池内随机抽一条(相邻两次避开同一条);段 1/2 = 轻击,段 3 及以上 = 重击,
+///     段号非法兜底重击,背刺追击那一击由 RequestHeavySfxOnce 强制重击。
 ///   特效 prefab 位置/大小在 prefab 内调好(相对 attack_VFX 原点,挂 attack_VFX 子物体下,localPosition=0)。
 ///   统一入口(攻击开始/切段/结束事件调用):PlayGround(1~3) / PlayAir(1~3) / PlayBackstab() / PlayMapDash() / Stop()。
-/// 通用槽(Boss/敌人用,玩家不填):slots + Show("slot_xxx"),保留原按名查找/同名槽子物体挂点逻辑。
+/// 通用槽(Boss/敌人用,玩家不填):2026-09-24 整体注释保留(全项目无调用点),见文件里「通用槽」注释块。
 /// 实例管理收拢:同 prefab 池化复用;Hide = 停发射 + 粒子飞完延迟回池(保留淡出);KillAll = 立即回池。
 /// 背刺刀光(PlayBackstabVfx / PlayBackstabSingle)生成后保留世界变换脱离锚点、固定在本刀落点:
 /// 连打每刀都瞬移,留在锚点下会把上一刀没播完的刀光一起搬到下一格(2026-09-22)。
@@ -19,6 +22,13 @@ using UnityEngine;
 /// </summary>
 public class AttackVFXAnchor : MonoBehaviour
 {
+    // ============================================================
+    // 通用槽(旧形态,按名字播放)— 整体注释保留,恢复时去掉下面块的注释符
+    // ============================================================
+/* [2026-09-24 saika 拍板] 通用槽(Boss/敌人按名字播放那套)整体注释保留。
+   设计上留给 Boss / 敌人,但全项目 Show("slot_xxx") 调用点从未启用(现均为注释状态),
+   attack_VFX 上还留着 slot_1/2/3 残留配置。需要恢复时去掉本块首尾的注释符号即可。
+    /*
     /// <summary>通用槽(旧,Show 按名字;Boss/敌人用,玩家不填)</summary>
     [System.Serializable]
     public class VFXSlot
@@ -32,6 +42,7 @@ public class AttackVFXAnchor : MonoBehaviour
         [Tooltip("出现延迟(秒):Show 后等这么久才实例化播放;0 = 立即")]
         public float showDelay = 0f;
     }
+    */
 
     /// <summary>玩家分组槽:一段攻击一个特效 prefab + 一个挥刀音效(位置/大小在 prefab 内调好;多个粒子效果放同一 prefab 子物体)</summary>
     [System.Serializable]
@@ -56,19 +67,47 @@ public class AttackVFXAnchor : MonoBehaviour
         [Range(0, 12)] public int sfxRisePerStep = 0;
     }
 
+    /// <summary>玩家普攻特效槽(2026-09-24 挥刀音效重做):只承载特效。
+    /// 挥刀音不再由槽内字段承担(改走轻击/重击音效池),所以本槽没有 sfx / 音量 / 音高字段,
+    /// Inspector 里也不再显示那些项;ComboSlot 保留给背刺槽与冲刺槽用。</summary>
+    [System.Serializable]
+    public class AttackSlot
+    {
+        [Tooltip("本段攻击特效 prefab(空 = 未配置,播放静默跳过)")]
+        public GameObject prefab;
+
+        [Tooltip("出现延迟(秒):播放后等这么久才实例化;0 = 立即")]
+        public float showDelay = 0f;
+    }
+
+    /* 通用槽列表(注释保留):
     [Header("通用槽(Show 按名字 — Boss/敌人用,玩家不填)")]
     [Tooltip("全部通用槽,Show(slotName) 按 slotName 查找;实例挂到同名字物体下")]
     public List<VFXSlot> slots = new List<VFXSlot>();
+    */
 
-    [Header("玩家 · 地面攻击(PlayGround 1~3)")]
-    public ComboSlot ground1 = new ComboSlot();
-    public ComboSlot ground2 = new ComboSlot();
-    public ComboSlot ground3 = new ComboSlot();
+    [Header("玩家 · 挥刀音效池(轻击 = 段 1/2,重击 = 段 3+ 与背刺追击)")]
+    [Tooltip("轻击组素材:地面/空中第 1、2 段的挥刀音从这里抽(池 = 本组素材 × 和谐音程)")]
+    public AudioClip[] lightSfxClips = new AudioClip[0];
 
-    [Header("玩家 · 空中攻击(PlayAir 1~3)")]
-    public ComboSlot air1 = new ComboSlot();
-    public ComboSlot air2 = new ComboSlot();
-    public ComboSlot air3 = new ComboSlot();
+    [Tooltip("重击组素材:地面/空中第 3 段、背刺追击那一击从这里抽")]
+    public AudioClip[] heavySfxClips = new AudioClip[0];
+
+    [Tooltip("轻击挥刀音音量(最终响度 = 设置面板 SFX 音量 × 此值)")]
+    [Range(0f, 1f)] public float lightSfxVolume = 1f;
+
+    [Tooltip("重击挥刀音音量(最终响度 = 设置面板 SFX 音量 × 此值)")]
+    [Range(0f, 1f)] public float heavySfxVolume = 1f;
+
+    [Header("玩家 · 地面攻击特效(PlayGround 1~3;音效走上面的池)")]
+    public AttackSlot ground1 = new AttackSlot();
+    public AttackSlot ground2 = new AttackSlot();
+    public AttackSlot ground3 = new AttackSlot();
+
+    [Header("玩家 · 空中攻击特效(PlayAir 1~3;音效走上面的池)")]
+    public AttackSlot air1 = new AttackSlot();
+    public AttackSlot air2 = new AttackSlot();
+    public AttackSlot air3 = new AttackSlot();
 
     [Header("玩家 · 被刺(PlayBackstab)")]
     public ComboSlot backstab = new ComboSlot();
@@ -104,6 +143,30 @@ public class AttackVFXAnchor : MonoBehaviour
     /// </summary>
     private static readonly int[] SingleHitPitchPool = { 0, 2, 4, 5, 7, 12 };
 
+    // ── 普攻挥刀音效池(2026-09-24 saika 拍板形态)──
+    // 轻击组 / 重击组各一个池:池 = 素材 × 和谐音程(升调)的全部组合;每次挥刀从对应池随机抽一条,
+    // 相邻两次避开同一条(素材与音高都相同才算同一条),轻池重池各自记上一个索引。
+    // 分档:段 1/2 = 轻击;段 3 及以上 = 重击;段号非法(0/负数)= 重击兜底;
+    // 背刺追击那一击(PlayerController.TryBackstabChaseAttack)由 RequestHeavySfxOnce 强制重击。
+    // 池在首次播放时构建:编辑器里改素材数组要重进 Play 才生效(不监听数组变化)。
+
+    /// <summary>和谐音程半音集合(轻击/重击两组共用;全部为升调处理)——
+    /// 0 原调 / 4 大三度 / 5 纯四度 / 7 纯五度</summary>
+    private static readonly int[] HarmonySemitones = { 0, 4, 5, 7 };
+
+    /// <summary>池项 = 素材 + 音高倍率(半音换算而来)</summary>
+    private struct SfxPoolEntry
+    {
+        public AudioClip clip;
+        public float pitch;
+    }
+
+    private SfxPoolEntry[] _lightPool;
+    private SfxPoolEntry[] _heavyPool;
+    private bool _sfxPoolsBuilt;
+    private int _lastLightPick = -1;    // 上一次抽到的池内索引(相邻去重用)
+    private int _lastHeavyPick = -1;
+    private bool _forceHeavyNextSfx;    // 一次性:下一次普攻挥刀音强制走重击池(背刺追击)
 
     [Header("玩家 · 地图元素冲刺(PlayMapDash)")]
     public ComboSlot mapDash = new ComboSlot();
@@ -130,11 +193,69 @@ public class AttackVFXAnchor : MonoBehaviour
     // 玩家侧统一入口(攻击开始/切段/结束事件调用;空槽/未配置 = 静默跳过)
     // ============================================================
 
-    /// <summary>地面连击段特效(1~3 → ground1/2/3;越界自动钳)</summary>
-    public void PlayGround(int comboIndex) => PlayComboSlot(GetSlot(ground1, ground2, ground3, comboIndex), comboIndex);
+    /// <summary>地面连击段:特效按段号取槽(1~3,越界自动钳);挥刀音从池抽(段 1/2 轻击,其余重击)</summary>
+    public void PlayGround(int comboIndex)
+    {
+        PlaySwingSfx(ResolveHeavy(comboIndex));
+        PlayAttackVfx(GetSlot(ground1, ground2, ground3, comboIndex));
+    }
 
-    /// <summary>空中连击段特效(1~3 → air1/2/3;越界自动钳)</summary>
-    public void PlayAir(int comboIndex) => PlayComboSlot(GetSlot(air1, air2, air3, comboIndex), comboIndex);
+    /// <summary>空中连击段:特效按段号取槽;挥刀音同地面规则(段 1/2 轻击,段 3 重击)</summary>
+    public void PlayAir(int comboIndex)
+    {
+        PlaySwingSfx(ResolveHeavy(comboIndex));
+        PlayAttackVfx(GetSlot(air1, air2, air3, comboIndex));
+    }
+
+    /// <summary>背刺追击那一击:让【下一次】普攻挥刀音强制走重击池(一次性标记,进状态播挥刀音时消费)。
+    /// 只改音效出口 —— 段号 / 状态机 / 伤害 / 瞬移一律不动。</summary>
+    public void RequestHeavySfxOnce() => _forceHeavyNextSfx = true;
+
+    /// <summary>重击判定并消费一次性标记:段号 1/2 = 轻击,其余(3+ / 0 / 负数 / 越界)= 重击</summary>
+    private bool ResolveHeavy(int comboIndex)
+    {
+        bool heavy = _forceHeavyNextSfx || (comboIndex != 1 && comboIndex != 2);
+        _forceHeavyNextSfx = false;
+        return heavy;
+    }
+
+    /// <summary>挥刀音:从对应池随机抽一条播放(池空 = 静默跳过,与「素材没拖」同表现)</summary>
+    private void PlaySwingSfx(bool heavy)
+    {
+        if (!_sfxPoolsBuilt)
+        {
+            _sfxPoolsBuilt = true;
+            _lightPool = BuildSfxPool(lightSfxClips);
+            _heavyPool = BuildSfxPool(heavySfxClips);
+        }
+
+        var pool = heavy ? _heavyPool : _lightPool;
+        if (pool == null || pool.Length == 0) return;
+
+        int last = heavy ? _lastHeavyPick : _lastLightPick;
+        int idx = Random.Range(0, pool.Length);
+        for (int i = 0; i < 8 && pool.Length > 1 && idx == last; i++)
+            idx = Random.Range(0, pool.Length);   // 相邻两次避开同一条;池里只有一条/全同值时无从避开
+        if (heavy) _lastHeavyPick = idx; else _lastLightPick = idx;
+
+        var entry = pool[idx];
+        AudioManager.Instance?.PlaySfx(entry.clip, heavy ? heavySfxVolume : lightSfxVolume, entry.pitch);
+    }
+
+    /// <summary>建池:每个素材 × 每个和谐音程 = 一条池项(空素材槽跳过;数组空/全空 → 空池)</summary>
+    private static SfxPoolEntry[] BuildSfxPool(AudioClip[] clips)
+    {
+        if (clips == null) return new SfxPoolEntry[0];
+
+        var list = new List<SfxPoolEntry>();
+        foreach (var c in clips)
+        {
+            if (c == null) continue;
+            foreach (int semi in HarmonySemitones)
+                list.Add(new SfxPoolEntry { clip = c, pitch = AudioManager.PitchFromSemitone(semi) });
+        }
+        return list.ToArray();
+    }
 
     /// <summary>背刺刀光(→ backstab 槽),只出特效:整组卡点音已在进组时排好(见 ScheduleBackstabGroup)。
     /// 刀光固定在本刀落点(脱离锚点),不被后续连打瞬移搬走。</summary>
@@ -192,7 +313,7 @@ public class AttackVFXAnchor : MonoBehaviour
     /// <summary>攻击结束:收起当前组(与 Hide 同义,语义化别名)</summary>
     public void Stop() => Hide();
 
-    private static ComboSlot GetSlot(ComboSlot s1, ComboSlot s2, ComboSlot s3, int comboIndex)
+    private static AttackSlot GetSlot(AttackSlot s1, AttackSlot s2, AttackSlot s3, int comboIndex)
     {
         switch (comboIndex)
         {
@@ -250,6 +371,25 @@ public class AttackVFXAnchor : MonoBehaviour
     }
 
 
+    /// <summary>普攻特效播放(槽内只有 prefab + showDelay):收上一组 → 按槽延迟生成 → 起超时保险。
+    /// 与音效无耦合:槽未配 prefab 时直接返回(不动上一组特效;挥刀音由池独立承担)。</summary>
+    private void PlayAttackVfx(AttackSlot slot)
+    {
+        if (slot == null || slot.prefab == null) return;
+
+        Hide();  // 收上一组(与是否配 VFX 无关,无 VFX 时内部空转)
+
+        if (_delayedRoutine != null) { StopCoroutine(_delayedRoutine); _delayedRoutine = null; }
+        if (_lifeRoutine != null) { StopCoroutine(_lifeRoutine); _lifeRoutine = null; }
+
+        if (slot.showDelay > 0f)
+            _delayedRoutine = StartCoroutine(ShowDelayedPrefab(slot.prefab, slot.showDelay, false));
+        else
+            SpawnPrefab(slot.prefab, false);
+
+        _lifeRoutine = StartCoroutine(LifetimeGuard());
+    }
+
     /// <summary>播放一个玩家分组槽(VFX / 音效各自判空,两个都空则静默跳过;自动收上一组)。
     /// scheduleDsp &gt; 0 = 音效排到该 dspTime 播(背刺卡点:与 BGM 走同一个音频时钟);0 = 立即播(普通攻击槽的默认行为)。
     /// sfxOnly = 只出声、不 spawn 特效也不收上一组特效:连音自动连打的空挥刀用。
@@ -306,9 +446,10 @@ public class AttackVFXAnchor : MonoBehaviour
     }
 
     // ============================================================
-    // 通用 Show / Hide / KillAll(玩家入口与 Boss/敌人共用)
+    // Hide / KillAll(玩家侧与外部共用;通用 Show 已随通用槽一起注释保留)
     // ============================================================
 
+    /* 通用 Show(注释保留):
     /// <summary>显示指定通用槽(按名字;自动先收起上一组;找不到槽只警告不崩)</summary>
     public void Show(string slotName)
     {
@@ -331,6 +472,7 @@ public class AttackVFXAnchor : MonoBehaviour
 
         _lifeRoutine = StartCoroutine(LifetimeGuard());
     }
+    */
 
     /// <summary>攻击结束:当前组停发射,已发射粒子按自身 startLifetime 自然消亡后回池(淡出尾迹)</summary>
     public void Hide()
@@ -365,6 +507,7 @@ public class AttackVFXAnchor : MonoBehaviour
         _active.Clear();
     }
 
+    /* 通用槽查找 / 延迟生成 / 整组实例化(注释保留):
     private VFXSlot FindSlot(string slotName)
     {
         if (slots == null) return null;
@@ -392,6 +535,7 @@ public class AttackVFXAnchor : MonoBehaviour
             SpawnPrefabTo(prefab, slotRoot);
         }
     }
+    */
 
     /// <summary>玩家分组槽:特效实例挂 attack_VFX(锚点)原点,prefab 内部自带相对位置。
     /// detachFromAnchor = 生成后保留世界变换脱离父级(背刺刀光用,见 SpawnPrefabTo)</summary>
@@ -502,6 +646,7 @@ public class AttackVFXAnchor : MonoBehaviour
             ps.Stop(false, ParticleSystemStopBehavior.StopEmitting);
     }
 
+    /* 通用槽挂点查找(注释保留):
     /// <summary>通用槽:按槽名找同名字物体作挂点;找不到 = 挂锚点自身</summary>
     private Transform FindSlotRoot(string slotName)
     {
@@ -509,6 +654,7 @@ public class AttackVFXAnchor : MonoBehaviour
             if (child.name == slotName) return child;
         return transform;
     }
+    */
 
     /// <summary>取整组剩余最长粒子寿命(延迟回池等待用)</summary>
     private float MaxRemainingLifetime(GameObject go)

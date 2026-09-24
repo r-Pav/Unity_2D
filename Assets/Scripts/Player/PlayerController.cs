@@ -180,6 +180,8 @@ public class PlayerController : PlayerCharacterBase
     private EnemyControllerBase _chaseTarget;   // 追击目标(背刺命中的那只 enemy;null = 无窗口)
     private float _chaseEndTime;                // 窗口过期时间戳(Time.time 基准)
 
+    private AttackVFXAnchor _attackVfx;         // 挥刀音效池锚点缓存(追击一击请求重击音用;懒解析)
+
     /// <summary>追击窗口当前是否有效(未过期 + 目标存活;输入分发快速判断用)</summary>
     public bool BackstabChaseActive
     {
@@ -746,6 +748,10 @@ public class PlayerController : PlayerCharacterBase
     {
         if (!Input.GetKeyDown(KeyCode.F)) return;
 
+        // [P3 音乐收口] 过渡期(区域三段式切曲 / 战斗进出淡入淡出)玩家侧背刺判定整体不生效:
+        // 按 F 直接 return —— 不进背刺、不空挥、不消费窗口(过渡期窗口查询本身也一律 false,见 MusicPointManager.IsTransitioning)。
+        if (MusicPointManager.Instance != null && MusicPointManager.Instance.IsTransitioning) return;
+
         // 自动连打期间锁 F(节拍辅助 2026-09-17):踩中连音组内一点后,组内剩下的刀由背刺状态按拍点自动打完,
         // 玩家这时再按 F 一律无效(避免穿插手动刀打乱自动游标)。
         if (PlayerFsm != null && PlayerFsm.CurrentState is PlayerBackstabState autoBackstab && autoBackstab.AutoChaining)
@@ -1000,6 +1006,11 @@ public class PlayerController : PlayerCharacterBase
 
         // c. 玩家朝向 enemy(按 dest 与 enemy 相对位置,不能读 transform.position——rb.position 刚赋值未同步)
         UpdateFacing(target.transform.position.x >= dest.x ? 1f : -1f);
+
+        // c2. 音效层:追击这一击的挥刀音强制走重击池(一次性标记,进状态 OnEnter 播挥刀音时消费)。
+        //     只改音效出口 —— 段号 / 攻击流程 / 瞬移一律不动(2026-09-24 saika 口径)。
+        if (_attackVfx == null) _attackVfx = GetComponentInChildren<AttackVFXAnchor>(true);
+        _attackVfx?.RequestHeavySfxOnce();
 
         // d. 分流进状态(PlayerFsm 上已持有的状态引用;地面可直接切空中攻击,AirAttackState 自带直切动画兜底)
         PlayerFsm.ChangeState(target.IsGrounded

@@ -211,18 +211,30 @@ public class AreaChannelTrigger : MonoBehaviour
         // 进管道 = 走「进」段变到全黑并停住;传送完成 = 走「全黑保持 + 出」段。
         TeleportBlackout.Instance?.BeginBlackout();
 
-        // 音乐:进管道,淡入淡出切换。优先读对侧区域根(AreaMusicSlot)的槽位音乐;
-        // 对侧未配槽 → 回退自身 MusicSwitchTrigger(Boss 房/旧 Scene 配置兼容)。
-        // 不新写淡入淡出,直接复用 MusicPointManager.CrossFadeTo(现有 Scene 模式)。
+        // 音乐:进管道,淡入淡出切换。主路径 = 查区域音乐表(AreaMusicTable):取对侧区根的
+        // AreaIdentity.areaId → MusicPointManager.CrossFadeToArea;取不到 areaId / 表里没配该区 → 逐级回退:
+        //   ① 旧槽配置(对侧区根的 AreaMusicSlot,表还没配好的区靠它保持原行为)
+        //   ② 自身 MusicSwitchTrigger(Boss 房/旧 Scene 配置兼容)
+        // 不新写淡入淡出,两条路径都复用 MusicPointManager.CrossFadeTo(现有 Scene 模式)。
         bool switched = false;
         if (targetArea != null)
         {
-            var slot = targetArea.GetComponentInChildren<AreaMusicSlot>();
             var mgr = MusicPointManager.Instance;
-            if (slot != null && slot.AreaMusic != null && mgr != null)
+            var identity = targetArea.GetComponentInParent<AreaIdentity>();
+            string areaId = identity != null ? identity.AreaId : null;
+            if (mgr != null && !string.IsNullOrEmpty(areaId) && mgr.CrossFadeToArea(areaId))
             {
-                mgr.CrossFadeTo(slot.AreaMusic);
                 switched = true;
+            }
+            else
+            {
+                // 回退①:该区只挂 AreaMusicSlot 没进表(或表还没拖上来)→ 读槽位音乐
+                var slot = targetArea.GetComponentInChildren<AreaMusicSlot>();
+                if (mgr != null && slot != null && slot.AreaMusic != null)
+                {
+                    mgr.CrossFadeTo(slot.AreaMusic);
+                    switched = true;
+                }
             }
         }
         if (!switched)
