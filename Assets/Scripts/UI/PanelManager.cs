@@ -208,6 +208,17 @@ public sealed class PanelManager : MonoBehaviour
             return;
         }
 
+        // 2026-09-25:同一个面板重复「打开」只允许生效一次 —— 已经开着就只把它提到栈顶,
+        // 不重复 SetActive、更不重播打开动效(重播的表现就是面板闪一下)。
+        // 背包 / 仓库 / 合成等所有入口共用这一条守卫。
+        if (panel.activeInHierarchy && _panelStack.Contains(panel))
+        {
+            _RemoveFromStack(panel, false);
+            _panelStack.Push(panel);
+            _ApplyInteractionState();
+            return;
+        }
+
         // 用户主动重新打开的面板，其旧的 FullScreen history 记录作废，避免 ESC 恢复时重复累积
         _RemoveFromFullScreenHistory(panel);
 
@@ -295,10 +306,18 @@ public sealed class PanelManager : MonoBehaviour
             return;
         }
 
+        _RemoveFromStack(panel, false);
+
+        // 2026-09-25:重复「关闭」只允许生效一次 —— 面板已经关着(已隐藏)就直接清完栈返回,
+        // 不重播关闭动效、不重复响关闭音(音效因此挪到这条守卫之后)。
+        if (panel == null || !panel.activeInHierarchy)
+        {
+            _ApplyInteractionState();
+            return;
+        }
+
         // 注册校验通过才发声(未注册的调用直接 return,不响)
         AudioManager.Instance?.PlayUiSfx(AudioManager.UiSfxKind.Close);
-
-        _RemoveFromStack(panel, false);
 
         // 统一开关动效：有 UIPanelMotion → PlayClose 播完回调 SetActive(false)（与 CloseTopPanel 对称）
         if (!_closingPanels.Contains(panel))

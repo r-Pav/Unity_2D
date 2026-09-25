@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
+using TMPro;
 
 /// <summary>
 /// 物品格子 UI 组件 — 背包/仓库网格中的单个格子
@@ -36,8 +37,17 @@ public class ItemCell : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
     [Tooltip("物品图标 Image")]
     [SerializeField] private Image iconImage;
 
-    [Tooltip("堆叠数量 Text（TMP_Text 或普通 Text）")]
-    [SerializeField] private Text stackText; // 兼容旧版 Text；后续可换 TMP_Text
+    /// <summary>
+    /// 堆叠数量文本（2026-09-25 由 UnityEngine.UI.Text 改为 TMPro.TMP_Text，与项目 TMP 口径统一）。
+    /// 旧类型与项目 UI 的 TextMeshPro 不匹配 ⇒ 场景里这个字段一直拖不进对象、恒为空；
+    /// 改类型时该字段在 26 个格子里本来就都是空引用，因此无引用断裂风险。
+    /// </summary>
+    [Tooltip("堆叠数量文本（TMP）；留空则按子物体名 \"Count\"（兼容旧名 \"StackCount\"）查找")]
+    [SerializeField] private TMP_Text stackText;
+
+    /// <summary>名称文本（可选，默认不显示；hideName=false 时才写入。留空则按子物体名 "Name" 查找）</summary>
+    [Tooltip("名称文本（TMP）；默认不显示，留空则按子物体名 \"Name\" 查找")]
+    [SerializeField] private TMP_Text nameText;
 
     [Tooltip("稀有度边框 Image（可选）")]
     [SerializeField] private Image rarityFrame;
@@ -45,8 +55,11 @@ public class ItemCell : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
     [Tooltip("空槽位默认图标（可选，有物品时隐藏）")]
     [SerializeField] private Image emptySlotIcon;
 
-    [Tooltip("拖入高亮覆盖层（可选，接受拖入时短亮）")]
+    [Tooltip("拖入高亮覆盖层（可选，留空则按子物体名 Highlight 找）")]
     [SerializeField] private Image highlightOverlay;
+
+    [Tooltip("选中高亮覆盖层（可选，与拖入高亮分开用；留空则按子物体名 SelectedHighlight 找，找不到就复用 Highlight）")]
+    [SerializeField] private Image selectedHighlightOverlay;
 
     [Header("外观设置")]
     [Tooltip("空格子时的图标透明度")]
@@ -55,12 +68,28 @@ public class ItemCell : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
     [Tooltip("堆叠数量 < 2 时隐藏数量文字")]
     [SerializeField] private bool hideSingleStack = true;
 
+    [Tooltip("隐藏名称文字（默认 true：名称只出现在悬停 tooltip 里；置 false 时才写入 nameText）")]
+    [SerializeField] private bool hideName = true;
+
     // ============================================================
     // 运行时状态
     // ============================================================
 
-    private static readonly Color s_highlightColor = new Color(1f, 1f, 0f, 0.3f); // 拖入高亮:淡黄
-    private static readonly Color s_selectedColor = new Color(1f, 0.95f, 0.4f, 0.5f); // 选中高亮:更亮的暖黄(与拖入区分)
+    // 2026-09-25 saika 定:高亮的颜色与贴图一律由素材决定(Highlight / SelectedHighlight 元素自己的 Image),
+    // 代码只做显隐开关,不再写死颜色 —— 原先这里的两行硬编码色(s_highlightColor / s_selectedColor)已删。
+
+    // ── 子物体名字约定（模板化显示:字段拖了就用字段,没拖就按这些名字找）──
+
+    private const string k_IconChildName = "Icon";
+    private const string k_CountChildName = "Count";
+    private const string k_LegacyCountChildName = "StackCount"; // 旧格子的数量文本名字,兼容用
+    private const string k_NameChildName = "Name";
+    private const string k_FrameChildName = "Frame";
+    private const string k_HighlightChildName = "Highlight";
+    private const string k_SelectedHighlightChildName = "SelectedHighlight";
+
+    /// <summary>显示元素是否已解析过（懒解析只做一次；未命中也记下,之后不再 transform.Find）</summary>
+    private bool _refsResolved;
 
     // ============================================================
     // 生命周期
@@ -68,20 +97,8 @@ public class ItemCell : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
 
     private void Awake()
     {
-        // 自动查找组件
-        if (iconImage == null)
-        {
-            // 尝试从自身或子节点查找 Image（排除自身主 Image 以外的子节点图标）
-            Transform iconChild = transform.Find("Icon");
-            iconImage = iconChild != null ? iconChild.GetComponent<Image>() : GetComponent<Image>();
-        }
-
-        if (stackText == null)
-        {
-            Transform countChild = transform.Find("StackCount");
-            if (countChild != null) stackText = countChild.GetComponent<Text>();
-        }
-
+        // 组件自动查找已统一到 ResolveRefsOnce（首次 RefreshDisplay 时按名字解析并缓存），
+        // 见「辅助方法 — 显示元素解析」一节；此处只保留原本就有的高亮层初始隐藏。
         if (highlightOverlay != null)
             highlightOverlay.gameObject.SetActive(false);
     }
@@ -100,6 +117,8 @@ public class ItemCell : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
     /// </summary>
     public void RefreshDisplay()
     {
+        ResolveRefsOnce();   // 懒解析:字段没拖就按子物体名字找(只做一次并缓存)
+
         ItemInstance item = GetItemData();
         bool isEmpty = item == null || !item.IsValid;
 
@@ -132,6 +151,19 @@ public class ItemCell : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
             else
             {
                 stackText.text = item.stackSize.ToString();
+            }
+        }
+
+        // 名称文字（默认不显示：hideName=true 时名称只出现在悬停 tooltip 里）
+        if (nameText != null)
+        {
+            if (isEmpty || hideName || string.IsNullOrEmpty(item.template.itemName))
+            {
+                nameText.text = string.Empty;
+            }
+            else
+            {
+                nameText.text = item.template.itemName;
             }
         }
 
@@ -373,26 +405,83 @@ public class ItemCell : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
         inv.EquipItem(SlotIndex, item.template.slotType);
     }
 
-    /// <summary>选中高亮 — 与拖入高亮共用 highlightOverlay,用不同颜色区分"选中"和"可拖入"</summary>
+    /// <summary>
+    /// 选中态高亮（2026-09-25 改）：只做显隐开关，颜色与贴图由 SelectedHighlight 元素自己定；
+    /// 没建 SelectedHighlight 就复用 Highlight。两个都没有就什么都不做。
+    /// </summary>
     public void SetSelected(bool on)
     {
-        if (highlightOverlay == null) return;
+        Image target = selectedHighlightOverlay != null ? selectedHighlightOverlay : highlightOverlay;
+        if (target == null) return;
 
-        if (on)
-        {
-            highlightOverlay.color = s_selectedColor;
-            highlightOverlay.gameObject.SetActive(true);
-        }
-        else
-        {
-            highlightOverlay.color = s_highlightColor;   // 还原成拖入高亮色,免得下次拖入判错
-            highlightOverlay.gameObject.SetActive(false);
-        }
+        target.gameObject.SetActive(on);
     }
 
     // ============================================================
     // 辅助方法
     // ============================================================
+
+    /// <summary>
+    /// 显示元素解析（模板化显示，2026-09-25）—— 规则统一为
+    /// 「**字段拖了就用字段，没拖就按子物体名字找**」，名字约定：
+    ///   Icon（找不到再退回自身 Image）/ Count（兼容旧名 StackCount）/ Name / Frame / Highlight。
+    /// 解析只做一次并缓存（懒解析：首次 RefreshDisplay 时做）；
+    /// 未命中的元素同样记为已解析，之后不再 transform.Find ——
+    /// 因此 prefab 里后补的子物体要重新进 Play（或重载场景）才生效。
+    /// </summary>
+    private void ResolveRefsOnce()
+    {
+        if (_refsResolved) return;
+        _refsResolved = true;
+
+        // 图标:"Icon" 子物体 → 自身 Image（保留原兜底）
+        if (iconImage == null)
+        {
+            Transform iconChild = transform.Find(k_IconChildName);
+            iconImage = iconChild != null ? iconChild.GetComponent<Image>() : GetComponent<Image>();
+        }
+
+        // 堆叠数量:"Count" → 旧名 "StackCount"
+        if (stackText == null)
+        {
+            Transform countChild = transform.Find(k_CountChildName);
+            if (countChild == null) countChild = transform.Find(k_LegacyCountChildName);
+            if (countChild != null) stackText = countChild.GetComponent<TMP_Text>();
+        }
+
+        // 名称:"Name"
+        if (nameText == null)
+        {
+            Transform nameChild = transform.Find(k_NameChildName);
+            if (nameChild != null) nameText = nameChild.GetComponent<TMP_Text>();
+        }
+
+        // 稀有度边框:"Frame"
+        if (rarityFrame == null)
+        {
+            Transform frameChild = transform.Find(k_FrameChildName);
+            if (frameChild != null) rarityFrame = frameChild.GetComponent<Image>();
+        }
+
+        // 高亮覆盖层:"Highlight"（拖入用）/ "SelectedHighlight"（选中用;找不到就复用 Highlight）
+        // 两个元素解析完都先隐掉;颜色与贴图由素材自己定,代码不写颜色(2026-09-25)
+        if (highlightOverlay == null)
+        {
+            Transform highlightChild = transform.Find(k_HighlightChildName);
+            if (highlightChild != null) highlightOverlay = highlightChild.GetComponent<Image>();
+        }
+
+        if (selectedHighlightOverlay == null)
+        {
+            Transform selectedChild = transform.Find(k_SelectedHighlightChildName);
+            selectedHighlightOverlay = selectedChild != null
+                ? selectedChild.GetComponent<Image>()
+                : highlightOverlay;
+        }
+
+        if (highlightOverlay != null) highlightOverlay.gameObject.SetActive(false);
+        if (selectedHighlightOverlay != null) selectedHighlightOverlay.gameObject.SetActive(false);
+    }
 
     /// <summary>获取此格子对应的 ItemInstance</summary>
     private ItemInstance GetItemData()
@@ -411,13 +500,12 @@ public class ItemCell : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
         }
     }
 
-    /// <summary>设置高亮覆盖层</summary>
+    /// <summary>拖入可放置高亮：只做显隐开关,颜色与贴图由 Highlight 元素自己定(2026-09-25)</summary>
     private void SetHighlight(bool active)
     {
         if (highlightOverlay == null) return;
+
         highlightOverlay.gameObject.SetActive(active);
-        if (active)
-            highlightOverlay.color = s_highlightColor;
     }
 
     /// <summary>判断当前拖拽物品是否可以放入此格子</summary>

@@ -279,6 +279,49 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
     }
 
     /// <summary>
+    /// [装备制作 S2] 只读试算：背包能否「全量」装下 count 个 template。
+    ///
+    /// 可容纳空间 = 已有同类可堆叠物品的剩余堆叠余量之和
+    ///            + 空槽位可用容量（空槽数 × template.maxStack）
+    ///
+    /// 与 AddItem 的区别：AddItem 是「至少部分添加成功即返回 true」，本方法要求全量装得下才返回 true
+    /// （合成是原子操作，需要先问「能不能全放下」）。
+    /// 纯只读：不修改任何数据、不触发任何事件。
+    /// </summary>
+    /// <param name="template">物品模板</param>
+    /// <param name="count">需要全量装下的数量</param>
+    /// <returns>true = 全量装得下；template == null 或 count &lt;= 0 返回 false</returns>
+    public bool CanFitFully(ItemSO template, int count)
+    {
+        if (template == null || count <= 0) return false;
+
+        int capacity = 0;     // 可容纳总数
+        int emptySlots = 0;   // 空槽位数量
+
+        for (int i = 0; i < playerItems.Count; i++)
+        {
+            ItemInstance item = playerItems[i];
+
+            if (item == null)
+            {
+                emptySlots++;
+                continue;
+            }
+
+            // 只有同类、且还能继续堆叠的物品才贡献余量
+            if (item.template != template) continue;
+            if (!item.CanStack) continue;
+
+            capacity += item.RemainingStackSpace;
+        }
+
+        // 每个空槽位最多放 template.maxStack 个
+        capacity += emptySlots * template.maxStack;
+
+        return capacity >= count;
+    }
+
+    /// <summary>
     /// 从背包移除物品
     /// </summary>
     /// <param name="index">物品索引</param>
@@ -434,6 +477,63 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
     }
 
     /// <summary>
+    /// [装备制作 S2] 直接往仓库添加 count 个 template（原子写入：全成功才写，不够则一个都不写）。
+    ///
+    /// 流程：先只读试算仓库容量（同类剩余堆叠余量 + 剩余槽位数 × template.maxStack），
+    ///       不够 → 直接 return false，**不改动任何数据、不触发事件**（合成需要这种原子性）；
+    ///       够 → 按 DepositToWarehouse 的仓库堆叠口径写入（先堆叠同类、再补新条目），写完整笔成功，触发 OnWarehouseChanged。
+    ///
+    /// 与 DepositToWarehouse 的区别：入口是「ItemSO + 数量」，不涉及背包索引；且要求全量成功。
+    /// </summary>
+    /// <param name="template">物品模板</param>
+    /// <param name="count">需要全量加入仓库的数量</param>
+    /// <returns>true = 全量加入成功；template == null、count &lt;= 0 或仓库装不下返回 false</returns>
+    public bool TryAddToWarehouse(ItemSO template, int count)
+    {
+        if (template == null || count <= 0) return false;
+
+        // ── 第一步：只读试算仓库可容纳空间 ──
+        int capacity = 0;
+        for (int i = 0; i < warehouseItems.Count; i++)
+        {
+            ItemInstance wItem = warehouseItems[i];
+            if (wItem == null) continue;
+            if (wItem.template != template) continue;
+            if (!wItem.CanStack) continue;
+
+            capacity += wItem.RemainingStackSpace;
+        }
+
+        // 剩余槽位数（与 DepositToWarehouse 的扩容条件 warehouseItems.Count < WAREHOUSE_MAX_SLOTS 同口径）
+        capacity += (WAREHOUSE_MAX_SLOTS - warehouseItems.Count) * template.maxStack;
+
+        if (capacity < count) return false;   // 装不下 → 原子性：一个都不写
+
+        // ── 第二步：写入（复用 DepositToWarehouse 的仓库堆叠口径：先堆叠同类）──
+        int remaining = count;
+        for (int i = 0; i < warehouseItems.Count && remaining > 0; i++)
+        {
+            ItemInstance wItem = warehouseItems[i];
+            if (wItem == null) continue;
+            if (wItem.template != template) continue;
+            if (!wItem.CanStack) continue;
+
+            remaining -= wItem.TryStack(remaining);
+        }
+
+        // ── 剩余创建新条目（同上口径：每个新条目最多 template.maxStack 个）──
+        while (remaining > 0 && warehouseItems.Count < WAREHOUSE_MAX_SLOTS)
+        {
+            int stackAmount = Mathf.Min(remaining, template.maxStack);
+            warehouseItems.Add(new ItemInstance(template, stackAmount));
+            remaining -= stackAmount;
+        }
+
+        OnWarehouseChanged?.Invoke();
+        return true;
+    }
+
+    /// <summary>
     /// 从仓库取出（到背包指定位置或首个空格）
     /// </summary>
     public bool WithdrawFromWarehouse(int warehouseIndex, int count = -1, int targetPlayerSlot = -1)
@@ -491,6 +591,36 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
         OnInventoryChanged?.Invoke();
         OnWarehouseChanged?.Invoke();
         return true;
+    }
+
+    /// <summary>
+    /// [装备制作 S3] 从仓库指定格位直接移除物品（对称于 RemoveItem 的仓库版）。
+    ///
+    /// 与 WithdrawFromWarehouse 的区别：本方法**不经过背包**、不占背包格 ——
+    /// 合成暂存区「填入时真从仓库扣掉材料」需要这个口径（取到背包会占背包格，口径不对）。
+    /// 与 RemoveItem 的差别只有清理/事件那一对：仓库走 CleanupZeroStackWarehouse() / OnWarehouseChanged
+    /// （快捷栏只会绑定背包物品实例，故本方法不需要 ClearQuickSlotRef）。
+    ///
+    /// 纯数据层：扣除成功才走现有 CleanupZeroStackWarehouse() 压缩列表并触发 OnWarehouseChanged；
+    /// 格位不合法 / 该格为空 → 直接返回 false，不改动任何数据、不触发事件。
+    /// </summary>
+    /// <param name="index">仓库格位下标</param>
+    /// <param name="count">移除数量（&lt; 0 = 全部取走）</param>
+    /// <returns>true = 至少移除了 1 个（与 RemoveItem 同口径：不足时扣掉现有的并返回 true）</returns>
+    public bool RemoveWarehouseItem(int index, int count = -1)
+    {
+        ItemInstance item = GetWarehouseItem(index);
+        if (item == null) return false;
+
+        int toRemove = count < 0 ? item.stackSize : count;
+        int removed = item.TryRemove(toRemove);
+
+        if (item.stackSize <= 0)
+            warehouseItems[index] = null;
+
+        CleanupZeroStackWarehouse();
+        OnWarehouseChanged?.Invoke();
+        return removed > 0;
     }
 
     /// <summary>仓库物品交换</summary>
@@ -727,6 +857,12 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
     }
 
     /// <summary>打开背包面板</summary>
+    /// <summary>
+    /// 背包面板是否已经打开（2026-09-25 加：合成面板打开时要自动把背包带出来，已开就不动）
+    /// 直接用面板物体的激活状态判定，不改任何现有开关逻辑。
+    /// </summary>
+    public bool IsInventoryOpen => inventoryPanel != null && inventoryPanel.activeSelf;
+
     public void OpenInventoryPanel()
     {
         if (inventoryPanel != null && !inventoryPanel.activeSelf)
