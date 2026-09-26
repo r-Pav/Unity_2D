@@ -394,7 +394,7 @@ public class ItemCell : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
         // ── 右键：使用消耗品（背包格限定，仓库格不响应）──
         if (eventData.button == PointerEventData.InputButton.Right)
         {
-            if (item.template.category != ItemCategory.Consumable) return;
+            if (item.template.Category != ItemCategory.Consumable) return;
             if (ContainerType != DragSourceContainer.Inventory) return;
 
             InventoryManager.Instance?.UsePlayerItem(SlotIndex);
@@ -415,7 +415,7 @@ public class ItemCell : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
         }
 
         // 第二段：装备类 = 自动装备到空槽；消耗品/材料不做事（消耗品改用右键使用）
-        if (item.template.category != ItemCategory.Equipment) return;
+        if (item.template.Category != ItemCategory.Equipment) return;
         if (ContainerType != DragSourceContainer.Inventory) return;
 
         InventoryManager inv = InventoryManager.Instance;

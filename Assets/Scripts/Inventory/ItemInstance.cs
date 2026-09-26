@@ -44,7 +44,7 @@ public class ItemInstance
         this.stackSize = Mathf.Clamp(stackSize, 1, template != null ? template.maxStack : 1);
 
         // 装备类物品初始化耐久度
-        if (template != null && template.category == ItemCategory.Equipment)
+        if (template != null && template.Category == ItemCategory.Equipment)
         {
             this.maxDurability = 100; // TODO: 后续从配置读取
             this.currentDurability = this.maxDurability;

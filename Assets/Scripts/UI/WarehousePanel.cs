@@ -208,7 +208,7 @@ public class WarehousePanel : MonoBehaviour, IPanel
             for (int j = 0; j < warehouseItems.Count; j++)
             {
                 ItemInstance item = warehouseItems[j];
-                if (item != null && item.template.category == cat)
+                if (item != null && item.template.Category == cat)
                     matching.Add(j);
             }
 

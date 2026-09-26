@@ -153,7 +153,7 @@ public class CraftMatPickDialog : MonoBehaviour, IPanel
         {
             ItemInstance item = items[i];
             if (item == null || item.template == null) continue;
-            if (item.template.category != ItemCategory.Material) continue;
+            if (item.template.Category != ItemCategory.Material) continue;
             if (item.stackSize <= 0) continue;
 
             candidates.Add(new CraftMatChoice

@@ -410,7 +410,7 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
         for (int i = 0; i < playerItems.Count; i++)
         {
             ItemInstance item = playerItems[i];
-            if (item != null && item.template.category == category)
+            if (item != null && item.template.Category == category)
                 filtered.Add(item);
             else
                 filtered.Add(null); // 保持槽位对齐（分类过滤时隐藏不匹配项，由 UI 处理）
@@ -680,7 +680,7 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
         for (int i = 0; i < warehouseItems.Count; i++)
         {
             ItemInstance item = warehouseItems[i];
-            if (item != null && item.template.category == category)
+            if (item != null && item.template.Category == category)
                 filtered.Add(item);
         }
         return filtered;
@@ -704,15 +704,15 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
             return false;
         }
 
-        if (item.template.category != ItemCategory.Equipment)
+        if (item.template.Category != ItemCategory.Equipment)
         {
             Debug.LogWarning($"[InventoryManager] {item.DisplayName} 不是装备");
             return false;
         }
 
-        if (!IsSlotCompatible(item.template.slotType, slot))
+        if (!EquipmentSlotUtility.CanEquipTo(item.template.EquipCategory, slot))
         {
-            Debug.LogWarning($"[InventoryManager] {item.DisplayName} 槽位不匹配: {item.template.slotType} ≠ {slot}");
+            Debug.LogWarning($"[InventoryManager] {item.DisplayName} 槽位不匹配: {item.template.EquipCategory} ≠ {slot}");
             return false;
         }
 
@@ -770,49 +770,22 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
 
     /// <summary>
     /// 自动装备到匹配的空槽（2026-09-26 加，供背包左键第二段用）。
-    /// 饰品类（Accessory0 / Accessory1）两个槽任选一个空的；其余按 slotType 找唯一槽。
-    /// 目标槽已满 → 不操作（不顶掉已装备的物品），返回 false。
+    /// 候选槽由装备类别决定（饰品两个槽，顺序即优先顺序）；候选槽全满 → 不操作，返回 false。
     /// </summary>
     public bool EquipItemAuto(int playerIndex)
     {
         ItemInstance item = GetPlayerItem(playerIndex);
         if (item == null || item.template == null) return false;
-        if (item.template.category != ItemCategory.Equipment) return false;
+        if (item.template.Category != ItemCategory.Equipment) return false;
         if (_equipmentManager == null) return false;
 
-        EquipmentSlotType mainSlot = item.template.slotType;
-
-        if (mainSlot == EquipmentSlotType.Accessory0 || mainSlot == EquipmentSlotType.Accessory1)
+        foreach (EquipmentSlotType slot in EquipmentSlotUtility.GetSlots(item.template.EquipCategory))
         {
-            // 饰品：先本体槽，再另一个；两个都满 → 什么也不做
-            if (!_equipmentManager.HasEquipped(mainSlot))
-                return EquipItem(playerIndex, mainSlot);
-
-            EquipmentSlotType otherSlot = mainSlot == EquipmentSlotType.Accessory0
-                ? EquipmentSlotType.Accessory1
-                : EquipmentSlotType.Accessory0;
-
-            if (!_equipmentManager.HasEquipped(otherSlot))
-                return EquipItem(playerIndex, otherSlot);
-
-            return false;
+            if (!_equipmentManager.HasEquipped(slot))
+                return EquipItem(playerIndex, slot);
         }
 
-        if (_equipmentManager.HasEquipped(mainSlot)) return false;
-
-        return EquipItem(playerIndex, mainSlot);
-    }
-
-    /// <summary>
-    /// 槽位兼容判断：饰品槽 Accessory0 / Accessory1 互通（一个满了能用另一个），其余必须精确匹配。
-    /// </summary>
-    private static bool IsSlotCompatible(EquipmentSlotType itemSlot, EquipmentSlotType targetSlot)
-    {
-        if (itemSlot == targetSlot) return true;
-
-        bool itemIsAccessory = itemSlot == EquipmentSlotType.Accessory0 || itemSlot == EquipmentSlotType.Accessory1;
-        bool targetIsAccessory = targetSlot == EquipmentSlotType.Accessory0 || targetSlot == EquipmentSlotType.Accessory1;
-        return itemIsAccessory && targetIsAccessory;
+        return false;
     }
 
     /// <summary>查询指定槽位装备</summary>
@@ -852,9 +825,9 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
         if (fromBag == null) return false;   // 这个方向必须有来源物品
 
         // 快捷槽只收消耗品
-        if (fromBag.template == null || fromBag.template.category != ItemCategory.Consumable)
+        if (fromBag.template == null || fromBag.template.Category != ItemCategory.Consumable)
         {
-            Debug.LogWarning($"[InventoryManager] 快捷槽只能放消耗品，{fromBag.DisplayName} 分类为 {fromBag.template?.category}");
+            Debug.LogWarning($"[InventoryManager] 快捷槽只能放消耗品，{fromBag.DisplayName} 分类为 {fromBag.template?.Category}");
             return false;
         }
 
@@ -1026,7 +999,7 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
     {
         ItemInstance item = GetPlayerItem(playerInventoryIndex);
         if (item == null || item.template == null) return false;
-        if (item.template.category != ItemCategory.Consumable) return false;
+        if (item.template.Category != ItemCategory.Consumable) return false;
 
         if (!TryApplyConsumableEffect(item)) return false;
 
@@ -1046,7 +1019,7 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
     {
         if (item?.template == null) return false;
 
-        float heal = item.template.healAmount;
+        float heal = item.template.HealAmount;
         if (heal > 0f)
         {
             PlayerHealth health = PlayerHealth.Instance;
@@ -1410,7 +1383,7 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
                 if (backpackIndex < 0 || backpackIndex >= playerItems.Count) continue;
 
                 var item = playerItems[backpackIndex];
-                if (item != null && item.template != null && item.template.category == ItemCategory.Consumable)
+                if (item != null && item.template != null && item.template.Category == ItemCategory.Consumable)
                 {
                     quickSlots[i] = item;
                     playerItems[backpackIndex] = null;   // 搬运模型：搬走，背包那格留空

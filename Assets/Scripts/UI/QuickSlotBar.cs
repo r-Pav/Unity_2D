@@ -157,7 +157,7 @@ public class QuickSlotBar : MonoBehaviour, IDropHandler, IBeginDragHandler, IDra
 
         // 验证：只接受消耗品
         if (draggedItem == null || draggedItem.template == null) return;
-        if (draggedItem.template.category != ItemCategory.Consumable) return;
+        if (draggedItem.template.Category != ItemCategory.Consumable) return;
 
         switch (sourceContainer)
         {
@@ -188,7 +188,7 @@ public class QuickSlotBar : MonoBehaviour, IDropHandler, IBeginDragHandler, IDra
         ItemInstance draggedItem = DragSession.DraggedItem;
         bool valid = draggedItem != null
             && draggedItem.template != null
-            && draggedItem.template.category == ItemCategory.Consumable;
+            && draggedItem.template.Category == ItemCategory.Consumable;
 
         SetSlotHighlight(_hoveredSlotIndex, true, valid);
     }

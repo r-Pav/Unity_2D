@@ -98,16 +98,16 @@ public class EquipmentManager : MonoBehaviour
             return false;
         }
 
-        if (item.template.category != ItemCategory.Equipment)
+        if (item.template.Category != ItemCategory.Equipment)
         {
             Debug.LogWarning($"[EquipmentManager] 装备失败：{item.DisplayName} 不是装备类物品");
             return false;
         }
 
         // 验证槽位匹配
-        if (item.template.slotType != slot)
+        if (!EquipmentSlotUtility.CanEquipTo(item.template.EquipCategory, slot))
         {
-            Debug.LogWarning($"[EquipmentManager] 装备失败：{item.DisplayName} 槽位类型为 {item.template.slotType}，目标槽位为 {slot}");
+            Debug.LogWarning($"[EquipmentManager] 装备失败：{item.DisplayName} 槽位类别为 {item.template.EquipCategory}，目标槽位为 {slot}");
             return false;
         }
 
@@ -259,7 +259,7 @@ public class EquipmentManager : MonoBehaviour
     /// </summary>
     private void AddEquipmentModifiers(EquipmentSlotType slot, ItemInstance item)
     {
-        var stats = item.template.equipmentStats;
+        var stats = item.template.EquipmentStats;
         if (stats == null || stats.Value.bonuses == null) return;
 
         foreach (var bonus in stats.Value.bonuses)
@@ -282,7 +282,7 @@ public class EquipmentManager : MonoBehaviour
     /// </summary>
     private void RemoveEquipmentModifiers(EquipmentSlotType slot, ItemInstance item)
     {
-        var stats = item.template.equipmentStats;
+        var stats = item.template.EquipmentStats;
         if (stats == null || stats.Value.bonuses == null)
         {
             // 即使无 bonuses，武器仍可能需要清理
@@ -320,7 +320,7 @@ public class EquipmentManager : MonoBehaviour
         {
             if (_slots[i] == null) continue;
 
-            var stats = _slots[i].template.equipmentStats;
+            var stats = _slots[i].template.EquipmentStats;
             if (stats == null || stats.Value.bonuses == null) continue;
 
             foreach (var bonus in stats.Value.bonuses)

@@ -242,7 +242,7 @@ public class InventoryPanel : MonoBehaviour, IPanel
             ItemInstance item = inv.GetPlayerItem(i);
 
             // [Phase5] 性能优化：分类过滤时隐藏不匹配的物品格子（不调用全量 RefreshDisplay）
-            if (cat != ItemCategory.All && item != null && item.template.category != cat)
+            if (cat != ItemCategory.All && item != null && item.template.Category != cat)
             {
                 // 不匹配的格子在分类过滤下显示为空 — 但格子仍需刷新以显示为空状态
                 cell.RefreshDisplay();

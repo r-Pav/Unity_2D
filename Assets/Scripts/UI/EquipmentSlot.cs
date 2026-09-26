@@ -133,8 +133,8 @@ public class EquipmentSlot : MonoBehaviour, IDropHandler, IBeginDragHandler, IDr
 
         // 验证：只接受物品类型为装备且槽位匹配
         if (draggedItem == null || draggedItem.template == null) return;
-        if (draggedItem.template.category != ItemCategory.Equipment) return;
-        if (draggedItem.template.slotType != slotType) return;
+        if (draggedItem.template.Category != ItemCategory.Equipment) return;
+        if (!EquipmentSlotUtility.CanEquipTo(draggedItem.template.EquipCategory, slotType)) return;
 
         switch (sourceContainer)
         {
@@ -189,8 +189,8 @@ public class EquipmentSlot : MonoBehaviour, IDropHandler, IBeginDragHandler, IDr
         ItemInstance draggedItem = DragSession.DraggedItem;
         bool valid = draggedItem != null
             && draggedItem.template != null
-            && draggedItem.template.category == ItemCategory.Equipment
-            && draggedItem.template.slotType == slotType;
+            && draggedItem.template.Category == ItemCategory.Equipment
+            && EquipmentSlotUtility.CanEquipTo(draggedItem.template.EquipCategory, slotType);
 
         SetHighlight(true, valid);
     }
@@ -332,8 +332,8 @@ public class EquipmentSlot : MonoBehaviour, IDropHandler, IBeginDragHandler, IDr
         ItemInstance targetItem = inv.GetEquippedItem(slotType);
 
         // 验证双方槽位类型互容
-        if (sourceItem != null && sourceItem.template.slotType != slotType) return;
-        if (targetItem != null && targetItem.template.slotType != sourceSlot) return;
+        if (sourceItem != null && !EquipmentSlotUtility.CanEquipTo(sourceItem.template.EquipCategory, slotType)) return;
+        if (targetItem != null && !EquipmentSlotUtility.CanEquipTo(targetItem.template.EquipCategory, sourceSlot)) return;
 
         // 直接交换：先卸下双方装备（保留引用），再重新装备到对方槽位
         if (sourceItem != null) inv.UnequipItem(sourceSlot);

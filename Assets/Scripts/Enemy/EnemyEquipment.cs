@@ -89,7 +89,7 @@ public class EnemyEquipment : MonoBehaviour, IPickupReceiver
         int newLevel = drop.DropLevel;
 
         // 只拾取装备类物品
-        if (newItem.template == null || newItem.template.category != ItemCategory.Equipment)
+        if (newItem.template == null || newItem.template.Category != ItemCategory.Equipment)
             return false;
 
         // 空槽位 → 直接拾取
@@ -191,7 +191,7 @@ public class EnemyEquipment : MonoBehaviour, IPickupReceiver
     {
         if (statModManager == null || item?.template == null) return;
 
-        string statId = GetEquipStatId(item.template.slotType);
+        string statId = GetEquipStatId(item.template.EquipCategory);
         if (statId == null) return;
 
         // 10% × 等级（Lv1=0.1、Lv2=0.2、Lv3=0.3）
@@ -207,21 +207,20 @@ public class EnemyEquipment : MonoBehaviour, IPickupReceiver
     {
         if (statModManager == null || _equippedItem?.template == null) return;
 
-        string statId = GetEquipStatId(_equippedItem.template.slotType);
+        string statId = GetEquipStatId(_equippedItem.template.EquipCategory);
         if (statId == null) return;
 
         statModManager.RemoveModifier(GetEnemyEquipSource(statId));
     }
 
-    /// <summary>按装备槽类型映射属性 ID：武器→攻击力、防具→血量、饰品→移速；其他返回 null</summary>
-    private static string GetEquipStatId(EquipmentSlotType slotType)
+    /// <summary>按装备类别映射属性 ID：武器→攻击力、护甲→血量、饰品→移速；其他返回 null</summary>
+    private static string GetEquipStatId(EquipmentCategory category)
     {
-        switch (slotType)
+        switch (category)
         {
-            case EquipmentSlotType.Weapon:    return StatId.EnemyDamage;
-            case EquipmentSlotType.Armor:     return StatId.MaxHealth;
-            case EquipmentSlotType.Accessory0:
-            case EquipmentSlotType.Accessory1: return StatId.MoveSpeed;
+            case EquipmentCategory.Weapon:    return StatId.EnemyDamage;
+            case EquipmentCategory.Armor:     return StatId.MaxHealth;
+            case EquipmentCategory.Accessory: return StatId.MoveSpeed;
             default: return null;
         }
     }
