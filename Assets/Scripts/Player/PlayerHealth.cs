@@ -221,10 +221,6 @@ public class PlayerHealth : MonoBehaviour, ICombatant
             invincibleTimer -= Time.deltaTime;
             if (invincibleTimer < 0f) invincibleTimer = 0f;
         }
-
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-        DebugHealthHotkeys();
-#endif
     }
 
     // ============================================================
@@ -246,6 +242,17 @@ public class PlayerHealth : MonoBehaviour, ICombatant
     public void DebugSetHealthRatio(float ratio) => DebugSetHealth(MaxHealth * Mathf.Clamp01(ratio));
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
+    /// <summary>
+    /// [调试] 改血热键挂在组件自己的 Update 上（2026-09-26 修）。
+    /// 原先由 PlayerController.OnUpdate 尾部的 health.OnPlayerUpdate 驱动，
+    /// 那条链会被「输入锁定」和「动作锁定（攻击/受击/冲刺）」两个提前 return 挡掉，
+    /// 表现就是锁定状态下按 [ ] 没反应。
+    /// </summary>
+    private void Update()
+    {
+        DebugHealthHotkeys();
+    }
+
     /// <summary>[调试] Play 中改血热键：[ = 扣 debugDamageStep 点，] = 回满，\ = 只留 1 点血</summary>
     private void DebugHealthHotkeys()
     {
