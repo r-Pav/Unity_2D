@@ -51,6 +51,37 @@ public class PlayerHUD : MonoBehaviour
     void Start()
     {
         CacheBaseValues();
+        SyncBarsFromCurrentStats();
+    }
+
+    /// <summary>
+    /// 启动时主动套一次槽宽与数值（2026-09-26 修）：
+    /// 原先宽度只在 PlayerHealthChangedEvent 里更新，而玩家满血进 Play 时从不发这个事件，
+    /// 于是「手动摆的宽度不会被代码纠正、穿装备后宽度也不变」。
+    /// </summary>
+    void SyncBarsFromCurrentStats()
+    {
+        var health = PlayerHealth.Instance;
+        if (health != null)
+        {
+            UpdateBarWidth(hpBarRect, health.MaxHealth, _baseMaxHp, hpMinWidth, hpThreshold);
+
+            if (hpBar != null)
+                hpBar.value = health.MaxHealth > 0f ? health.CurrentHealth / health.MaxHealth : 0f;
+            if (hpText != null)
+                hpText.text = $"HP: {health.CurrentHealth:F0}/{health.MaxHealth:F0}";
+        }
+
+        var skillMgr = SkillManager.Instance;
+        if (skillMgr != null)
+        {
+            UpdateBarWidth(mpBarRect, skillMgr.MaxMana, _baseMaxMp, mpMinWidth, mpThreshold);
+
+            if (mpBar != null)
+                mpBar.value = skillMgr.MaxMana > 0f ? skillMgr.CurrentMana / skillMgr.MaxMana : 0f;
+            if (mpText != null)
+                mpText.text = $"MP: {skillMgr.CurrentMana:F0}/{skillMgr.MaxMana:F0}";
+        }
     }
 
     void OnEnable()
@@ -119,17 +150,20 @@ public class PlayerHUD : MonoBehaviour
     void UpdateBarWidth(RectTransform barRect, float currentMax, float baseMax, float minWidth, float threshold)
     {
         if (barRect == null) return;
-        if (baseMax <= 0f || threshold <= baseMax) return;
+        if (baseMax <= 0f) return;
 
+        // threshold 必须大于 baseMax 才构成线性区间。配置反了（例如 initialHealth 从 5 调到 1000 后
+        // 忘记同步改 threshold）时退化为「不超过基础血量 = 最短宽度，超过 = 直接取最大宽度」，
+        // 而不是像旧代码那样整体 return 导致宽度永远不更新（2026-09-26 修）。
         float width;
-        if (currentMax >= threshold)
+        if (threshold > baseMax)
         {
-            width = barMaxWidth;
+            float t = Mathf.Clamp01(Mathf.InverseLerp(baseMax, threshold, currentMax));
+            width = Mathf.Lerp(minWidth, barMaxWidth, t);
         }
         else
         {
-            float t = Mathf.InverseLerp(baseMax, threshold, currentMax);
-            width = Mathf.Lerp(minWidth, barMaxWidth, t);
+            width = currentMax > baseMax ? barMaxWidth : minWidth;
         }
 
         float oldWidth = barRect.sizeDelta.x;

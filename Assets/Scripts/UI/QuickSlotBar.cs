@@ -1,3 +1,4 @@
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
@@ -11,7 +12,7 @@ using UnityEngine.EventSystems;
 ///   2. 点击使用消耗品（减少堆叠）
 ///   3. IDropHandler — 接受从背包 ItemCell 拖入的消耗品（绑定快捷栏）
 ///   4. IBeginDragHandler — 可从快捷槽拖出（清空绑定）
-///   5. 右键清空快捷槽
+///   5. 快捷键 1 / 2 使用（按键配在 InventoryManager 的 quickSlotKey1/2）
 /// </summary>
 public class QuickSlotBar : MonoBehaviour, IDropHandler, IBeginDragHandler, IDragHandler, IEndDragHandler,
     IPointerClickHandler, IPointerEnterHandler, IPointerExitHandler
@@ -24,7 +25,7 @@ public class QuickSlotBar : MonoBehaviour, IDropHandler, IBeginDragHandler, IDra
     private class QuickSlotRef
     {
         public Image iconImage;
-        public Text stackText;
+        public TMP_Text stackText;   // 2026-09-26 由 UnityEngine.UI.Text 改 TMP_Text：场景里是 Text (TMP)，旧类型永远拖不进来
         public Image highlightOverlay;
         public Image emptyBackground;
     }
@@ -161,45 +162,13 @@ public class QuickSlotBar : MonoBehaviour, IDropHandler, IBeginDragHandler, IDra
         switch (sourceContainer)
         {
             case DragSourceContainer.Inventory:
-                // 背包 → 快捷栏：绑定
-                inv.SetQuickSlot(targetSlot, sourceIndex);
+                // 背包格 → 快捷槽：搬入/堆叠（2026-09-26 由「引用绑定」改为搬运，带快捷槽上限）
+                inv.MoveBackpackToQuickSlot(targetSlot, sourceIndex);
                 break;
 
             case DragSourceContainer.QuickSlot:
-                // 快捷栏 → 快捷栏：交换绑定
-                if (targetSlot != sourceIndex)
-                {
-                    ItemInstance itemA = inv.GetQuickSlot(sourceIndex);
-                    ItemInstance itemB = inv.GetQuickSlot(targetSlot);
-
-                    // 清空双方
-                    inv.ClearQuickSlot(sourceIndex);
-                    inv.ClearQuickSlot(targetSlot);
-
-                    // 重新绑定（通过查找物品在背包中的索引）
-                    if (itemA != null)
-                    {
-                        for (int j = 0; j < inv.PlayerItems.Count; j++)
-                        {
-                            if (inv.GetPlayerItem(j) == itemA)
-                            {
-                                inv.SetQuickSlot(targetSlot, j);
-                                break;
-                            }
-                        }
-                    }
-                    if (itemB != null)
-                    {
-                        for (int j = 0; j < inv.PlayerItems.Count; j++)
-                        {
-                            if (inv.GetPlayerItem(j) == itemB)
-                            {
-                                inv.SetQuickSlot(sourceIndex, j);
-                                break;
-                            }
-                        }
-                    }
-                }
+                // 快捷槽 → 快捷槽：直接交换两边内容
+                inv.SwapQuickSlots(sourceIndex, targetSlot);
                 break;
         }
     }
@@ -300,22 +269,16 @@ public class QuickSlotBar : MonoBehaviour, IDropHandler, IBeginDragHandler, IDra
 
     public void OnPointerClick(PointerEventData eventData)
     {
+        // HUD 是战斗界面：只做「左键使用」，不做任何背包管理操作（2026-09-26 去掉右键放回）
+        if (eventData.button != PointerEventData.InputButton.Left) return;
+
         int slotIndex = GetSlotIndexFromEvent(eventData);
         if (slotIndex < 0) return;
 
         InventoryManager inv = InventoryManager.Instance;
         if (inv == null) return;
 
-        if (eventData.button == PointerEventData.InputButton.Left)
-        {
-            // 左键使用
-            inv.UseQuickSlot(slotIndex);
-        }
-        else if (eventData.button == PointerEventData.InputButton.Right)
-        {
-            // 右键清空绑定
-            inv.ClearQuickSlot(slotIndex);
-        }
+        inv.UseQuickSlot(slotIndex);
     }
 
     // ============================================================

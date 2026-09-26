@@ -122,6 +122,10 @@ public class ItemSO : ScriptableObject
     [Min(0)]
     public int sellPrice;
 
+    [Header("消耗品效果（仅 category==Consumable 时有效）")]
+    [Tooltip("使用后恢复的生命值（正数；0 = 无回血效果）")]
+    public float healAmount;
+
     [Header("装备属性（仅装备类物品填写）")]
     [Tooltip("装备属性数据 — 仅 category==Equipment 时有效")]
     public EquipmentStats? equipmentStats;

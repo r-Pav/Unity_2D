@@ -61,6 +61,17 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
     [Tooltip("拖入所有 ItemSO 资产，供存档系统通过 ID 查找模板")]
     [SerializeField] private ItemSO[] itemTemplates;
 
+    [Header("快捷槽")]
+    [Tooltip("快捷槽单格堆叠上限（可变）。<= 0 = 不限制，沿用物品自身的 maxStack")]
+    [SerializeField] private int quickSlotMaxStack = 5;
+
+    [Header("快捷槽快捷键")]
+    [Tooltip("使用第 1 个快捷槽的按键")]
+    [SerializeField] private KeyCode quickSlotKey1 = KeyCode.Alpha1;
+
+    [Tooltip("使用第 2 个快捷槽的按键")]
+    [SerializeField] private KeyCode quickSlotKey2 = KeyCode.Alpha2;
+
     [Header("快捷切换键")]
     [Tooltip("打开/关闭背包面板的快捷键")]
     [SerializeField] private KeyCode toggleInventoryKey = KeyCode.B;
@@ -190,6 +201,14 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
 
     private void Update()
     {
+        // 快捷槽快捷键（2026-09-26 加）：面板打开时 PanelManager 会把 Time.timeScale 置 0，
+        // 暂停态下不响应，避免和背包里的右键使用/拖拽打架。
+        if (Time.timeScale > 0f)
+        {
+            if (quickSlotKey1 != KeyCode.None && Input.GetKeyDown(quickSlotKey1)) UseQuickSlot(0);
+            if (quickSlotKey2 != KeyCode.None && Input.GetKeyDown(quickSlotKey2)) UseQuickSlot(1);
+        }
+
         // 快捷键切换面板
         if (Input.GetKeyDown(toggleInventoryKey))
             ToggleInventoryPanel();
@@ -691,7 +710,7 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
             return false;
         }
 
-        if (item.template.slotType != slot)
+        if (!IsSlotCompatible(item.template.slotType, slot))
         {
             Debug.LogWarning($"[InventoryManager] {item.DisplayName} 槽位不匹配: {item.template.slotType} ≠ {slot}");
             return false;
@@ -749,6 +768,53 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
         return true;
     }
 
+    /// <summary>
+    /// 自动装备到匹配的空槽（2026-09-26 加，供背包左键第二段用）。
+    /// 饰品类（Accessory0 / Accessory1）两个槽任选一个空的；其余按 slotType 找唯一槽。
+    /// 目标槽已满 → 不操作（不顶掉已装备的物品），返回 false。
+    /// </summary>
+    public bool EquipItemAuto(int playerIndex)
+    {
+        ItemInstance item = GetPlayerItem(playerIndex);
+        if (item == null || item.template == null) return false;
+        if (item.template.category != ItemCategory.Equipment) return false;
+        if (_equipmentManager == null) return false;
+
+        EquipmentSlotType mainSlot = item.template.slotType;
+
+        if (mainSlot == EquipmentSlotType.Accessory0 || mainSlot == EquipmentSlotType.Accessory1)
+        {
+            // 饰品：先本体槽，再另一个；两个都满 → 什么也不做
+            if (!_equipmentManager.HasEquipped(mainSlot))
+                return EquipItem(playerIndex, mainSlot);
+
+            EquipmentSlotType otherSlot = mainSlot == EquipmentSlotType.Accessory0
+                ? EquipmentSlotType.Accessory1
+                : EquipmentSlotType.Accessory0;
+
+            if (!_equipmentManager.HasEquipped(otherSlot))
+                return EquipItem(playerIndex, otherSlot);
+
+            return false;
+        }
+
+        if (_equipmentManager.HasEquipped(mainSlot)) return false;
+
+        return EquipItem(playerIndex, mainSlot);
+    }
+
+    /// <summary>
+    /// 槽位兼容判断：饰品槽 Accessory0 / Accessory1 互通（一个满了能用另一个），其余必须精确匹配。
+    /// </summary>
+    private static bool IsSlotCompatible(EquipmentSlotType itemSlot, EquipmentSlotType targetSlot)
+    {
+        if (itemSlot == targetSlot) return true;
+
+        bool itemIsAccessory = itemSlot == EquipmentSlotType.Accessory0 || itemSlot == EquipmentSlotType.Accessory1;
+        bool targetIsAccessory = targetSlot == EquipmentSlotType.Accessory0 || targetSlot == EquipmentSlotType.Accessory1;
+        return itemIsAccessory && targetIsAccessory;
+    }
+
     /// <summary>查询指定槽位装备</summary>
     public ItemInstance GetEquippedItem(EquipmentSlotType slot)
     {
@@ -767,60 +833,230 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
     }
 
     /// <summary>
-    /// 将背包物品绑定到快捷栏
+    /// [搬运模型 2026-09-26] 背包格 → 快捷槽。
+    /// 规则：
+    ///   1. 槽空          → 搬入（数量超上限就拆，上限那部分进槽，余量留在背包格）
+    ///   2. 两边同种      → 往槽里堆到上限，超出的留背包格
+    ///   3. 两边异种      → 背包那件不超上限时直接互换；超上限则拆上限个进槽，槽里那件收回背包
+    /// 反方向（快捷槽 → 背包）用 ReturnQuickSlotToBackpack，它优先堆叠进背包里的同种。
     /// </summary>
-    public bool SetQuickSlot(int slotIndex, int playerInventoryIndex)
+    /// <returns>是否执行成功</returns>
+    public bool MoveBackpackToQuickSlot(int quickSlotIndex, int playerInventoryIndex)
     {
-        if (slotIndex < 0 || slotIndex >= QUICK_SLOT_COUNT) return false;
+        if (quickSlotIndex < 0 || quickSlotIndex >= QUICK_SLOT_COUNT) return false;
+        if (playerInventoryIndex < 0 || playerInventoryIndex >= playerItems.Count) return false;
 
-        ItemInstance item = GetPlayerItem(playerInventoryIndex);
-        if (item == null) return false;
-        if (item.template.category != ItemCategory.Consumable)
+        ItemInstance fromBag = playerItems[playerInventoryIndex];
+        ItemInstance fromQuick = quickSlots[quickSlotIndex];
+
+        if (fromBag == null) return false;   // 这个方向必须有来源物品
+
+        // 快捷槽只收消耗品
+        if (fromBag.template == null || fromBag.template.category != ItemCategory.Consumable)
         {
-            Debug.LogWarning($"[InventoryManager] 快捷栏只能绑定消耗品，{item.DisplayName} 分类为 {item.template.category}");
+            Debug.LogWarning($"[InventoryManager] 快捷槽只能放消耗品，{fromBag.DisplayName} 分类为 {fromBag.template?.category}");
             return false;
         }
 
-        quickSlots[slotIndex] = item;
-        OnQuickSlotsChanged?.Invoke();
+        int limit = GetQuickSlotStackLimit(fromBag);
+
+        // ① 槽空 → 搬入（可拆分）
+        if (fromQuick == null)
+        {
+            quickSlots[quickSlotIndex] = TakeFromBag(playerInventoryIndex, limit);
+            NotifyQuickSlotAndInventoryChanged();
+            return true;
+        }
+
+        // ② 同种 → 往槽里堆叠到上限，超出的留背包格
+        if (fromBag.template == fromQuick.template)
+        {
+            int space = Mathf.Max(0, limit - fromQuick.stackSize);
+            if (space > 0)
+            {
+                int moved = fromBag.TryRemove(Mathf.Min(space, fromBag.stackSize));
+                fromQuick.TryStack(moved);
+            }
+
+            if (fromBag.stackSize <= 0)
+                playerItems[playerInventoryIndex] = null;
+
+            NotifyQuickSlotAndInventoryChanged();
+            return true;
+        }
+
+        // ③ 异种 → 不超上限直接互换；超上限则拆上限个进槽，槽里那件收回背包
+        if (fromBag.stackSize <= limit)
+        {
+            quickSlots[quickSlotIndex] = fromBag;
+            playerItems[playerInventoryIndex] = fromQuick;
+        }
+        else
+        {
+            quickSlots[quickSlotIndex] = TakeFromBag(playerInventoryIndex, limit);
+            AddItemInstance(fromQuick);   // 旧物回背包（先堆叠，再找空格）
+        }
+
+        NotifyQuickSlotAndInventoryChanged();
         return true;
     }
 
-    /// <summary>清空快捷栏指定槽位</summary>
-    public void ClearQuickSlot(int slotIndex)
+    /// <summary>
+    /// 从背包指定格取出最多 count 个，返回独立实例（刚好取完时整件取走，并把背包格清空）。
+    /// 快捷槽搬运拆分专用。
+    /// </summary>
+    private ItemInstance TakeFromBag(int bagIndex, int count)
     {
-        if (slotIndex < 0 || slotIndex >= QUICK_SLOT_COUNT) return;
-        quickSlots[slotIndex] = null;
+        ItemInstance bagItem = playerItems[bagIndex];
+        if (bagItem == null) return null;
+
+        count = Mathf.Clamp(count, 1, bagItem.stackSize);
+
+        if (count >= bagItem.stackSize)
+        {
+            playerItems[bagIndex] = null;
+            return bagItem;
+        }
+
+        var split = new ItemInstance(bagItem.template, count);
+        bagItem.TryRemove(count);
+        return split;
+    }
+
+    /// <summary>快捷槽单格堆叠上限：配置 > 0 用它，否则回退到物品自身的 maxStack</summary>
+    private int GetQuickSlotStackLimit(ItemInstance item)
+    {
+        if (quickSlotMaxStack > 0) return quickSlotMaxStack;
+
+        int fallback = item?.template != null ? item.template.maxStack : 1;
+        return Mathf.Max(1, fallback);
+    }
+
+    private void NotifyQuickSlotAndInventoryChanged()
+    {
+        OnInventoryChanged?.Invoke();
         OnQuickSlotsChanged?.Invoke();
     }
 
-    /// <summary>使用快捷栏物品（减少 1 个堆叠，0 时自动清空）</summary>
+    /// <summary>
+    /// [搬运模型 2026-09-26] 把快捷槽里的物品放回背包。
+    /// preferredIndex >= 0 且那一格为空时优先进那一格，否则进首个空格。
+    /// </summary>
+    /// <returns>放回后的背包索引；-1 = 失败（背包满）</returns>
+    public int ReturnQuickSlotToBackpack(int quickSlotIndex, int preferredIndex = -1)
+    {
+        if (quickSlotIndex < 0 || quickSlotIndex >= QUICK_SLOT_COUNT) return -1;
+
+        ItemInstance item = quickSlots[quickSlotIndex];
+        if (item == null) return -1;
+
+        // 指定格优先：空格直接放；同种且有空间则先堆进去（这就是「拖回背包要自己找堆叠」）
+        if (preferredIndex >= 0 && preferredIndex < playerItems.Count)
+        {
+            ItemInstance target = playerItems[preferredIndex];
+            if (target == null)
+            {
+                playerItems[preferredIndex] = item;
+                quickSlots[quickSlotIndex] = null;
+                NotifyQuickSlotAndInventoryChanged();
+                return preferredIndex;
+            }
+            if (target.template == item.template && target.CanStack)
+            {
+                int moved = target.TryStack(item.stackSize);
+                item.TryRemove(moved);
+                if (item.stackSize <= 0)
+                {
+                    quickSlots[quickSlotIndex] = null;
+                    NotifyQuickSlotAndInventoryChanged();
+                    return preferredIndex;
+                }
+                // 还有剩 → 落到下面的统一收纳
+            }
+        }
+
+        // 统一收纳：先堆叠到背包里的同种，再放首个空格
+        int landed = AddItemInstance(item);
+
+        if (item.stackSize <= 0 || landed >= 0)
+            quickSlots[quickSlotIndex] = null;   // 全部放完
+        else
+            Debug.LogWarning("[InventoryManager] 背包已满，快捷槽物品放不回去（剩余仍留在快捷槽）");
+
+        NotifyQuickSlotAndInventoryChanged();
+        return landed;
+    }
+
+    /// <summary>交换两个快捷槽的内容（2026-09-26 加，供背包页锚点槽位互拖）</summary>
+    public void SwapQuickSlots(int slotA, int slotB)
+    {
+        if (slotA == slotB) return;
+        if (slotA < 0 || slotA >= QUICK_SLOT_COUNT) return;
+        if (slotB < 0 || slotB >= QUICK_SLOT_COUNT) return;
+
+        (quickSlots[slotA], quickSlots[slotB]) = (quickSlots[slotB], quickSlots[slotA]);
+        OnQuickSlotsChanged?.Invoke();
+    }
+
+    /// <summary>使用快捷栏物品（执行效果 → 减少 1 个堆叠；用光后槽位空出来，物品消失不回收进背包）</summary>
     public bool UseQuickSlot(int slotIndex)
     {
         ItemInstance item = GetQuickSlot(slotIndex);
         if (item == null) return false;
 
-        // TODO: 实际效果由后续 ItemEffectDataSO 驱动，此处仅减少数量
+        // 执行消耗品效果；返回 false = 本次未生效（如满血/无效果），此时不扣数量
+        if (!TryApplyConsumableEffect(item)) return false;
+
         item.TryRemove(1);
 
+        // 搬运模型：物品住在快捷槽里，用完直接从槽位消失（背包里没有它的份）
         if (item.stackSize <= 0)
-        {
-            // 从背包中清除
-            for (int i = 0; i < playerItems.Count; i++)
-            {
-                if (playerItems[i] == item)
-                {
-                    playerItems[i] = null;
-                    break;
-                }
-            }
             quickSlots[slotIndex] = null;
-        }
 
+        OnQuickSlotsChanged?.Invoke();
+        return true;
+    }
+
+    /// <summary>
+    /// 使用背包指定格的消耗品（2026-09-26 加：背包格左键第二段点击入口）。
+    /// 只接受 ItemCategory.Consumable；效果与快捷栏共用 TryApplyConsumableEffect。
+    /// </summary>
+    /// <param name="playerInventoryIndex">背包格索引（与 playerItems 同步）</param>
+    public bool UsePlayerItem(int playerInventoryIndex)
+    {
+        ItemInstance item = GetPlayerItem(playerInventoryIndex);
+        if (item == null || item.template == null) return false;
+        if (item.template.category != ItemCategory.Consumable) return false;
+
+        if (!TryApplyConsumableEffect(item)) return false;
+
+        item.TryRemove(1);
         CleanupEmptySlotsBackpack();
         OnInventoryChanged?.Invoke();
         OnQuickSlotsChanged?.Invoke();
         return true;
+    }
+
+    /// <summary>
+    /// 执行消耗品效果（2026-09-26 加，先只做回血）。
+    /// 返回 false = 本次不消耗：满血不浪费、或该物品没配任何效果。
+    /// 后续要多种效果（回蓝/增益等）时再抽 ItemEffectDataSO，此处只做分支。
+    /// </summary>
+    private bool TryApplyConsumableEffect(ItemInstance item)
+    {
+        if (item?.template == null) return false;
+
+        float heal = item.template.healAmount;
+        if (heal > 0f)
+        {
+            PlayerHealth health = PlayerHealth.Instance;
+            if (health == null) return false;
+            if (health.CurrentHealth >= health.MaxHealth) return false;   // 满血：不消耗
+            health.Heal(heal);
+            return true;
+        }
+
+        return false;   // 未配置任何效果 = 不可用（不扣数量）
     }
 
     // ============================================================
@@ -905,10 +1141,11 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
     // 内部辅助方法
     // ============================================================
 
-    /// <summary>将 ItemInstance 放入背包首个空格（或堆叠）</summary>
-    private void AddItemInstance(ItemInstance item)
+    /// <summary>将 ItemInstance 放入背包（优先堆叠到同种，再放首个空格）</summary>
+    /// <returns>落位索引（堆叠时返回被堆进的那一格）；-1 = 放不下（可能已部分堆叠，剩余仍留在 item 里）</returns>
+    private int AddItemInstance(ItemInstance item)
     {
-        if (item == null || !item.IsValid) return;
+        if (item == null || !item.IsValid) return -1;
 
         // 尝试堆叠
         for (int i = 0; i < playerItems.Count; i++)
@@ -920,7 +1157,7 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
 
             int added = existing.TryStack(item.stackSize);
             item.TryRemove(added);
-            if (item.stackSize <= 0) return;
+            if (item.stackSize <= 0) return i;   // 全堆进这一格
         }
 
         // 放入空格
@@ -929,11 +1166,12 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
             if (playerItems[i] == null)
             {
                 playerItems[i] = item;
-                return;
+                return i;
             }
         }
 
         Debug.LogWarning($"[InventoryManager] 背包已满，{item.DisplayName} 无法放入");
+        return -1;
     }
 
     /// <summary>清理背包末端的 null 项，压缩列表</summary>
@@ -1036,22 +1274,19 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
             }
         }
 
-        // ── 快捷栏（只保存背包引用索引）──
-        data.quickSlotBindings = new int[QUICK_SLOT_COUNT];
+        // ── 快捷槽（搬运模型 2026-09-26：物品住在槽里，直接存它自己）──
+        data.quickSlotItems = new ItemSaveEntry[QUICK_SLOT_COUNT];
         for (int i = 0; i < QUICK_SLOT_COUNT; i++)
         {
-            data.quickSlotBindings[i] = -1;
-            if (quickSlots[i] != null)
+            var quickItem = quickSlots[i];
+            if (quickItem != null && quickItem.IsValid && quickItem.template != null)
             {
-                // 找到该物品在背包中的索引
-                for (int j = 0; j < playerItems.Count; j++)
+                data.quickSlotItems[i] = new ItemSaveEntry
                 {
-                    if (playerItems[j] == quickSlots[i])
-                    {
-                        data.quickSlotBindings[i] = j;
-                        break;
-                    }
-                }
+                    itemId = quickItem.template.id,
+                    stackSize = quickItem.stackSize,
+                    durability = quickItem.currentDurability
+                };
             }
         }
 
@@ -1145,17 +1380,40 @@ public class InventoryManager : MonoBehaviour, IPickupReceiver
             }
         }
 
-        // ── 恢复快捷栏绑定 ──
-        if (data.quickSlotBindings != null)
+        // ── 恢复快捷槽（搬运模型：槽里直接放实例）──
+        if (data.quickSlotItems != null)
+        {
+            for (int i = 0; i < Mathf.Min(data.quickSlotItems.Length, QUICK_SLOT_COUNT); i++)
+            {
+                var entry = data.quickSlotItems[i];
+                if (entry == null || string.IsNullOrEmpty(entry.itemId)) continue;
+
+                ItemSO template = ItemSO.FindById(entry.itemId);
+                if (template == null)
+                {
+                    Debug.LogWarning($"[InventoryManager] 快捷槽存档物品 ID '{entry.itemId}' 未找到对应模板，跳过");
+                    continue;
+                }
+
+                var item = new ItemInstance(template, entry.stackSize);
+                if (entry.hasDurability)
+                    item.currentDurability = entry.durability;
+                quickSlots[i] = item;
+            }
+        }
+        // ── 旧档兼容（2026-09-26 之前的 quickSlotBindings = 背包索引）：把背包里那件搬进快捷槽 ──
+        else if (data.quickSlotBindings != null)
         {
             for (int i = 0; i < Mathf.Min(data.quickSlotBindings.Length, QUICK_SLOT_COUNT); i++)
             {
                 int backpackIndex = data.quickSlotBindings[i];
-                if (backpackIndex >= 0 && backpackIndex < playerItems.Count)
+                if (backpackIndex < 0 || backpackIndex >= playerItems.Count) continue;
+
+                var item = playerItems[backpackIndex];
+                if (item != null && item.template != null && item.template.category == ItemCategory.Consumable)
                 {
-                    var item = playerItems[backpackIndex];
-                    if (item != null && item.template.category == ItemCategory.Consumable)
-                        quickSlots[i] = item;
+                    quickSlots[i] = item;
+                    playerItems[backpackIndex] = null;   // 搬运模型：搬走，背包那格留空
                 }
             }
         }
@@ -1229,7 +1487,10 @@ public class InventorySaveData
     /// <summary>装备槽数据（4 个定长）</summary>
     public EquipmentSlotSave[] equipSlots;
 
-    /// <summary>快捷栏绑定：每个元素 = 背包索引，-1 = 空</summary>
+    /// <summary>[搬运模型] 快捷槽内容（2 格，null = 空；2026-09-26 起物品直接住在槽里）</summary>
+    public ItemSaveEntry[] quickSlotItems;
+
+    /// <summary>[已废弃] 旧档的快捷栏绑定：每个元素 = 背包索引，-1 = 空。仅读档时做向后兼容搬运。</summary>
     public int[] quickSlotBindings;
 
     /// <summary>当前分类状态：0=All, 1=Consumable, 2=Equipment, 3=Material</summary>

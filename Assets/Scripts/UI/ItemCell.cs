@@ -359,10 +359,17 @@ public class ItemCell : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
 
     private void HandleDropFromQuickSlot(InventoryManager inv, int sourceIdx)
     {
-        if (ContainerType == DragSourceContainer.Inventory || ContainerType == DragSourceContainer.Warehouse)
+        if (ContainerType == DragSourceContainer.Inventory)
         {
-            // 快捷栏 → 背包格子：仅清空快捷栏（物品本身就在背包中）
-            inv.ClearQuickSlot(sourceIdx);
+            // 快捷槽 → 背包格：优先堆叠进那一格的同种，其次放进那一格，再退回首空格
+            inv.ReturnQuickSlotToBackpack(sourceIdx, SlotIndex);
+        }
+        else if (ContainerType == DragSourceContainer.Warehouse)
+        {
+            // 快捷槽 → 仓库：先放回背包，再从背包存入仓库
+            int bagIndex = inv.ReturnQuickSlotToBackpack(sourceIdx);
+            if (bagIndex >= 0)
+                inv.DepositToWarehouse(bagIndex);
         }
     }
 
@@ -371,22 +378,34 @@ public class ItemCell : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
     // ============================================================
 
     /// <summary>
-    /// 左键两段式(2026-09-22 saika 定):
-    ///   第 1 次 = 选中这一格(固定 tip + 高亮),不装备;
-    ///   同格再点 = 装备,并取消选中、收起 tip。
+    /// 点击逻辑(2026-09-26 改):
+    ///   左键第 1 次 = 选中这一格(固定 tip + 高亮),不做别的;
+    ///   左键同格再点 = 装备类自动装备到空槽(饰品两个槽自动选,两个都满则不动),消耗品与材料不响应;
+    ///   右键 = 使用消耗品(只在背包格里生效),装备/材料不响应。
     /// 鼠标移开时若仍选中则 tip 不移除(见 UITooltip.Hide)。
     /// </summary>
     public void OnPointerClick(PointerEventData eventData)
     {
-        if (eventData.button != PointerEventData.InputButton.Left) return;
         if (DragSession.IsDragging) return;
 
         ItemInstance item = GetItemData();
         if (item == null || !item.IsValid) return;
 
+        // ── 右键：使用消耗品（背包格限定，仓库格不响应）──
+        if (eventData.button == PointerEventData.InputButton.Right)
+        {
+            if (item.template.category != ItemCategory.Consumable) return;
+            if (ContainerType != DragSourceContainer.Inventory) return;
+
+            InventoryManager.Instance?.UsePlayerItem(SlotIndex);
+            return;
+        }
+
+        if (eventData.button != PointerEventData.InputButton.Left) return;
+
         var rect = (RectTransform)transform;
 
-        // 第一段:选中
+        // 第一段：选中
         if (!UITooltip.IsPinnedTo(rect))
         {
             UITooltip.ShowItem(item.template, rect);
@@ -395,14 +414,15 @@ public class ItemCell : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
             return;
         }
 
-        // 第二段:装备(仅装备类;消耗品/材料目前只停在第 1 段)
+        // 第二段：装备类 = 自动装备到空槽；消耗品/材料不做事（消耗品改用右键使用）
         if (item.template.category != ItemCategory.Equipment) return;
+        if (ContainerType != DragSourceContainer.Inventory) return;
 
         InventoryManager inv = InventoryManager.Instance;
         if (inv == null) return;
 
-        UITooltip.Close();   // 物品会移出格子,选中与 tip 一起收
-        inv.EquipItem(SlotIndex, item.template.slotType);
+        UITooltip.Close();   // 物品会移出格子，选中与 tip 一起收
+        inv.EquipItemAuto(SlotIndex);
     }
 
     /// <summary>

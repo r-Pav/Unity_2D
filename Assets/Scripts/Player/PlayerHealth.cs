@@ -47,6 +47,12 @@ public class PlayerHealth : MonoBehaviour, ICombatant
     [Tooltip("死亡复活传送点（场景里 DefaultSpawnPoint 空物体，与 SceneBootstrap 新游戏出生点共用）；留空 = 原地复活（保持原行为）")]
     [SerializeField] private Transform defaultSpawnPoint;
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+    [Header("调试（仅编辑器/开发构建生效，出包无此段）")]
+    [Tooltip("按 [ 键一次扣掉的血量（默认 100）")]
+    [SerializeField] private float debugDamageStep = 100f;
+#endif
+
     // ============================================================
     // 运行时状态
     // ============================================================
@@ -206,7 +212,7 @@ public class PlayerHealth : MonoBehaviour, ICombatant
     // 父类调用接口
     // ============================================================
 
-    /// <summary>每帧被 PlayerController 调用（当前无需每帧逻辑，保留接口；无敌帧计时在此递减）</summary>
+    /// <summary>每帧被 PlayerController 调用（无敌帧计时在此递减；编辑器/开发构建下附带调试改血热键）</summary>
     public void OnPlayerUpdate(PlayerController pc)
     {
         owner = pc;
@@ -215,7 +221,42 @@ public class PlayerHealth : MonoBehaviour, ICombatant
             invincibleTimer -= Time.deltaTime;
             if (invincibleTimer < 0f) invincibleTimer = 0f;
         }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        DebugHealthHotkeys();
+#endif
     }
+
+    // ============================================================
+    // [调试] Play 模式下直接改当前血量（仅编辑器/开发构建）
+    // ============================================================
+
+    /// <summary>
+    /// [调试] 直接设置当前血量：钳制到 [0, MaxHealth] 并触发 PlayerHealthChangedEvent（HUD 血条即时刷新）。
+    /// 不走闪避/弹反/护甲/减伤/受击硬直，纯粹改数值，用于测试回血消耗品等。
+    /// </summary>
+    public void DebugSetHealth(float value)
+    {
+        if (_isDead) return;
+        currentHealth = Mathf.Clamp(value, 0f, MaxHealth);
+        EventBus.Trigger(new PlayerHealthChangedEvent(currentHealth, MaxHealth));
+    }
+
+    /// <summary>[调试] 按最大血量的比例设置当前血量（0~1）：0.3 = 打到三成血</summary>
+    public void DebugSetHealthRatio(float ratio) => DebugSetHealth(MaxHealth * Mathf.Clamp01(ratio));
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+    /// <summary>[调试] Play 中改血热键：[ = 扣 debugDamageStep 点，] = 回满，\ = 只留 1 点血</summary>
+    private void DebugHealthHotkeys()
+    {
+        if (Input.GetKeyDown(KeyCode.LeftBracket))
+            DebugSetHealth(currentHealth - debugDamageStep);
+        if (Input.GetKeyDown(KeyCode.RightBracket))
+            DebugSetHealth(MaxHealth);
+        if (Input.GetKeyDown(KeyCode.Backslash))
+            DebugSetHealth(1f);
+    }
+#endif
 
     // ============================================================
     // 受伤 / 死亡

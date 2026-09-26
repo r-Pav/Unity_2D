@@ -60,6 +60,9 @@ public class UITooltip : MonoBehaviour
     [Tooltip("窗子与屏幕边缘的最小距离(像素)")]
     [SerializeField] private float edgeMargin = 8f;
 
+    [Tooltip("鼠标移开后 tip 延迟隐藏的时间(秒);到点时鼠标还在 tip 上就继续等(2026-09-26 加)")]
+    [SerializeField] private float hideDelay = 0.3f;
+
     [Header("文案")]
     [Tooltip("装备/物品「其他」行的售价格式")]
     [SerializeField] private string sellPriceFormat = "售价：{0}";
@@ -187,12 +190,63 @@ public class UITooltip : MonoBehaviour
         Instance._pinned = anchor;
     }
 
-    /// <summary>鼠标移开时调:已固定(选中)则不动,否则隐藏</summary>
+    /// <summary>
+    /// 鼠标移开时调(2026-09-26 改):
+    ///   未固定(普通悬停) → 立即隐藏,保持原行为;
+    ///   已固定(选中)     → 延迟隐藏;到点时鼠标还在 tip 上就再等一个延迟,直到移开才收。
+    /// 选中态与格子高亮不受影响(取消选中仍走 Close/SetPinned)。
+    /// </summary>
     public static void Hide()
     {
         if (Instance == null) return;
-        if (Instance._pinned != null) return;
-        Instance.HideSelf();
+        Instance.RequestHide();
+    }
+
+    private void RequestHide()
+    {
+        if (!_visible) return;
+
+        CancelPendingHide();
+
+        if (_pinned == null)
+        {
+            HideSelf();
+            return;
+        }
+
+        Invoke(nameof(DelayedHide), Mathf.Max(0f, hideDelay));
+    }
+
+    private void CancelPendingHide()
+    {
+        CancelInvoke(nameof(DelayedHide));
+    }
+
+    /// <summary>延迟到点:鼠标停在 tip 上就继续等,否则收起 tip(选中态与高亮保留)</summary>
+    private void DelayedHide()
+    {
+        if (!_visible) return;
+
+        if (IsMouseOverSelf())
+        {
+            Invoke(nameof(DelayedHide), Mathf.Max(0f, hideDelay));
+            return;
+        }
+
+        HideSelf();
+    }
+
+    /// <summary>鼠标是否停在 tip 自己的矩形内(用矩形判定,与 raycast 开关无关)</summary>
+    private bool IsMouseOverSelf()
+    {
+        if (_rect == null || !gameObject.activeInHierarchy) return false;
+
+        Canvas canvas = GetComponentInParent<Canvas>();
+        Camera cam = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay
+            ? canvas.worldCamera
+            : null;
+
+        return RectTransformUtility.RectangleContainsScreenPoint(_rect, Input.mousePosition, cam);
     }
 
     /// <summary>强制关闭(点 Btn_Back / 装备后):取消选中 + 隐藏</summary>
@@ -204,6 +258,8 @@ public class UITooltip : MonoBehaviour
     /// <summary>取消选中并隐藏</summary>
     public void CloseInternal()
     {
+        CancelPendingHide();
+
         if (_pinned != null)
         {
             _pinned.GetComponent<ItemCell>()?.SetSelected(false);
@@ -272,6 +328,7 @@ public class UITooltip : MonoBehaviour
             }
         }
         _shownAnchor = anchor;
+        CancelPendingHide();   // 重新显示时取消待隐藏(2026-09-26 加)
 
         // 面板关闭时跟着收掉(幂等,同一锚点只挂一个)
         if (anchor.GetComponent<AnchorWatcher>() == null)

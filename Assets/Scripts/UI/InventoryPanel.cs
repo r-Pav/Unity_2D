@@ -40,6 +40,10 @@ public class InventoryPanel : MonoBehaviour, IPanel
     [Tooltip("CategoryTabs 下的 4 个 Button，按顺序：全部/消耗品/装备/材料")]
     [SerializeField] private Button[] categoryButtons;
 
+    [Header("快捷消耗槽锚点")]
+    [Tooltip("背包页里的 2 个快捷消耗槽（挂 ConsumableQuickSlot），按 0/1 顺序拖入")]
+    [SerializeField] private ConsumableQuickSlot[] quickSlots = new ConsumableQuickSlot[2];
+
     [Header("缓存")]
     [Tooltip("启动时自动从 ItemGrid 发现 ItemCell 子对象")]
     [SerializeField] private bool autoDiscoverCells = true;
@@ -65,6 +69,19 @@ public class InventoryPanel : MonoBehaviour, IPanel
     {
         if (autoDiscoverCells)
             DiscoverCells();
+
+        InitializeQuickSlots();
+    }
+
+    /// <summary>给背包页的 2 个快捷消耗槽锚点注入索引（0/1），并让它们立刻刷一次显示</summary>
+    private void InitializeQuickSlots()
+    {
+        if (quickSlots == null) return;
+
+        for (int i = 0; i < quickSlots.Length; i++)
+        {
+            if (quickSlots[i] != null) quickSlots[i].Initialize(i);
+        }
     }
 
     private void Start()
